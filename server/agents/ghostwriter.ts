@@ -2,43 +2,38 @@ import { BaseAgent, AgentResponse } from "./base-agent";
 
 interface GhostwriterInput {
   chapterNumber: number;
-  chapterOutline: {
-    summary: string;
-    keyEvents: string[];
+  chapterData: {
+    numero: number;
+    titulo: string;
+    cronologia: string;
+    ubicacion: string;
+    elenco_presente: string[];
+    objetivo_narrativo: string;
+    beats: string[];
+    continuidad_salida?: string;
   };
-  worldBible: {
-    characters: any[];
-    worldRules: any[];
-    timeline: any[];
-    previousEvents?: string;
-  };
-  genre: string;
-  tone: string;
-  targetWordCount: number;
+  worldBible: any;
+  guiaEstilo: string;
+  previousContinuity?: string;
+  refinementInstructions?: string;
 }
 
-const SYSTEM_PROMPT = `Eres "El Narrador" (The Ghostwriter) - un agente literario maestro de la prosa narrativa.
+const SYSTEM_PROMPT = `
+Eres el "Novelista Maestro", experto en redacción de ficción en español con calidad de bestseller.
+Tu misión es escribir prosa EVOCADORA, PROFESIONAL y 100% DIEGÉTICA.
 
-Tu rol es:
-1. Escribir prosa de alta calidad literaria
-2. Mantener consistencia con el lore establecido
-3. Desarrollar diálogos auténticos y distintivos para cada personaje
-4. Crear descripciones vívidas y atmosféricas
-5. Mantener el tono narrativo especificado
+REGLAS DE ORO INVIOLABLES (Motor de Razonamiento Gemini 3):
+1. ADHESIÓN TOTAL AL ÍNDICE: Escribe ÚNICA y EXCLUSIVAMENTE lo que pide el índice para este capítulo. Prohibido adelantar acontecimientos.
+2. NARRATIVA DIÉGETICA: Prohibido incluir notas [entre corchetes], comentarios de autor o referencias externas. Solo literatura pura.
+3. MOSTRAR, NO CONTAR: Usa detalles sensoriales y monólogo interno. No expliques emociones, muéstralas mediante acciones.
+4. FORMATO DE DIÁLOGO: Usa obligatoriamente el guion largo (—) y puntuación española correcta.
+5. LONGITUD: Tu objetivo es una extensión de 2500 a 3500 palabras por capítulo, profundizando en cada beat narrativo.
 
-INSTRUCCIONES CRÍTICAS:
-- SIEMPRE consulta la biblia del mundo antes de escribir
-- Verifica que los personajes actúen según sus perfiles psicológicos
-- No contradigas eventos previos en la cronología
-- Mantén el estilo y tono consistentes
-- Previsualiza cada escena en tu mente antes de escribirla
-- Escribe prosa pulida, lista para publicación
-
-FORMATO DE SALIDA:
-Escribe el capítulo completo en prosa narrativa.
-Incluye diálogos, descripciones y narración.
-NO incluyas metadatos ni comentarios sobre el texto.
-El capítulo debe comenzar directamente con la narrativa.`;
+PROCESO DE PENSAMIENTO (Thinking Level: High):
+- Analiza la "World Bible" para asegurar que los personajes actúan según su ficha.
+- Verifica la "Continuidad de Salida" del capítulo anterior para situar a los personajes correctamente.
+- Planifica el ritmo (pacing) para que la prosa fluya sin prisas.
+`;
 
 export class GhostwriterAgent extends BaseAgent {
   constructor() {
@@ -50,44 +45,41 @@ export class GhostwriterAgent extends BaseAgent {
   }
 
   async execute(input: GhostwriterInput): Promise<AgentResponse> {
-    const characterSummary = input.worldBible.characters
-      .map(c => `- ${c.name} (${c.role}): ${c.psychologicalProfile}`)
-      .join("\n");
+    let prompt = `
+    CONTEXTO DEL MUNDO (World Bible): ${JSON.stringify(input.worldBible)}
+    GUÍA DE ESTILO: ${input.guiaEstilo}
+    
+    ${input.previousContinuity ? `CONTINUIDAD DEL CAPÍTULO ANTERIOR: ${input.previousContinuity}` : ""}
+    `;
 
-    const rulesSummary = input.worldBible.worldRules
-      .map(r => `- [${r.category}] ${r.rule}`)
-      .join("\n");
+    if (input.refinementInstructions) {
+      prompt += `
+    
+    ========================================
+    INSTRUCCIONES DE REESCRITURA (PLAN QUIRÚRGICO DEL EDITOR):
+    ========================================
+    ${input.refinementInstructions}
+    
+    IMPORTANTE: Este es un intento de REESCRITURA. Debes aplicar las correcciones indicadas por el Editor 
+    mientras mantienes las fortalezas identificadas. Sigue el procedimiento de corrección al pie de la letra.
+    ========================================
+    `;
+    }
 
-    const prompt = `Escribe el Capítulo ${input.chapterNumber} de la novela.
-
-ESQUEMA DEL CAPÍTULO:
-${input.chapterOutline.summary}
-
-EVENTOS CLAVE A INCLUIR:
-${input.chapterOutline.keyEvents.map(e => `- ${e}`).join("\n")}
-
-PERSONAJES DISPONIBLES:
-${characterSummary}
-
-REGLAS DEL MUNDO:
-${rulesSummary}
-
-${input.worldBible.previousEvents ? `EVENTOS PREVIOS (no contradecir):
-${input.worldBible.previousEvents}` : ""}
-
-PARÁMETROS:
-- Género: ${input.genre}
-- Tono: ${input.tone}
-- Longitud objetivo: ${input.targetWordCount} palabras aproximadamente
-
-IMPORTANTE:
-- Mantén consistencia absoluta con el lore
-- Los personajes deben actuar según sus perfiles
-- Incluye diálogos distintivos
-- Crea atmósfera acorde al género y tono
-- Escribe prosa de calidad literaria
-
-Comienza a escribir el capítulo directamente, sin introducción ni comentarios.`;
+    prompt += `
+    TAREA ACTUAL:
+    Escribe el CAPÍTULO ${input.chapterData.numero}: ${input.chapterData.titulo}.
+    
+    DETALLES DEL CAPÍTULO:
+    - Cronología: ${input.chapterData.cronologia}
+    - Ubicación: ${input.chapterData.ubicacion}
+    - Elenco Presente: ${input.chapterData.elenco_presente.join(", ")}
+    - Beats Narrativos a seguir: ${input.chapterData.beats.join(" -> ")}
+    - Objetivo: ${input.chapterData.objetivo_narrativo}
+    
+    Escribe el texto completo siguiendo tu programación de Novelista Maestro.
+    Comienza directamente con la narrativa, sin introducción ni comentarios.
+    `;
 
     return this.generateContent(prompt);
   }

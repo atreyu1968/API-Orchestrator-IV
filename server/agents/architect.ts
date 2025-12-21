@@ -5,45 +5,48 @@ interface ArchitectInput {
   genre: string;
   tone: string;
   chapterCount: number;
+  ideaInicial?: string;
+  guiaEstilo?: string;
 }
 
-const SYSTEM_PROMPT = `Eres "El Arquitecto" - un agente literario especializado en planificación narrativa.
+const SYSTEM_PROMPT = `
+Eres un Arquitecto de Tramas Maestro y Supervisor de Continuidad Literaria con capacidad de RAZONAMIENTO PROFUNDO (Deep Thinking).
+Tu especialidad es la logística narrativa rigurosa. Tu salida DEBE ser un objeto JSON válido para alimentar el sistema de memoria de la aplicación.
 
-Tu rol es utilizar pensamiento profundo para:
-1. Crear una estructura de tres actos sólida
-2. Diseñar un esquema detallado de capítulos
-3. Desarrollar perfiles psicológicos de personajes
-4. Establecer las reglas del mundo narrativo
-5. Crear una cronología coherente
+PRINCIPIOS DE RAZONAMIENTO (Tus Guardrails):
+1. ANTES de proponer una escena, simula internamente la posición física de cada personaje.
+2. Si un personaje se mueve, debe haber un rastro de tiempo y espacio coherente.
+3. Asegura la causalidad mecánica: cada acción debe ser consecuencia de una anterior.
 
-INSTRUCCIONES CRÍTICAS:
-- Piensa profundamente antes de responder
-- Considera la coherencia narrativa a largo plazo
-- Anticipa posibles contradicciones
-- Define límites claros para el mundo
-- Crea personajes con motivaciones coherentes
+TU MISIÓN:
+Crear la "Guía de Escritura Extendida" (Blueprint) y la base de datos "World Bible".
 
-Tu respuesta DEBE ser un JSON válido con la siguiente estructura:
-{
-  "premise": "premisa de la historia",
-  "threeActStructure": {
-    "act1": { "setup": "...", "incitingIncident": "..." },
-    "act2": { "risingAction": "...", "midpoint": "...", "complications": "..." },
-    "act3": { "climax": "...", "resolution": "..." }
-  },
-  "chapterOutlines": [
-    { "number": 1, "summary": "...", "keyEvents": ["evento1", "evento2"] }
-  ],
-  "characters": [
-    { "name": "...", "role": "...", "psychologicalProfile": "...", "arc": "...", "relationships": ["..."], "isAlive": true }
-  ],
-  "worldRules": [
-    { "category": "...", "rule": "...", "constraints": ["..."] }
-  ],
-  "timeline": [
-    { "chapter": 1, "event": "...", "characters": ["..."], "significance": "..." }
-  ]
-}`;
+INSTRUCCIONES DE SALIDA:
+Genera un JSON con las siguientes claves:
+- "world_bible": { 
+    "personajes": [{ "nombre": "", "rol": "", "perfil_psicologico": "", "arco": "", "relaciones": [], "vivo": true }], 
+    "lugares": [{ "nombre": "", "descripcion": "", "reglas": [] }], 
+    "reglas_lore": [{ "categoria": "", "regla": "", "restricciones": [] }] 
+  }
+- "escaleta_capitulos": [
+    {
+      "numero": 1,
+      "titulo": "",
+      "cronologia": "",
+      "ubicacion": "",
+      "elenco_presente": [],
+      "objetivo_narrativo": "",
+      "beats": [],
+      "continuidad_salida": "Estado final de los personajes y el entorno para el próximo agente"
+    }
+]
+- "premisa": "Premisa central de la historia"
+- "estructura_tres_actos": {
+    "acto1": { "planteamiento": "", "incidente_incitador": "" },
+    "acto2": { "accion_ascendente": "", "punto_medio": "", "complicaciones": "" },
+    "acto3": { "climax": "", "resolucion": "" }
+  }
+`;
 
 export class ArchitectAgent extends BaseAgent {
   constructor() {
@@ -55,18 +58,22 @@ export class ArchitectAgent extends BaseAgent {
   }
 
   async execute(input: ArchitectInput): Promise<AgentResponse> {
-    const prompt = `Crea la biblia del mundo para una novela con las siguientes características:
+    const guiaEstilo = input.guiaEstilo || `Género: ${input.genre}, Tono: ${input.tone}`;
+    const ideaInicial = input.ideaInicial || input.title;
 
-TÍTULO: ${input.title}
-GÉNERO: ${input.genre}
-TONO: ${input.tone}
-NÚMERO DE CAPÍTULOS: ${input.chapterCount}
-
-Genera una estructura narrativa completa, incluyendo personajes, mundo, y esquema de capítulos.
-Asegúrate de que cada capítulo tenga un propósito claro en la trama general.
-Considera el arco emocional de cada personaje a lo largo de los ${input.chapterCount} capítulos.
-
-Responde ÚNICAMENTE con el JSON estructurado según las instrucciones.`;
+    const prompt = `
+    Basándote en esta idea: "${ideaInicial}" 
+    Y siguiendo esta Guía de Estilo: "${guiaEstilo}"
+    
+    Genera el plan completo para una novela de ${input.chapterCount} capítulos.
+    
+    TÍTULO: ${input.title}
+    GÉNERO: ${input.genre}
+    TONO: ${input.tone}
+    
+    Genera el plan completo de la novela siguiendo tus protocolos de arquitectura.
+    Responde ÚNICAMENTE con el JSON estructurado según las instrucciones.
+    `;
 
     const response = await this.generateContent(prompt);
     
