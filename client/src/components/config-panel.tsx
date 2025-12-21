@@ -27,6 +27,7 @@ const genres = [
   { value: "fantasy", label: "Fantasía", description: "Mundos mágicos y criaturas sobrenaturales" },
   { value: "scifi", label: "Ciencia Ficción", description: "Futuros tecnológicos y exploración espacial" },
   { value: "thriller", label: "Thriller", description: "Suspense y tensión narrativa" },
+  { value: "historical_thriller", label: "Thriller Histórico", description: "Suspense en contextos históricos" },
   { value: "romance", label: "Romance", description: "Relaciones y conexiones emocionales" },
   { value: "horror", label: "Horror", description: "Terror y elementos sobrenaturales" },
   { value: "mystery", label: "Misterio", description: "Investigación y resolución de enigmas" },
