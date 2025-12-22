@@ -176,6 +176,7 @@ export class Orchestrator {
       }
 
       let previousContinuity = "";
+      let previousContinuityStateForEditor: any = null;
 
       for (let i = 0; i < chapters.length; i++) {
         const chapter = chapters[i];
@@ -235,7 +236,7 @@ export class Orchestrator {
             chapterData: sectionData,
             worldBible: worldBibleData.world_bible,
             guiaEstilo: `Género: ${project.genre}, Tono: ${project.tone}`,
-            previousContinuityState: extractedContinuityState,
+            previousContinuityState: previousContinuityStateForEditor,
           });
 
           await this.trackTokenUsage(project.id, editorResult.tokenUsage);
@@ -303,10 +304,12 @@ export class Orchestrator {
 
         if (extractedContinuityState) {
           previousContinuity = JSON.stringify(extractedContinuityState);
+          previousContinuityStateForEditor = extractedContinuityState;
           console.log(`[Orchestrator] Passing continuity state to next chapter: ${Object.keys(extractedContinuityState.characterStates || {}).length} characters tracked`);
         } else {
           previousContinuity = sectionData.continuidad_salida || 
             `${sectionLabel} completado. Los personajes terminaron en: ${sectionData.ubicacion}`;
+          previousContinuityStateForEditor = null;
         }
 
         this.callbacks.onChapterComplete(i + 1, wordCount, sectionData.titulo);
@@ -408,6 +411,8 @@ export class Orchestrator {
         : lastCompleted?.content 
           ? `Capítulo anterior completado. Contenido termina con: ${lastCompleted.content.slice(-500)}`
           : "";
+      
+      let previousContinuityStateForEditor: any = lastCompleted?.continuityState || null;
 
       this.callbacks.onAgentStatus("orchestrator", "resuming", 
         `Retomando generación. ${pendingChapters.length} capítulos pendientes de ${existingChapters.length} totales.`
@@ -470,7 +475,7 @@ export class Orchestrator {
             chapterData: sectionData,
             worldBible: worldBibleData.world_bible,
             guiaEstilo: `Género: ${project.genre}, Tono: ${project.tone}`,
-            previousContinuityState: extractedContinuityState,
+            previousContinuityState: previousContinuityStateForEditor,
           });
 
           await this.trackTokenUsage(project.id, editorResult.tokenUsage);
@@ -530,9 +535,11 @@ export class Orchestrator {
 
         if (extractedContinuityState) {
           previousContinuity = JSON.stringify(extractedContinuityState);
+          previousContinuityStateForEditor = extractedContinuityState;
           console.log(`[Orchestrator Resume] Passing continuity state to next chapter`);
         } else {
           previousContinuity = `${sectionLabel} completado.`;
+          previousContinuityStateForEditor = null;
         }
 
         const freshChapters = await storage.getChaptersByProject(project.id);
