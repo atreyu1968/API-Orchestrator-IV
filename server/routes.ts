@@ -412,30 +412,40 @@ export async function registerRoutes(
   app.post("/api/projects/:id/resume", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
+      console.log(`[Resume] Starting resume for project ${id}`);
+      
       const project = await storage.getProject(id);
       
       if (!project) {
+        console.log(`[Resume] Project ${id} not found`);
         return res.status(404).json({ error: "Project not found" });
       }
 
+      console.log(`[Resume] Project ${id} current status: ${project.status}`);
+
       if (project.status === "generating") {
+        console.log(`[Resume] Project ${id} is already generating`);
         return res.status(400).json({ error: "Project is already generating" });
       }
 
       const validStatuses = ["paused", "cancelled", "error", "failed_final_review"];
       if (!validStatuses.includes(project.status)) {
+        console.log(`[Resume] Project ${id} has invalid status: ${project.status}`);
         return res.status(400).json({ 
           error: `Cannot resume project with status "${project.status}". Only paused, cancelled, or error projects can be resumed.` 
         });
       }
 
+      console.log(`[Resume] Updating project ${id} status to generating`);
       await storage.updateProject(id, { status: "generating" });
 
       for (const agentName of ["architect", "ghostwriter", "editor", "copyeditor", "final-reviewer"]) {
         await storage.updateAgentStatus(id, agentName, { status: "idle", currentTask: "Preparando reanudación..." });
       }
+      console.log(`[Resume] Agent statuses updated for project ${id}`);
 
       res.json({ message: "Resume started", projectId: id });
+      console.log(`[Resume] Response sent, starting orchestrator for project ${id}`);
 
       const sendToStreams = (data: any) => {
         const streams = activeStreams.get(id);
