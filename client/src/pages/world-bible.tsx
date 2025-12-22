@@ -16,7 +16,7 @@ export default function WorldBiblePage() {
 
   useEffect(() => {
     if (projects.length > 0 && selectedProjectId === null) {
-      setSelectedProjectId(projects[0].id);
+      setSelectedProjectId(projects[projects.length - 1].id);
     }
   }, [projects, selectedProjectId]);
 
