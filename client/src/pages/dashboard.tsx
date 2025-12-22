@@ -239,6 +239,23 @@ export default function Dashboard() {
     },
   });
 
+  const resumeProjectMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/projects/${id}/resume`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-statuses"] });
+      toast({ title: "Generación reanudada", description: "Continuando desde donde se detuvo" });
+      addLog("success", "Reanudando generación del manuscrito...");
+      setCompletedStages([]);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo reanudar la generación", variant: "destructive" });
+    },
+  });
+
   const addLog = (type: LogEntry["type"], message: string, agent?: string) => {
     const newLog: LogEntry = {
       id: crypto.randomUUID(),
@@ -657,6 +674,23 @@ export default function Dashboard() {
                         Forzar Completado
                       </Button>
                     </>
+                  )}
+
+                  {["paused", "cancelled", "error", "failed_final_review"].includes(currentProject.status) && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => {
+                        if (confirm("¿Continuar la generación desde donde se detuvo?")) {
+                          resumeProjectMutation.mutate(currentProject.id);
+                        }
+                      }}
+                      disabled={resumeProjectMutation.isPending}
+                      data-testid="button-resume-generation"
+                    >
+                      <Play className="h-4 w-4 mr-2" />
+                      Continuar
+                    </Button>
                   )}
 
                   {currentProject.status === "archived" ? (

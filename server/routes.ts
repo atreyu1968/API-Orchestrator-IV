@@ -248,7 +248,7 @@ export async function registerRoutes(
 
       cancelProject(id);
 
-      await storage.updateProject(id, { status: "error" });
+      await storage.updateProject(id, { status: "cancelled" });
 
       for (const agentName of ["architect", "ghostwriter", "editor", "copyeditor", "final-reviewer"]) {
         await storage.updateAgentStatus(id, agentName, { 
@@ -406,6 +406,69 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error starting generation:", error);
       res.status(500).json({ error: "Failed to start generation" });
+    }
+  });
+
+  app.post("/api/projects/:id/resume", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (project.status === "generating") {
+        return res.status(400).json({ error: "Project is already generating" });
+      }
+
+      const validStatuses = ["paused", "cancelled", "error", "failed_final_review"];
+      if (!validStatuses.includes(project.status)) {
+        return res.status(400).json({ 
+          error: `Cannot resume project with status "${project.status}". Only paused, cancelled, or error projects can be resumed.` 
+        });
+      }
+
+      res.json({ message: "Resume started", projectId: id });
+
+      const sendToStreams = (data: any) => {
+        const streams = activeStreams.get(id);
+        if (streams) {
+          const message = `data: ${JSON.stringify(data)}\n\n`;
+          streams.forEach(stream => {
+            try {
+              stream.write(message);
+            } catch (e) {
+              console.error("Error writing to stream:", e);
+            }
+          });
+        }
+      };
+
+      const orchestrator = new Orchestrator({
+        onAgentStatus: async (role, status, message) => {
+          await storage.updateAgentStatus(id, role, { status, currentTask: message });
+          sendToStreams({ type: "agent_status", role, status, message });
+        },
+        onChapterComplete: (chapterNumber, wordCount) => {
+          sendToStreams({ type: "chapter_complete", chapterNumber, wordCount });
+        },
+        onChapterRewrite: (chapterNumber, chapterTitle, currentIndex, totalToRewrite, reason) => {
+          sendToStreams({ type: "chapter_rewrite", chapterNumber, chapterTitle, currentIndex, totalToRewrite, reason });
+        },
+        onProjectComplete: () => {
+          sendToStreams({ type: "project_complete" });
+        },
+        onError: (error) => {
+          sendToStreams({ type: "error", message: error });
+        },
+      });
+
+      orchestrator.resumeNovel(project).catch(console.error);
+
+    } catch (error) {
+      console.error("Error resuming generation:", error);
+      res.status(500).json({ error: "Failed to resume generation" });
     }
   });
 
