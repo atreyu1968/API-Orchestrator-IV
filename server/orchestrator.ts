@@ -1042,8 +1042,26 @@ export class Orchestrator {
 
   private parseArchitectOutput(content: string): ParsedWorldBible {
     try {
+      // Intentar parse directo primero
       return JSON.parse(content);
     } catch {
+      // Si falla, intentar extraer JSON del texto
+      try {
+        // Buscar el primer { y el último }
+        const firstBrace = content.indexOf('{');
+        const lastBrace = content.lastIndexOf('}');
+        
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          const jsonStr = content.substring(firstBrace, lastBrace + 1);
+          const parsed = JSON.parse(jsonStr);
+          console.log(`[Orchestrator] Parsed architect output with ${parsed.world_bible?.personajes?.length || 0} characters`);
+          return parsed;
+        }
+      } catch (innerError) {
+        console.error('[Orchestrator] Failed to parse architect JSON:', innerError);
+      }
+      
+      console.warn('[Orchestrator] Could not parse architect output, returning empty structure');
       return {
         world_bible: { personajes: [], lugares: [], reglas_lore: [] },
         escaleta_capitulos: [],
