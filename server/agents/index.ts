@@ -1,4 +1,5 @@
-export { BaseAgent, type AgentResponse, type AgentConfig } from "./base-agent";
+export { BaseAgent, type AgentResponse, type AgentConfig, type TokenUsage } from "./base-agent";
+export { registerProjectAbortController, cancelProject, isProjectCancelled, clearProjectAbortController } from "./base-agent";
 export { ArchitectAgent } from "./architect";
 export { GhostwriterAgent } from "./ghostwriter";
 export { EditorAgent, type EditorResult } from "./editor";

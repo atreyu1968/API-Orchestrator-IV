@@ -10,7 +10,7 @@ import { ConsoleOutput, type LogEntry } from "@/components/console-output";
 import { ConfigPanel, type ConfigFormData } from "@/components/config-panel";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Play, StopCircle, FileText, Clock, CheckCircle, Pencil, X, Download, Archive, Copy, Trash2, ClipboardCheck, RefreshCw } from "lucide-react";
+import { Play, StopCircle, FileText, Clock, CheckCircle, Pencil, X, Download, Archive, Copy, Trash2, ClipboardCheck, RefreshCw, Ban, CheckCheck } from "lucide-react";
 import { ProjectSelector } from "@/components/project-selector";
 import type { Project, AgentStatus, Chapter } from "@shared/schema";
 
@@ -200,6 +200,42 @@ export default function Dashboard() {
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo iniciar la revisión final", variant: "destructive" });
+    },
+  });
+
+  const cancelProjectMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/projects/${id}/cancel`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-statuses"] });
+      toast({ title: "Generación cancelada", description: "El proceso ha sido detenido" });
+      addLog("error", "Generación cancelada por el usuario");
+      setCurrentStage(null);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo cancelar la generación", variant: "destructive" });
+    },
+  });
+
+  const forceCompleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/projects/${id}/force-complete`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-statuses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", currentProject?.id, "chapters"] });
+      toast({ title: "Proyecto completado", description: "El manuscrito ha sido marcado como finalizado" });
+      addLog("success", "Proyecto marcado como completado (forzado)");
+      setCurrentStage(null);
+      setCompletedStages(["architect", "ghostwriter", "editor", "copyeditor", "final-reviewer"]);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo completar el proyecto", variant: "destructive" });
     },
   });
 
@@ -589,6 +625,40 @@ export default function Dashboard() {
                     Duplicar
                   </Button>
                   
+                  {currentProject.status === "generating" && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm("¿Cancelar la generación? El progreso actual se mantendrá.")) {
+                            cancelProjectMutation.mutate(currentProject.id);
+                          }
+                        }}
+                        disabled={cancelProjectMutation.isPending}
+                        className="text-destructive hover:text-destructive"
+                        data-testid="button-cancel-generation"
+                      >
+                        <Ban className="h-4 w-4 mr-2" />
+                        Cancelar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm("¿Marcar como completado? Los capítulos con contenido se guardarán.")) {
+                            forceCompleteMutation.mutate(currentProject.id);
+                          }
+                        }}
+                        disabled={forceCompleteMutation.isPending}
+                        data-testid="button-force-complete"
+                      >
+                        <CheckCheck className="h-4 w-4 mr-2" />
+                        Forzar Completado
+                      </Button>
+                    </>
+                  )}
+
                   {currentProject.status === "archived" ? (
                     <Button
                       variant="outline"

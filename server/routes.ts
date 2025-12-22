@@ -7,7 +7,7 @@ import multer from "multer";
 import mammoth from "mammoth";
 import { generateManuscriptDocx } from "./services/docx-exporter";
 import { z } from "zod";
-import { CopyEditorAgent } from "./agents/copyeditor";
+import { CopyEditorAgent, cancelProject } from "./agents";
 
 const workTypeEnum = z.enum(["standalone", "series", "trilogy"]);
 
@@ -234,6 +234,67 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error duplicating project:", error);
       res.status(500).json({ error: "Failed to duplicate project" });
+    }
+  });
+
+  app.post("/api/projects/:id/cancel", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      cancelProject(id);
+
+      await storage.updateProject(id, { status: "error" });
+
+      for (const agentName of ["architect", "ghostwriter", "editor", "copyeditor", "final-reviewer"]) {
+        await storage.updateAgentStatus(id, agentName, { 
+          status: "idle", 
+          currentTask: "Generación cancelada por el usuario" 
+        });
+      }
+
+      res.json({ success: true, message: "Generación cancelada" });
+    } catch (error) {
+      console.error("Error cancelling project:", error);
+      res.status(500).json({ error: "Failed to cancel project" });
+    }
+  });
+
+  app.post("/api/projects/:id/force-complete", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      cancelProject(id);
+
+      await storage.updateProject(id, { status: "completed" });
+
+      for (const agentName of ["architect", "ghostwriter", "editor", "copyeditor", "final-reviewer"]) {
+        await storage.updateAgentStatus(id, agentName, { 
+          status: "completed", 
+          currentTask: "Proceso completado (forzado)" 
+        });
+      }
+
+      const chapters = await storage.getChaptersByProject(id);
+      for (const chapter of chapters) {
+        if (chapter.status !== "completed" && chapter.content) {
+          await storage.updateChapter(chapter.id, { status: "completed" });
+        }
+      }
+
+      res.json({ success: true, message: "Proyecto marcado como completado" });
+    } catch (error) {
+      console.error("Error forcing project completion:", error);
+      res.status(500).json({ error: "Failed to force complete project" });
     }
   });
 
