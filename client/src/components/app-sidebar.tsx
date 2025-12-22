@@ -25,9 +25,12 @@ import {
 const mainNavItems = [
   { title: "Panel Principal", url: "/", icon: LayoutDashboard },
   { title: "Manuscrito", url: "/manuscript", icon: BookOpen },
-  { title: "Traducciones", url: "/translations", icon: Upload },
   { title: "Biblia del Mundo", url: "/world-bible", icon: Globe },
   { title: "Logs de Pensamiento", url: "/thought-logs", icon: Brain },
+];
+
+const translationsNavItems = [
+  { title: "Traducciones", url: "/translations", icon: Upload },
 ];
 
 const settingsNavItems = [
@@ -63,6 +66,28 @@ export function AppSidebar() {
                     asChild
                     isActive={location === item.url}
                     data-testid={`nav-${item.url.replace("/", "") || "dashboard"}`}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Traducciones</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {translationsNavItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton 
+                    asChild
+                    isActive={location === item.url}
+                    data-testid={`nav-${item.url.replace("/", "")}`}
                   >
                     <Link href={item.url}>
                       <item.icon className="h-4 w-4" />
