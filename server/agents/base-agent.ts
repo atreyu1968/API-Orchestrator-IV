@@ -8,9 +8,16 @@ const ai = new GoogleGenAI({
   },
 });
 
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  thinkingTokens: number;
+}
+
 export interface AgentResponse {
   content: string;
   thoughtSignature?: string;
+  tokenUsage?: TokenUsage;
 }
 
 export interface AgentConfig {
@@ -67,7 +74,14 @@ export abstract class BaseAgent {
         }
       }
 
-      return { content, thoughtSignature };
+      const usageMetadata = response.usageMetadata;
+      const tokenUsage: TokenUsage = {
+        inputTokens: usageMetadata?.promptTokenCount || 0,
+        outputTokens: usageMetadata?.candidatesTokenCount || 0,
+        thinkingTokens: usageMetadata?.thoughtsTokenCount || 0,
+      };
+
+      return { content, thoughtSignature, tokenUsage };
     } catch (error) {
       console.error(`[${this.config.name}] Error generating content:`, error);
       throw error;
