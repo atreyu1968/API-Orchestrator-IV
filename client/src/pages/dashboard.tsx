@@ -3,15 +3,14 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { AgentCard } from "@/components/agent-card";
 import { ProcessFlow } from "@/components/process-flow";
 import { ConsoleOutput, type LogEntry } from "@/components/console-output";
-import { ConfigPanel, type ConfigFormData } from "@/components/config-panel";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Play, StopCircle, FileText, Clock, CheckCircle, Pencil, X, Download, Archive, Copy, Trash2, ClipboardCheck, RefreshCw, Ban, CheckCheck } from "lucide-react";
+import { Play, FileText, Clock, CheckCircle, Download, Archive, Copy, Trash2, ClipboardCheck, RefreshCw, Ban, CheckCheck, Plus } from "lucide-react";
 import { ProjectSelector } from "@/components/project-selector";
+import { Link } from "wouter";
 import type { Project, AgentStatus, Chapter } from "@shared/schema";
 
 import type { AgentRole } from "@/components/process-flow";
@@ -44,7 +43,6 @@ export default function Dashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [currentStage, setCurrentStage] = useState<AgentRole | null>(null);
   const [completedStages, setCompletedStages] = useState<AgentRole[]>([]);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
 
   const { data: projects = [], isLoading: projectsLoading } = useQuery<Project[]>({
@@ -67,29 +65,6 @@ export default function Dashboard() {
     enabled: !!currentProject?.id,
   });
 
-  const createProjectMutation = useMutation({
-    mutationFn: async (data: ConfigFormData) => {
-      const response = await apiRequest("POST", "/api/projects", data);
-      return response.json();
-    },
-    onSuccess: (project) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      toast({
-        title: "Proyecto creado",
-        description: `"${project.title}" está siendo generado...`,
-      });
-      addLog("info", `Proyecto "${project.title}" iniciado`);
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "No se pudo crear el proyecto",
-        variant: "destructive",
-      });
-      addLog("error", `Error al crear proyecto: ${error.message}`);
-    },
-  });
-
   const startGenerationMutation = useMutation({
     mutationFn: async (projectId: number) => {
       const response = await apiRequest("POST", `/api/projects/${projectId}/generate`);
@@ -106,30 +81,6 @@ export default function Dashboard() {
         variant: "destructive",
       });
       addLog("error", `Error: ${error.message}`);
-    },
-  });
-
-  const updateProjectMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: ConfigFormData }) => {
-      const response = await apiRequest("PATCH", `/api/projects/${id}`, data);
-      return response.json();
-    },
-    onSuccess: (project) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      setEditingProject(null);
-      toast({
-        title: "Proyecto actualizado",
-        description: `"${project.title}" ha sido actualizado`,
-      });
-      addLog("info", `Proyecto "${project.title}" actualizado`);
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el proyecto",
-        variant: "destructive",
-      });
-      addLog("error", `Error al actualizar: ${error.message}`);
     },
   });
 
@@ -349,22 +300,6 @@ export default function Dashboard() {
 
   const completedChapters = chapters.filter(c => c.status === "completed").length;
   const totalWordCount = chapters.reduce((sum, c) => sum + (c.wordCount || 0), 0);
-
-  const handleSubmit = (data: ConfigFormData) => {
-    if (editingProject) {
-      updateProjectMutation.mutate({ id: editingProject.id, data });
-    } else {
-      createProjectMutation.mutate(data);
-    }
-  };
-
-  const handleEditProject = (project: Project) => {
-    setEditingProject(project);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingProject(null);
-  };
 
   const handleStartGeneration = () => {
     if (currentProject && currentProject.status === "idle") {
@@ -628,67 +563,33 @@ export default function Dashboard() {
         </div>
 
         <div className="space-y-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-              <CardTitle className="text-lg">
-                {editingProject ? "Editar Proyecto" : "Nuevo Proyecto"}
-              </CardTitle>
-              {editingProject && (
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={handleCancelEdit}
-                  data-testid="button-cancel-edit"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
-              <ConfigPanel 
-                key={editingProject?.id || "new"}
-                onSubmit={handleSubmit}
-                isLoading={createProjectMutation.isPending || updateProjectMutation.isPending || startGenerationMutation.isPending}
-                defaultValues={editingProject ? {
-                  title: editingProject.title,
-                  premise: editingProject.premise || "",
-                  genre: editingProject.genre,
-                  tone: editingProject.tone,
-                  chapterCount: editingProject.chapterCount,
-                  hasPrologue: editingProject.hasPrologue,
-                  hasEpilogue: editingProject.hasEpilogue,
-                  hasAuthorNote: editingProject.hasAuthorNote,
-                  pseudonymId: editingProject.pseudonymId,
-                  styleGuideId: editingProject.styleGuideId,
-                } : undefined}
-                isEditing={!!editingProject}
-              />
-            </CardContent>
-          </Card>
+          {projects.length === 0 && (
+            <Card>
+              <CardContent className="pt-6 text-center space-y-4">
+                <p className="text-muted-foreground">No hay proyectos creados</p>
+                <Link href="/config">
+                  <Button data-testid="button-new-project">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Crear Proyecto
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          )}
 
-          {currentProject && currentProject.status === "idle" && !editingProject && (
+          {currentProject && currentProject.status === "idle" && (
             <Card>
               <CardContent className="pt-6 space-y-3">
-                <div className="flex gap-2">
-                  <Button 
-                    className="flex-1" 
-                    size="lg"
-                    onClick={handleStartGeneration}
-                    disabled={startGenerationMutation.isPending}
-                    data-testid="button-continue-generation"
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    Iniciar Generación
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    size="lg"
-                    onClick={() => handleEditProject(currentProject)}
-                    data-testid="button-edit-project"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Button 
+                  className="w-full" 
+                  size="lg"
+                  onClick={handleStartGeneration}
+                  disabled={startGenerationMutation.isPending}
+                  data-testid="button-continue-generation"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Iniciar Generación
+                </Button>
                 <p className="text-xs text-muted-foreground text-center">
                   Proyecto: {currentProject.title}
                 </p>
@@ -696,7 +597,7 @@ export default function Dashboard() {
             </Card>
           )}
 
-          {currentProject && !editingProject && (
+          {currentProject && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Acciones del Proyecto</CardTitle>
