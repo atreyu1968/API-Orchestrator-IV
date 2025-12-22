@@ -61,6 +61,14 @@ function getChapterBadge(chapterNumber: number): string {
   return String(chapterNumber);
 }
 
+function sortChaptersForDisplay<T extends { chapterNumber: number }>(chapters: T[]): T[] {
+  return [...chapters].sort((a, b) => {
+    const orderA = a.chapterNumber === 0 ? -1000 : a.chapterNumber === -1 ? 1000 : a.chapterNumber === -2 ? 1001 : a.chapterNumber;
+    const orderB = b.chapterNumber === 0 ? -1000 : b.chapterNumber === -1 ? 1000 : b.chapterNumber === -2 ? 1001 : b.chapterNumber;
+    return orderA - orderB;
+  });
+}
+
 function parseChaptersFromText(text: string): { chapterNumber: number; title: string | null; content: string }[] {
   const chapterPatterns = [
     /(?:^|\n)(Capítulo|Chapter|Chapitre|Kapitel|Capitolo|Capítol)\s+(\d+)[:\.\s]*([^\n]*)/gi,
@@ -359,7 +367,7 @@ function ManuscriptDetail({ manuscriptId, onBack }: { manuscriptId: number; onBa
           <CardContent className="p-0">
             <ScrollArea className="h-[400px]">
               <div className="p-4 space-y-2">
-                {chapters.map((chapter) => (
+                {sortChaptersForDisplay(chapters).map((chapter) => (
                   <Button
                     key={chapter.id}
                     variant={selectedChapter?.id === chapter.id ? "secondary" : "ghost"}
