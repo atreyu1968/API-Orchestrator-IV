@@ -1,6 +1,6 @@
-import { Check, Brain, Pencil, Eye, FileText, ArrowRight, ClipboardCheck } from "lucide-react";
+import { Check, Brain, Pencil, Eye, FileText, ArrowRight, ClipboardCheck, Shield, AudioWaveform, Search } from "lucide-react";
 
-export type AgentRole = "architect" | "ghostwriter" | "editor" | "copyeditor" | "final-reviewer";
+export type AgentRole = "architect" | "ghostwriter" | "editor" | "copyeditor" | "final-reviewer" | "continuity-sentinel" | "voice-auditor" | "semantic-detector";
 type StageStatus = "pending" | "active" | "completed";
 
 interface ProcessFlowProps {
@@ -13,6 +13,9 @@ const stages: { role: AgentRole; name: string; icon: React.ReactNode }[] = [
   { role: "ghostwriter", name: "Narrador", icon: <Pencil className="h-4 w-4" /> },
   { role: "editor", name: "Editor", icon: <Eye className="h-4 w-4" /> },
   { role: "copyeditor", name: "Estilista", icon: <FileText className="h-4 w-4" /> },
+  { role: "continuity-sentinel", name: "Centinela", icon: <Shield className="h-4 w-4" /> },
+  { role: "voice-auditor", name: "Auditor Voz", icon: <AudioWaveform className="h-4 w-4" /> },
+  { role: "semantic-detector", name: "Detector", icon: <Search className="h-4 w-4" /> },
   { role: "final-reviewer", name: "Revisor Final", icon: <ClipboardCheck className="h-4 w-4" /> },
 ];
 

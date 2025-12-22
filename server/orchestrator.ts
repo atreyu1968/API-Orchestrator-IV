@@ -1,5 +1,19 @@
 import { storage } from "./storage";
-import { ArchitectAgent, GhostwriterAgent, EditorAgent, CopyEditorAgent, FinalReviewerAgent, type EditorResult, type FinalReviewerResult } from "./agents";
+import { 
+  ArchitectAgent, 
+  GhostwriterAgent, 
+  EditorAgent, 
+  CopyEditorAgent, 
+  FinalReviewerAgent, 
+  ContinuitySentinelAgent,
+  VoiceRhythmAuditorAgent,
+  SemanticRepetitionDetectorAgent,
+  type EditorResult, 
+  type FinalReviewerResult,
+  type ContinuitySentinelResult,
+  type VoiceRhythmAuditorResult,
+  type SemanticRepetitionResult
+} from "./agents";
 import type { TokenUsage } from "./agents/base-agent";
 import type { Project, WorldBible, Chapter, PlotOutline, Character, WorldRule, TimelineEvent } from "@shared/schema";
 
@@ -67,9 +81,13 @@ export class Orchestrator {
   private editor = new EditorAgent();
   private copyeditor = new CopyEditorAgent();
   private finalReviewer = new FinalReviewerAgent();
+  private continuitySentinel = new ContinuitySentinelAgent();
+  private voiceRhythmAuditor = new VoiceRhythmAuditorAgent();
+  private semanticRepetitionDetector = new SemanticRepetitionDetectorAgent();
   private callbacks: OrchestratorCallbacks;
   private maxRefinementLoops = 3;
   private maxFinalReviewCycles = 3;
+  private continuityCheckpointInterval = 5;
   
   private cumulativeTokens = {
     inputTokens: 0,
@@ -177,6 +195,7 @@ export class Orchestrator {
 
       let previousContinuity = "";
       let previousContinuityStateForEditor: any = null;
+      let accumulatedContinuityIssues: string[] = [];
 
       for (let i = 0; i < chapters.length; i++) {
         const chapter = chapters[i];
@@ -316,12 +335,55 @@ export class Orchestrator {
         this.callbacks.onAgentStatus("copyeditor", "completed", `${sectionLabel} finalizado (${wordCount} palabras)`);
 
         await this.updateWorldBibleTimeline(project.id, worldBible.id, sectionData.numero, sectionData);
+        
+        const completedChaptersCount = i + 1;
+        if (completedChaptersCount > 0 && completedChaptersCount % this.continuityCheckpointInterval === 0) {
+          const completedChaptersForCheckpoint = await storage.getChaptersByProject(project.id);
+          const chaptersInScope = completedChaptersForCheckpoint
+            .filter(c => c.status === "completed" && c.chapterNumber > 0)
+            .sort((a, b) => a.chapterNumber - b.chapterNumber)
+            .slice(-this.continuityCheckpointInterval);
+          
+          if (chaptersInScope.length >= this.continuityCheckpointInterval) {
+            const checkpointNumber = Math.floor(completedChaptersCount / this.continuityCheckpointInterval);
+            const checkpointResult = await this.runContinuityCheckpoint(
+              project,
+              checkpointNumber,
+              chaptersInScope,
+              worldBibleData,
+              accumulatedContinuityIssues
+            );
+            
+            if (!checkpointResult.passed) {
+              accumulatedContinuityIssues = [...accumulatedContinuityIssues, ...checkpointResult.issues];
+            }
+          }
+        }
       }
 
       const baseStyleGuide = `Género: ${project.genre}, Tono: ${project.tone}`;
       const fullStyleGuide = styleGuideContent 
         ? `${baseStyleGuide}\n\n--- GUÍA DE ESTILO DEL AUTOR ---\n${styleGuideContent}`
         : baseStyleGuide;
+
+      const allCompletedChapters = await storage.getChaptersByProject(project.id);
+      const completedForAnalysis = allCompletedChapters.filter(c => c.status === "completed" && c.content);
+      
+      if (completedForAnalysis.length >= 5) {
+        const trancheSize = 10;
+        const totalTranches = Math.ceil(completedForAnalysis.length / trancheSize);
+        
+        for (let t = 0; t < totalTranches; t++) {
+          const trancheChapters = completedForAnalysis.slice(t * trancheSize, (t + 1) * trancheSize);
+          if (trancheChapters.length > 0) {
+            await this.runVoiceRhythmAudit(project, t + 1, trancheChapters, styleGuideContent);
+          }
+        }
+      }
+
+      if (completedForAnalysis.length > 0) {
+        await this.runSemanticRepetitionAnalysis(project, completedForAnalysis, worldBibleData);
+      }
 
       const finalReviewApproved = await this.runFinalReview(
         project, 
@@ -1292,5 +1354,183 @@ export class Orchestrator {
       
       await storage.updateWorldBible(worldBible.id, { timeline });
     }
+  }
+
+  private async runContinuityCheckpoint(
+    project: Project,
+    checkpointNumber: number,
+    chaptersInScope: Chapter[],
+    worldBibleData: ParsedWorldBible,
+    previousIssues: string[]
+  ): Promise<{ passed: boolean; issues: string[]; chaptersToRevise: number[] }> {
+    this.callbacks.onAgentStatus("continuity-sentinel", "analyzing", 
+      `El Centinela está verificando continuidad (Checkpoint #${checkpointNumber})...`
+    );
+
+    const chaptersData = chaptersInScope.map(c => ({
+      numero: c.chapterNumber,
+      titulo: c.title || `Capítulo ${c.chapterNumber}`,
+      contenido: c.content || "",
+      continuityState: c.continuityState || {},
+    }));
+
+    const result = await this.continuitySentinel.execute({
+      projectTitle: project.title,
+      checkpointNumber,
+      chaptersInScope: chaptersData,
+      worldBible: worldBibleData.world_bible,
+      previousCheckpointIssues: previousIssues,
+    });
+
+    await this.trackTokenUsage(project.id, result.tokenUsage);
+
+    if (result.thoughtSignature) {
+      await storage.createThoughtLog({
+        projectId: project.id,
+        agentName: "El Centinela",
+        agentRole: "continuity-sentinel",
+        thoughtContent: result.thoughtSignature,
+      });
+    }
+
+    const sentinelResult = result.result;
+    
+    if (sentinelResult?.checkpoint_aprobado) {
+      this.callbacks.onAgentStatus("continuity-sentinel", "completed", 
+        `Checkpoint #${checkpointNumber} APROBADO (${sentinelResult.puntuacion}/10). Sin issues de continuidad.`
+      );
+      return { passed: true, issues: [], chaptersToRevise: [] };
+    } else {
+      const issueDescriptions = (sentinelResult?.issues || []).map(i => 
+        `[${i.severidad.toUpperCase()}] ${i.tipo}: ${i.descripcion}`
+      );
+      
+      this.callbacks.onAgentStatus("continuity-sentinel", "warning", 
+        `Checkpoint #${checkpointNumber}: ${sentinelResult?.issues?.length || 0} issues detectados. Caps afectados: ${sentinelResult?.capitulos_para_revision?.join(", ") || "N/A"}`
+      );
+      
+      return { 
+        passed: false, 
+        issues: issueDescriptions, 
+        chaptersToRevise: sentinelResult?.capitulos_para_revision || [] 
+      };
+    }
+  }
+
+  private async runVoiceRhythmAudit(
+    project: Project,
+    trancheNumber: number,
+    chaptersInScope: Chapter[],
+    styleGuideContent: string
+  ): Promise<{ passed: boolean; issues: string[]; chaptersToRevise: number[] }> {
+    this.callbacks.onAgentStatus("voice-auditor", "analyzing", 
+      `El Auditor de Voz está analizando ritmo y tono (Tramo #${trancheNumber})...`
+    );
+
+    const chaptersData = chaptersInScope.map(c => ({
+      numero: c.chapterNumber,
+      titulo: c.title || `Capítulo ${c.chapterNumber}`,
+      contenido: c.content || "",
+    }));
+
+    const result = await this.voiceRhythmAuditor.execute({
+      projectTitle: project.title,
+      trancheNumber,
+      genre: project.genre,
+      tone: project.tone,
+      chaptersInScope: chaptersData,
+      guiaEstilo: styleGuideContent || undefined,
+    });
+
+    await this.trackTokenUsage(project.id, result.tokenUsage);
+
+    if (result.thoughtSignature) {
+      await storage.createThoughtLog({
+        projectId: project.id,
+        agentName: "El Auditor de Voz",
+        agentRole: "voice-auditor",
+        thoughtContent: result.thoughtSignature,
+      });
+    }
+
+    const auditResult = result.result;
+    
+    if (auditResult?.tranche_aprobado) {
+      this.callbacks.onAgentStatus("voice-auditor", "completed", 
+        `Tramo #${trancheNumber} APROBADO. Voz: ${auditResult.puntuacion_voz}/10, Ritmo: ${auditResult.puntuacion_ritmo}/10`
+      );
+      return { passed: true, issues: [], chaptersToRevise: [] };
+    } else {
+      const issueDescriptions = (auditResult?.issues || []).map(i => 
+        `[${i.severidad.toUpperCase()}] ${i.tipo}: ${i.descripcion}`
+      );
+      
+      this.callbacks.onAgentStatus("voice-auditor", "warning", 
+        `Tramo #${trancheNumber}: Voz ${auditResult?.puntuacion_voz || 0}/10, Ritmo ${auditResult?.puntuacion_ritmo || 0}/10. ${auditResult?.issues?.length || 0} issues.`
+      );
+      
+      return { 
+        passed: false, 
+        issues: issueDescriptions, 
+        chaptersToRevise: auditResult?.capitulos_para_revision || [] 
+      };
+    }
+  }
+
+  private async runSemanticRepetitionAnalysis(
+    project: Project,
+    chapters: Chapter[],
+    worldBibleData: ParsedWorldBible
+  ): Promise<{ passed: boolean; clusters: any[]; foreshadowingStatus: any[] }> {
+    this.callbacks.onAgentStatus("semantic-detector", "analyzing", 
+      `El Detector Semántico está buscando repeticiones y verificando foreshadowing...`
+    );
+
+    const chaptersData = chapters
+      .filter(c => c.content)
+      .sort((a, b) => a.chapterNumber - b.chapterNumber)
+      .map(c => ({
+        numero: c.chapterNumber,
+        titulo: c.title || `Capítulo ${c.chapterNumber}`,
+        contenido: c.content || "",
+      }));
+
+    const result = await this.semanticRepetitionDetector.execute({
+      projectTitle: project.title,
+      chapters: chaptersData,
+      worldBible: worldBibleData.world_bible,
+    });
+
+    await this.trackTokenUsage(project.id, result.tokenUsage);
+
+    if (result.thoughtSignature) {
+      await storage.createThoughtLog({
+        projectId: project.id,
+        agentName: "El Detector Semántico",
+        agentRole: "semantic-detector",
+        thoughtContent: result.thoughtSignature,
+      });
+    }
+
+    const analysisResult = result.result;
+    
+    if (analysisResult?.analisis_aprobado) {
+      this.callbacks.onAgentStatus("semantic-detector", "completed", 
+        `Análisis APROBADO. Originalidad: ${analysisResult.puntuacion_originalidad}/10, Foreshadowing: ${analysisResult.puntuacion_foreshadowing}/10`
+      );
+    } else {
+      const unresolvedForeshadowing = (analysisResult?.foreshadowing_detectado || [])
+        .filter(f => f.estado === "sin_payoff").length;
+      
+      this.callbacks.onAgentStatus("semantic-detector", "warning", 
+        `Originalidad: ${analysisResult?.puntuacion_originalidad || 0}/10, Foreshadowing: ${analysisResult?.puntuacion_foreshadowing || 0}/10. ${analysisResult?.clusters?.length || 0} clusters, ${unresolvedForeshadowing} foreshadowing sin resolver.`
+      );
+    }
+    
+    return { 
+      passed: analysisResult?.analisis_aprobado || false, 
+      clusters: analysisResult?.clusters || [],
+      foreshadowingStatus: analysisResult?.foreshadowing_detectado || []
+    };
   }
 }

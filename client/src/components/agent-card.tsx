@@ -1,10 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Pencil, Brain, Eye, FileText, Loader2, ClipboardCheck } from "lucide-react";
+import { Pencil, Brain, Eye, FileText, Loader2, ClipboardCheck, Shield, AudioWaveform, Search, AlertTriangle } from "lucide-react";
 
-type AgentRole = "architect" | "ghostwriter" | "editor" | "copyeditor" | "final-reviewer";
-type AgentStatusType = "idle" | "thinking" | "writing" | "editing" | "reviewing" | "polishing" | "completed" | "error";
+type AgentRole = "architect" | "ghostwriter" | "editor" | "copyeditor" | "final-reviewer" | "continuity-sentinel" | "voice-auditor" | "semantic-detector";
+type AgentStatusType = "idle" | "thinking" | "writing" | "editing" | "reviewing" | "polishing" | "completed" | "error" | "analyzing" | "warning";
 
 interface AgentCardProps {
   name: string;
@@ -21,6 +21,9 @@ const roleIcons: Record<AgentRole, React.ReactNode> = {
   editor: <Eye className="h-5 w-5" />,
   copyeditor: <FileText className="h-5 w-5" />,
   "final-reviewer": <ClipboardCheck className="h-5 w-5" />,
+  "continuity-sentinel": <Shield className="h-5 w-5" />,
+  "voice-auditor": <AudioWaveform className="h-5 w-5" />,
+  "semantic-detector": <Search className="h-5 w-5" />,
 };
 
 const roleColors: Record<AgentRole, string> = {
@@ -29,6 +32,9 @@ const roleColors: Record<AgentRole, string> = {
   editor: "bg-chart-3/10 text-chart-3",
   copyeditor: "bg-chart-4/10 text-chart-4",
   "final-reviewer": "bg-chart-5/10 text-chart-5",
+  "continuity-sentinel": "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  "voice-auditor": "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+  "semantic-detector": "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
 };
 
 const statusColors: Record<AgentStatusType, string> = {
@@ -40,6 +46,8 @@ const statusColors: Record<AgentStatusType, string> = {
   polishing: "bg-chart-4/20 text-chart-4",
   completed: "bg-green-500/20 text-green-600 dark:text-green-400",
   error: "bg-destructive/20 text-destructive",
+  analyzing: "bg-amber-500/20 text-amber-600 dark:text-amber-400",
+  warning: "bg-orange-500/20 text-orange-600 dark:text-orange-400",
 };
 
 const statusLabels: Record<AgentStatusType, string> = {
@@ -51,6 +59,8 @@ const statusLabels: Record<AgentStatusType, string> = {
   polishing: "Puliendo",
   completed: "Completado",
   error: "Error",
+  analyzing: "Analizando",
+  warning: "Advertencia",
 };
 
 export function AgentCard({ name, role, status, currentTask, progress = 0, lastActivity }: AgentCardProps) {

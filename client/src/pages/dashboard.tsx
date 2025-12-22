@@ -22,6 +22,9 @@ const agentNames: Record<AgentRole, string> = {
   editor: "El Editor",
   copyeditor: "El Estilista",
   "final-reviewer": "El Revisor Final",
+  "continuity-sentinel": "El Centinela",
+  "voice-auditor": "El Auditor de Voz",
+  "semantic-detector": "El Detector Semántico",
 };
 
 function calculateCost(inputTokens: number, outputTokens: number, thinkingTokens: number): number {
@@ -338,7 +341,7 @@ export default function Dashboard() {
   const getAgentStatus = (role: AgentRole) => {
     const status = agentStatuses.find(s => s.agentName.toLowerCase() === role);
     return {
-      status: (status?.status as "idle" | "thinking" | "writing" | "editing" | "completed" | "error") || "idle",
+      status: (status?.status as "idle" | "thinking" | "writing" | "editing" | "reviewing" | "polishing" | "completed" | "error" | "analyzing" | "warning") || "idle",
       currentTask: status?.currentTask,
       lastActivity: status?.lastActivity ? new Date(status.lastActivity) : undefined,
     };
@@ -395,7 +398,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <AgentCard 
           name={agentNames.architect}
           role="architect"
@@ -415,6 +418,24 @@ export default function Dashboard() {
           name={agentNames.copyeditor}
           role="copyeditor"
           {...getAgentStatus("copyeditor")}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <AgentCard 
+          name={agentNames["continuity-sentinel"]}
+          role="continuity-sentinel"
+          {...getAgentStatus("continuity-sentinel")}
+        />
+        <AgentCard 
+          name={agentNames["voice-auditor"]}
+          role="voice-auditor"
+          {...getAgentStatus("voice-auditor")}
+        />
+        <AgentCard 
+          name={agentNames["semantic-detector"]}
+          role="semantic-detector"
+          {...getAgentStatus("semantic-detector")}
         />
         <AgentCard 
           name={agentNames["final-reviewer"]}
