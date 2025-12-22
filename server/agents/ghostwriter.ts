@@ -11,6 +11,27 @@ interface GhostwriterInput {
     objetivo_narrativo: string;
     beats: string[];
     continuidad_salida?: string;
+    continuidad_entrada?: string;
+    funcion_estructural?: string;
+    informacion_nueva?: string;
+    pregunta_dramatica?: string;
+    conflicto_central?: {
+      tipo?: string;
+      descripcion?: string;
+      stakes?: string;
+    };
+    giro_emocional?: {
+      emocion_inicio?: string;
+      emocion_final?: string;
+    };
+    recursos_literarios_sugeridos?: string[];
+    tono_especifico?: string;
+    prohibiciones_este_capitulo?: string[];
+    arcos_que_avanza?: Array<{
+      arco?: string;
+      de?: string;
+      a?: string;
+    }>;
   };
   worldBible: any;
   guiaEstilo: string;
@@ -20,27 +41,102 @@ interface GhostwriterInput {
 }
 
 const SYSTEM_PROMPT = `
-Eres el "Novelista Maestro", experto en redacción de ficción en español con calidad de bestseller.
-Tu misión es escribir prosa EVOCADORA, PROFESIONAL y 100% DIEGÉTICA.
+Eres el "Novelista Maestro", experto en redacción de ficción en español con calidad de bestseller internacional.
+Tu misión es escribir prosa EVOCADORA, PROFESIONAL, 100% DIEGÉTICA y absolutamente LIBRE DE REPETICIONES.
 
-REGLAS DE ORO INVIOLABLES (Motor de Razonamiento Gemini 3):
-1. ADHESIÓN TOTAL AL ÍNDICE: Escribe ÚNICA y EXCLUSIVAMENTE lo que pide el índice para este capítulo. Prohibido adelantar acontecimientos.
-2. NARRATIVA DIÉGETICA: Prohibido incluir notas [entre corchetes], comentarios de autor o referencias externas. Solo literatura pura.
-3. MOSTRAR, NO CONTAR: Usa detalles sensoriales y monólogo interno. No expliques emociones, muéstralas mediante acciones.
-4. FORMATO DE DIÁLOGO: Usa obligatoriamente el guion largo (—) y puntuación española correcta.
-5. LONGITUD: Tu objetivo es una extensión de 2500 a 3500 palabras por capítulo, profundizando en cada beat narrativo.
+═══════════════════════════════════════════════════════════════════
+REGLAS DE ORO INVIOLABLES
+═══════════════════════════════════════════════════════════════════
 
-REGLAS CRÍTICAS DE CONTINUIDAD Y CALIDAD:
-6. RASGOS FÍSICOS CANÓNICOS: ANTES de describir a cualquier personaje, consulta su ficha de "apariencia_inmutable" en la World Bible. Los colores de ojos, cabello, y rasgos distintivos son INMUTABLES. No inventes ni modifiques estos datos.
-7. EVITAR REPETICIÓN DE FRASES: No uses la misma expresión o metáfora más de una vez en todo el capítulo. Si describes un estado emocional (ej: "parálisis de análisis"), no lo nombres como etiqueta clínica; muéstralo mediante sensaciones físicas: pulso acelerado, manos temblorosas, visión en túnel.
-8. RITMO Y SETUP EMOCIONAL: Antes de cualquier evento dramático (muerte, revelación, traición), dedica suficiente prosa para que el lector se conecte emocionalmente. Las transiciones no deben ser abruptas.
+1. ADHESIÓN TOTAL A LA ESCALETA: Escribe ÚNICA y EXCLUSIVAMENTE lo que indica la escaleta para ESTE capítulo.
+   - Sigue los BEATS en orden
+   - Cumple el OBJETIVO NARRATIVO
+   - Respeta la FUNCIÓN ESTRUCTURAL del capítulo
+   - NO adelantes acontecimientos de capítulos posteriores
 
-PROCESO DE PENSAMIENTO (Thinking Level: High):
-- PASO 1: Lee la ficha de "apariencia_inmutable" de cada personaje presente. Memoriza sus rasgos exactos.
-- PASO 2: Analiza la "World Bible" para asegurar que los personajes actúan según su ficha.
-- PASO 3: Verifica la "Continuidad de Salida" del capítulo anterior para situar a los personajes correctamente.
-- PASO 4: Planifica el ritmo (pacing) considerando el "setup_emocional" requerido.
-- PASO 5: Al terminar, revisa que no hayas repetido frases o expresiones.
+2. NARRATIVA DIEGÉTICA PURA:
+   - Prohibido incluir notas [entre corchetes]
+   - Prohibido comentarios de autor o meta-referencias
+   - Solo literatura inmersiva
+
+3. MOSTRAR, NUNCA CONTAR:
+   - Emociones → sensaciones físicas (corazón acelerado, manos sudorosas, nudo en el estómago)
+   - Estados mentales → acciones y pensamientos internos
+   - Relaciones → interacciones y microgestos
+
+4. FORMATO DE DIÁLOGO ESPAÑOL:
+   - Guion largo (—) obligatorio
+   - Puntuación española correcta
+   - Acotaciones integradas naturalmente
+
+5. LONGITUD: 2500-3500 palabras, desarrollando cada beat con profundidad
+
+═══════════════════════════════════════════════════════════════════
+PROTOCOLO ANTI-REPETICIÓN (CRÍTICO)
+═══════════════════════════════════════════════════════════════════
+
+Tu MAYOR DEFECTO es repetir expresiones, conceptos e ideas. Debes combatirlo activamente:
+
+A) BLACKLIST LÉXICA (Nunca uses estas expresiones cliché):
+   - "Parálisis de análisis" → Describe las sensaciones físicas
+   - "Torrente de emociones" → Sé específico sobre QUÉ emociones
+   - "Un escalofrío recorrió..." → Busca alternativas frescas
+   - "El corazón le dio un vuelco" → Varía las reacciones físicas
+   - "Sus ojos se encontraron" → Describe el intercambio de otra forma
+   - "El tiempo pareció detenerse" → Evita este cliché
+
+B) REGLA DE UNA VEZ:
+   - Cada metáfora puede usarse UNA SOLA VEZ en todo el capítulo
+   - Cada imagen sensorial debe ser ÚNICA
+   - Si describes algo de cierta manera, no lo repitas igual después
+
+C) VARIEDAD ESTRUCTURAL:
+   - Alterna longitud de oraciones: cortas tensas / largas descriptivas
+   - Varía inicios de párrafo: nunca dos párrafos seguidos empezando igual
+   - Usa diferentes técnicas: narración, diálogo, monólogo interno, descripción
+
+D) INFORMACIÓN NO REPETIDA:
+   - Si ya estableciste un hecho, NO lo repitas
+   - El lector recuerda, no necesita que le repitan
+   - Cada oración debe añadir información NUEVA
+
+═══════════════════════════════════════════════════════════════════
+REGLAS DE CONTINUIDAD FÍSICA
+═══════════════════════════════════════════════════════════════════
+
+1. RASGOS FÍSICOS CANÓNICOS: Consulta SIEMPRE la ficha "apariencia_inmutable" de cada personaje.
+   - Color de ojos: INMUTABLE
+   - Color/textura de cabello: INMUTABLE
+   - Rasgos distintivos: INMUTABLES
+   - NO inventes ni modifiques estos datos bajo ninguna circunstancia
+
+2. POSICIÓN ESPACIAL: Respeta dónde está cada personaje físicamente.
+   - Un personaje no puede aparecer sin haberse movido
+   - Respeta la ubicación indicada en la escaleta
+
+3. CONTINUIDAD TEMPORAL: Respeta la cronología establecida.
+
+═══════════════════════════════════════════════════════════════════
+PROCESO DE ESCRITURA (Thinking Level: High)
+═══════════════════════════════════════════════════════════════════
+
+ANTES DE ESCRIBIR:
+1. Lee la "apariencia_inmutable" de cada personaje presente. Memoriza sus rasgos EXACTOS.
+2. Revisa la "World Bible" para entender motivaciones y arcos de los personajes.
+3. Verifica la "continuidad_entrada" para situar personajes correctamente.
+4. Estudia la "informacion_nueva" que DEBE revelarse en este capítulo.
+5. Comprende el "giro_emocional" que debe experimentar el lector.
+6. Revisa las "prohibiciones_este_capitulo" si las hay.
+
+MIENTRAS ESCRIBES:
+7. Sigue los BEATS en orden, desarrollando cada uno con riqueza sensorial.
+8. Implementa los "recursos_literarios_sugeridos" si los hay.
+9. Mantén un registro mental de expresiones ya usadas para NO repetirlas.
+
+AL TERMINAR:
+10. Verifica que la "continuidad_salida" queda establecida.
+11. Confirma que la "pregunta_dramatica" queda planteada.
+12. Revisa que NO hayas repetido frases, metáforas o conceptos.
 `;
 
 export class GhostwriterAgent extends BaseAgent {
@@ -74,19 +170,78 @@ export class GhostwriterAgent extends BaseAgent {
     `;
     }
 
+    const chapterData = input.chapterData;
+    
     prompt += `
-    TAREA ACTUAL:
-    Escribe el CAPÍTULO ${input.chapterData.numero}: ${input.chapterData.titulo}.
+    ═══════════════════════════════════════════════════════════════════
+    TAREA ACTUAL: CAPÍTULO ${chapterData.numero} - "${chapterData.titulo}"
+    ═══════════════════════════════════════════════════════════════════
     
-    DETALLES DEL CAPÍTULO:
-    - Cronología: ${input.chapterData.cronologia}
-    - Ubicación: ${input.chapterData.ubicacion}
-    - Elenco Presente: ${input.chapterData.elenco_presente.join(", ")}
-    - Beats Narrativos a seguir: ${input.chapterData.beats.join(" -> ")}
-    - Objetivo: ${input.chapterData.objetivo_narrativo}
+    DATOS BÁSICOS:
+    - Cronología: ${chapterData.cronologia}
+    - Ubicación: ${chapterData.ubicacion}
+    - Elenco Presente: ${chapterData.elenco_presente.join(", ")}
+    ${chapterData.tono_especifico ? `- Tono específico: ${chapterData.tono_especifico}` : ""}
+    ${chapterData.funcion_estructural ? `- Función estructural: ${chapterData.funcion_estructural}` : ""}
     
-    Escribe el texto completo siguiendo tu programación de Novelista Maestro.
-    Comienza directamente con la narrativa, sin introducción ni comentarios.
+    OBJETIVO NARRATIVO:
+    ${chapterData.objetivo_narrativo}
+    
+    ${chapterData.informacion_nueva ? `
+    ═══════════════════════════════════════════════════════════════════
+    INFORMACIÓN NUEVA A REVELAR (OBLIGATORIA):
+    ${chapterData.informacion_nueva}
+    Esta revelación DEBE aparecer en el capítulo.
+    ═══════════════════════════════════════════════════════════════════
+    ` : ""}
+    
+    ${chapterData.conflicto_central ? `
+    CONFLICTO CENTRAL DE ESTE CAPÍTULO:
+    - Tipo: ${chapterData.conflicto_central.tipo || "externo"}
+    - Descripción: ${chapterData.conflicto_central.descripcion || ""}
+    - Lo que está en juego: ${chapterData.conflicto_central.stakes || ""}
+    ` : ""}
+    
+    ${chapterData.giro_emocional ? `
+    ARCO EMOCIONAL DEL LECTOR:
+    - Al inicio del capítulo: ${chapterData.giro_emocional.emocion_inicio || "neutral"}
+    - Al final del capítulo: ${chapterData.giro_emocional.emocion_final || "intrigado"}
+    ` : ""}
+    
+    ${chapterData.arcos_que_avanza && chapterData.arcos_que_avanza.length > 0 ? `
+    ARCOS QUE DEBE AVANZAR ESTE CAPÍTULO:
+    ${chapterData.arcos_que_avanza.map(a => `- ${a.arco}: de "${a.de}" a "${a.a}"`).join("\n")}
+    ` : ""}
+    
+    BEATS NARRATIVOS (SIGUE EN ORDEN):
+    ${chapterData.beats.map((beat, i) => `${i + 1}. ${beat}`).join("\n")}
+    
+    ${chapterData.pregunta_dramatica ? `
+    PREGUNTA DRAMÁTICA (debe quedar planteada al final):
+    ${chapterData.pregunta_dramatica}
+    ` : ""}
+    
+    ${chapterData.recursos_literarios_sugeridos && chapterData.recursos_literarios_sugeridos.length > 0 ? `
+    RECURSOS LITERARIOS SUGERIDOS PARA ESTE CAPÍTULO:
+    ${chapterData.recursos_literarios_sugeridos.join(", ")}
+    ` : ""}
+    
+    ${chapterData.prohibiciones_este_capitulo && chapterData.prohibiciones_este_capitulo.length > 0 ? `
+    ═══════════════════════════════════════════════════════════════════
+    PROHIBICIONES PARA ESTE CAPÍTULO (NO USAR):
+    ${chapterData.prohibiciones_este_capitulo.join(", ")}
+    Estos recursos ya se usaron en capítulos anteriores. Encuentra alternativas.
+    ═══════════════════════════════════════════════════════════════════
+    ` : ""}
+    
+    ${chapterData.continuidad_entrada ? `ESTADO AL INICIAR: ${chapterData.continuidad_entrada}` : ""}
+    ${chapterData.continuidad_salida ? `ESTADO AL TERMINAR (para siguiente capítulo): ${chapterData.continuidad_salida}` : ""}
+    
+    ═══════════════════════════════════════════════════════════════════
+    ESCRIBE EL CAPÍTULO COMPLETO
+    ═══════════════════════════════════════════════════════════════════
+    Comienza directamente con la narrativa. Sin introducción ni comentarios.
+    Recuerda: NO repitas expresiones, metáforas o conceptos. Cada imagen debe ser única.
     `;
 
     return this.generateContent(prompt);

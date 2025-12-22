@@ -32,7 +32,28 @@ interface SectionData {
   objetivo_narrativo: string;
   beats: string[];
   continuidad_salida?: string;
+  continuidad_entrada?: string;
   tipo?: "prologue" | "chapter" | "epilogue" | "author_note";
+  funcion_estructural?: string;
+  informacion_nueva?: string;
+  pregunta_dramatica?: string;
+  conflicto_central?: {
+    tipo?: string;
+    descripcion?: string;
+    stakes?: string;
+  };
+  giro_emocional?: {
+    emocion_inicio?: string;
+    emocion_final?: string;
+  };
+  recursos_literarios_sugeridos?: string[];
+  tono_especifico?: string;
+  prohibiciones_este_capitulo?: string[];
+  arcos_que_avanza?: Array<{
+    arco?: string;
+    de?: string;
+    a?: string;
+  }>;
 }
 
 export class Orchestrator {
@@ -870,7 +891,17 @@ export class Orchestrator {
         objetivo_narrativo: chapterData.objetivo_narrativo || "",
         beats: chapterData.beats || [],
         continuidad_salida: chapterData.continuidad_salida,
+        continuidad_entrada: chapterData.continuidad_entrada,
         tipo: "chapter",
+        funcion_estructural: chapterData.funcion_estructural,
+        informacion_nueva: chapterData.informacion_nueva,
+        pregunta_dramatica: chapterData.pregunta_dramatica,
+        conflicto_central: chapterData.conflicto_central,
+        giro_emocional: chapterData.giro_emocional,
+        recursos_literarios_sugeridos: chapterData.recursos_literarios_sugeridos,
+        tono_especifico: chapterData.tono_especifico,
+        prohibiciones_este_capitulo: chapterData.prohibiciones_este_capitulo,
+        arcos_que_avanza: chapterData.arcos_que_avanza,
       });
     }
 
