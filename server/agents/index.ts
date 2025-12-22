@@ -5,3 +5,6 @@ export { GhostwriterAgent } from "./ghostwriter";
 export { EditorAgent, type EditorResult } from "./editor";
 export { CopyEditorAgent, type CopyEditorResult } from "./copyeditor";
 export { FinalReviewerAgent, type FinalReviewerResult, type FinalReviewIssue } from "./final-reviewer";
+export { ContinuitySentinelAgent, type ContinuitySentinelResult, type ContinuityIssue } from "./continuity-sentinel";
+export { VoiceRhythmAuditorAgent, type VoiceRhythmAuditorResult, type VoiceRhythmIssue } from "./voice-rhythm-auditor";
+export { SemanticRepetitionDetectorAgent, type SemanticRepetitionResult, type RepetitionCluster } from "./semantic-repetition-detector";
