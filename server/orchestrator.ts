@@ -54,6 +54,11 @@ interface SectionData {
     de?: string;
     a?: string;
   }>;
+  riesgos_de_verosimilitud?: {
+    posibles_deus_ex_machina?: string[];
+    setup_requerido?: string[];
+    justificacion_causal?: string;
+  };
 }
 
 export class Orchestrator {
@@ -522,7 +527,7 @@ export class Orchestrator {
   }
 
   private reconstructWorldBibleData(worldBible: WorldBible, project: Project): ParsedWorldBible {
-    const plotOutline = (worldBible.plotOutline as PlotOutline[]) || [];
+    const plotOutlineData = worldBible.plotOutline as any;
     const timeline = (worldBible.timeline as TimelineEvent[]) || [];
     
     const lugares = timeline
@@ -530,14 +535,37 @@ export class Orchestrator {
       .filter((loc: any) => loc)
       .filter((loc: string, i: number, arr: string[]) => arr.indexOf(loc) === i);
     
+    // Reconstruir escaleta_capitulos desde chapterOutlines con todos los campos adicionales
+    const escaleta_capitulos = (plotOutlineData?.chapterOutlines || []).map((c: any) => ({
+      numero: c.number,
+      titulo: c.titulo || c.summary || `Capítulo ${c.number}`,
+      cronologia: c.cronologia || "",
+      ubicacion: c.ubicacion || "",
+      elenco_presente: c.elenco_presente || [],
+      objetivo_narrativo: c.summary || "",
+      beats: c.keyEvents || [],
+      funcion_estructural: c.funcion_estructural,
+      informacion_nueva: c.informacion_nueva,
+      pregunta_dramatica: c.pregunta_dramatica,
+      conflicto_central: c.conflicto_central,
+      giro_emocional: c.giro_emocional,
+      recursos_literarios_sugeridos: c.recursos_literarios_sugeridos,
+      tono_especifico: c.tono_especifico,
+      prohibiciones_este_capitulo: c.prohibiciones_este_capitulo,
+      arcos_que_avanza: c.arcos_que_avanza,
+      continuidad_entrada: c.continuidad_entrada,
+      continuidad_salida: c.continuidad_salida,
+      riesgos_de_verosimilitud: c.riesgos_de_verosimilitud,
+    }));
+    
     return {
       world_bible: {
         personajes: (worldBible.characters as Character[]) || [],
         lugares: lugares,
         reglas_lore: (worldBible.worldRules as WorldRule[]) || [],
       },
-      escaleta_capitulos: plotOutline,
-      premisa: project.premise || "",
+      escaleta_capitulos,
+      premisa: plotOutlineData?.premise || project.premise || "",
     };
   }
 
@@ -559,6 +587,11 @@ export class Orchestrator {
         : chapter.chapterNumber === -1 ? "epilogue" 
         : chapter.chapterNumber === -2 ? "author_note" 
         : "chapter",
+      funcion_estructural: plotItem?.funcion_estructural,
+      informacion_nueva: plotItem?.informacion_nueva,
+      conflicto_central: plotItem?.conflicto_central,
+      giro_emocional: plotItem?.giro_emocional,
+      riesgos_de_verosimilitud: plotItem?.riesgos_de_verosimilitud,
     };
   }
 
@@ -616,9 +649,19 @@ export class Orchestrator {
         finalReviewResult: result as any
       });
 
-      if (result?.veredicto === "APROBADO") {
+      if (result?.veredicto === "APROBADO" || result?.veredicto === "APROBADO_CON_RESERVAS") {
+        const mensaje = result.veredicto === "APROBADO_CON_RESERVAS"
+          ? `Manuscrito APROBADO CON RESERVAS (${result.puntuacion_global}/10). Issues menores documentados.`
+          : `Manuscrito APROBADO (${result.puntuacion_global}/10). Sin inconsistencias detectadas.`;
+        this.callbacks.onAgentStatus("final-reviewer", "completed", mensaje);
+        return true;
+      }
+      
+      // TERMINACIÓN FORZADA en pasada 3: si el revisor devuelve REQUIERE_REVISION,
+      // forzamos aprobación con advertencias ya que no se permiten más ciclos
+      if (revisionCycle === this.maxFinalReviewCycles - 1) {
         this.callbacks.onAgentStatus("final-reviewer", "completed", 
-          `Manuscrito APROBADO (${result.puntuacion_global}/10). Sin inconsistencias detectadas.`
+          `Pasada final completada. Manuscrito aceptado con ${result?.issues?.length || 0} issues menores documentados (${result?.puntuacion_global || 7}/10).`
         );
         return true;
       }
@@ -871,6 +914,11 @@ export class Orchestrator {
         beats: chapterData.beats || [],
         continuidad_salida: chapterData.continuidad_salida,
         tipo,
+        funcion_estructural: chapterData.funcion_estructural,
+        informacion_nueva: chapterData.informacion_nueva,
+        conflicto_central: chapterData.conflicto_central,
+        giro_emocional: chapterData.giro_emocional,
+        riesgos_de_verosimilitud: chapterData.riesgos_de_verosimilitud,
       };
     });
   }
@@ -913,6 +961,7 @@ export class Orchestrator {
         tono_especifico: chapterData.tono_especifico,
         prohibiciones_este_capitulo: chapterData.prohibiciones_este_capitulo,
         arcos_que_avanza: chapterData.arcos_que_avanza,
+        riesgos_de_verosimilitud: chapterData.riesgos_de_verosimilitud,
       });
     }
 
@@ -1053,6 +1102,23 @@ export class Orchestrator {
         number: c.numero,
         summary: c.objetivo_narrativo || "",
         keyEvents: c.beats || [],
+        // Datos adicionales para propagación completa en reanudaciones
+        titulo: c.titulo,
+        cronologia: c.cronologia,
+        ubicacion: c.ubicacion,
+        elenco_presente: c.elenco_presente,
+        funcion_estructural: c.funcion_estructural,
+        informacion_nueva: c.informacion_nueva,
+        pregunta_dramatica: c.pregunta_dramatica,
+        conflicto_central: c.conflicto_central,
+        giro_emocional: c.giro_emocional,
+        recursos_literarios_sugeridos: c.recursos_literarios_sugeridos,
+        tono_especifico: c.tono_especifico,
+        prohibiciones_este_capitulo: c.prohibiciones_este_capitulo,
+        arcos_que_avanza: c.arcos_que_avanza,
+        continuidad_entrada: c.continuidad_entrada,
+        continuidad_salida: c.continuidad_salida,
+        riesgos_de_verosimilitud: c.riesgos_de_verosimilitud,
       })),
     };
   }

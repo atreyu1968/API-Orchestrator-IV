@@ -27,6 +27,11 @@ interface EditorInput {
       de?: string;
       a?: string;
     }>;
+    riesgos_de_verosimilitud?: {
+      posibles_deus_ex_machina?: string[];
+      setup_requerido?: string[];
+      justificacion_causal?: string;
+    };
   };
   worldBible: any;
   guiaEstilo: string;
@@ -41,6 +46,9 @@ export interface EditorResult {
   errores_continuidad?: string[];
   frases_repetidas?: string[];
   problemas_ritmo?: string[];
+  problemas_verosimilitud?: string[];
+  beats_faltantes?: string[];
+  violaciones_estilo?: string[];
   plan_quirurgico: {
     diagnostico: string;
     procedimiento: string;
@@ -84,6 +92,16 @@ PROTOCOLO DE EVALUACIÓN INTEGRADO:
    - ¿Los eventos dramáticos tienen suficiente SETUP emocional?
    - ¿Las transiciones son fluidas?
 
+6. VEROSIMILITUD NARRATIVA (CRÍTICO - Penaliza -3 puntos por fallo):
+   - ¿Hay DEUS EX MACHINA? (soluciones que aparecen sin preparación previa)
+   - ¿Hay coincidencias inverosímiles? ("justo en ese momento", "casualmente")
+   - ¿Los rescates están SEMBRADOS? (el salvador debe existir ANTES de necesitarlo)
+   - ¿Las revelaciones tienen FUNDAMENTO? (pistas previas que las anticipen)
+   - ¿Las soluciones son GANADAS por el protagonista? (no regaladas por el destino)
+   
+   Pregúntate: "¿Esta resolución es SORPRENDENTE pero INEVITABLE en retrospectiva?"
+   Si la respuesta es NO, hay un problema de verosimilitud.
+
 INSTRUCCIONES DE REESCRITURA PRECISAS:
 Cuando rechaces un capítulo, tu plan_quirurgico debe ser ESPECÍFICO:
 - Cita EXACTAMENTE qué líneas/párrafos deben cambiar
@@ -96,6 +114,7 @@ CHECKLIST DE RECHAZO (Cualquiera = aprobado: false):
 - Más de 3 repeticiones de la misma expresión
 - Beats del arquitecto no cumplidos
 - Violación de prohibiciones de la guía de estilo
+- DEUS EX MACHINA o solución inverosímil (CRÍTICO)
 
 SALIDA JSON OBLIGATORIA:
 {
@@ -106,6 +125,7 @@ SALIDA JSON OBLIGATORIA:
   "errores_continuidad": ["Inconsistencias físicas con cita exacta"],
   "frases_repetidas": ["Expresiones repetidas"],
   "problemas_ritmo": ["Escenas sin setup"],
+  "problemas_verosimilitud": ["Deus ex machina, coincidencias forzadas, soluciones no ganadas"],
   "beats_faltantes": ["Beats del arquitecto que no se cumplieron"],
   "violaciones_estilo": ["Violaciones a la guía de estilo"],
   "plan_quirurgico": {
@@ -143,6 +163,11 @@ PLAN DEL ARQUITECTO PARA ESTE CAPÍTULO:
 - Recursos literarios sugeridos: ${chapterData.recursos_literarios_sugeridos?.join(", ") || "Ninguno específico"}
 - PROHIBICIONES para este capítulo: ${chapterData.prohibiciones_este_capitulo?.join(", ") || "Ninguna específica"}
 - Arcos que debe avanzar: ${chapterData.arcos_que_avanza?.map(a => `${a.arco}: de "${a.de}" a "${a.a}"`).join("; ") || "No especificados"}
+${chapterData.riesgos_de_verosimilitud ? `
+ALERTAS DE VEROSIMILITUD:
+- Posibles deus ex machina a detectar: ${chapterData.riesgos_de_verosimilitud.posibles_deus_ex_machina?.join(", ") || "Ninguno"}
+- Setup requerido (verificar que exista): ${chapterData.riesgos_de_verosimilitud.setup_requerido?.join(", ") || "Ninguno"}
+- Justificación causal esperada: ${chapterData.riesgos_de_verosimilitud.justificacion_causal || "No especificada"}` : ""}
 `;
 
     const prompt = `

@@ -51,6 +51,33 @@ PRINCIPIOS DE CONTINUIDAD FÍSICA
 3. CAUSALIDAD MECÁNICA: Cada acción es consecuencia de una anterior.
 
 ═══════════════════════════════════════════════════════════════════
+PROHIBICIONES ABSOLUTAS - VEROSIMILITUD NARRATIVA
+═══════════════════════════════════════════════════════════════════
+El mayor pecado narrativo es el DEUS EX MACHINA. NUNCA planifiques:
+
+1. RESCATES NO SEMBRADOS:
+   - Ningún personaje, objeto o habilidad puede aparecer para resolver un problema si NO fue establecido previamente
+   - Si un personaje va a tener una habilidad clave, debe mostrarse ANTES de que la necesite
+   - Los aliados deben existir en la trama ANTES del momento de rescate
+
+2. COINCIDENCIAS INVEROSÍMILES:
+   - Nunca: "justo en ese momento llegó X"
+   - Nunca: "casualmente encontró lo que necesitaba"
+   - Nunca: problemas que se resuelven solos sin acción del protagonista
+
+3. SOLUCIONES MÁGICAS:
+   - No introducir reglas de magia/tecnología justo cuando se necesitan
+   - No revelar información conveniente sin haber plantado pistas antes
+   - Los poderes/recursos deben tener COSTOS y LIMITACIONES establecidos
+
+4. REGLA DE SETUP/PAYOFF:
+   - Todo payoff (resolución) requiere un setup (preparación) previo
+   - Mínimo 2 capítulos de anticipación para revelaciones importantes
+   - Los giros deben ser "sorprendentes pero inevitables en retrospectiva"
+
+Para CADA capítulo, debes evaluar "riesgos_de_verosimilitud": posibles momentos donde la trama podría caer en deus ex machina, y cómo EVITARLOS con setup adecuado.
+
+═══════════════════════════════════════════════════════════════════
 INSTRUCCIONES DE SALIDA (JSON ESTRUCTURADO)
 ═══════════════════════════════════════════════════════════════════
 Genera un JSON con las siguientes claves:
@@ -148,7 +175,13 @@ Genera un JSON con las siguientes claves:
     "prohibiciones_este_capitulo": ["Temas, imágenes o recursos YA usados en capítulos anteriores que NO deben repetirse"],
     
     "continuidad_entrada": "Estado de personajes/mundo al INICIAR",
-    "continuidad_salida": "Estado de personajes/mundo al TERMINAR"
+    "continuidad_salida": "Estado de personajes/mundo al TERMINAR",
+    
+    "riesgos_de_verosimilitud": {
+      "posibles_deus_ex_machina": ["Momentos donde la resolución podría parecer forzada"],
+      "setup_requerido": ["Qué debe establecerse EN CAPÍTULOS ANTERIORES para que este funcione"],
+      "justificacion_causal": "Por qué cada evento es consecuencia lógica de lo anterior"
+    }
   }
 ]
 

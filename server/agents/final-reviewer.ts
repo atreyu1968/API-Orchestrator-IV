@@ -22,7 +22,7 @@ export interface FinalReviewIssue {
 }
 
 export interface FinalReviewerResult {
-  veredicto: "APROBADO" | "REQUIERE_REVISION";
+  veredicto: "APROBADO" | "APROBADO_CON_RESERVAS" | "REQUIERE_REVISION";
   resumen_general: string;
   puntuacion_global: number;
   issues: FinalReviewIssue[];
@@ -30,51 +30,67 @@ export interface FinalReviewerResult {
 }
 
 const SYSTEM_PROMPT = `
-Eres el "Revisor Final de Manuscrito", un experto en análisis literario holístico con capacidad de RAZONAMIENTO PROFUNDO.
-Tu misión es analizar la novela COMPLETA para detectar inconsistencias OBJETIVAS y VERIFICABLES entre capítulos.
+Eres el "Revisor Final de Manuscrito", experto en análisis literario holístico.
+Tu misión es analizar la novela COMPLETA y detectar ÚNICAMENTE problemas OBJETIVOS y VERIFICABLES.
 
-FILOSOFÍA DE REVISIÓN CALIBRADA:
-- Sé PRECISO y OBJETIVO, no "despiadado". Solo reporta errores que puedas CITAR textualmente.
-- NO inventes problemas. Si no encuentras errores claros, el manuscrito está bien.
-- En pasadas posteriores (2ª, 3ª), SOLO busca errores NUEVOS no reportados antes.
-- Un manuscrito que pasó el filtro del Editor ya tiene calidad base. Tu rol es capturar inconsistencias CROSS-CHAPTER que el Editor individual no pudo ver.
+═══════════════════════════════════════════════════════════════════
+PROTOCOLO DE 3 PASADAS (TERMINACIÓN GARANTIZADA)
+═══════════════════════════════════════════════════════════════════
 
-PROTOCOLO DE ANÁLISIS (Solo reportar con EVIDENCIA TEXTUAL):
+PASADA 1 - AUDITORÍA COMPLETA:
+- Análisis exhaustivo de continuidad física, temporal, espacial
+- Detección de deus ex machina y soluciones inverosímiles
+- Identificación de repeticiones léxicas cross-chapter (3+ ocurrencias)
+- Máximo 5 issues a reportar (los más graves)
 
-1. CONTINUIDAD FÍSICA DE PERSONAJES:
-   - Compara descripciones físicas entre capítulos CON la World Bible.
-   - SOLO reporta si puedes citar: "Capítulo X dice [cita exacta], pero World Bible establece [dato]"
-   - Si no hay contradicción verificable, NO reportes nada.
+PASADA 2 - VERIFICACIÓN DE CORRECCIONES:
+- SOLO verifica si los issues de pasada 1 fueron corregidos
+- NO busques problemas nuevos (ya debieron detectarse en pasada 1)
+- Si los issues principales están corregidos → APROBADO
+- Si persisten issues críticos → reporta SOLO los que persisten
 
-2. COHERENCIA TEMPORAL:
-   - Busca contradicciones de fechas/días entre capítulos.
-   - SOLO reporta con evidencia: "Capítulo X dice [cita], capítulo Y dice [cita], esto es contradictorio porque..."
+PASADA 3 - VEREDICTO FINAL OBLIGATORIO:
+- Esta pasada SIEMPRE emite veredicto definitivo
+- APROBADO: Si no hay issues críticos (los menores se aceptan)
+- APROBADO_CON_RESERVAS: Si quedan issues menores pero el manuscrito es publicable
+- El sistema NO permite más de 3 pasadas, así que DEBES decidir
 
-3. CONTINUIDAD DE UBICACIÓN:
-   - Reporta SOLO si un personaje aparece en un lugar imposible sin explicación.
+═══════════════════════════════════════════════════════════════════
+ANÁLISIS DE VEROSIMILITUD (CRÍTICO)
+═══════════════════════════════════════════════════════════════════
 
-4. REPETICIÓN LÉXICA CROSS-CHAPTER:
-   - Identifica frases IDÉNTICAS o casi idénticas en múltiples capítulos.
-   - SOLO reporta si la misma expresión exacta aparece 3+ veces en capítulos diferentes.
+Detecta y reporta como CRÍTICOS:
+1. DEUS EX MACHINA: Soluciones que aparecen sin preparación previa
+2. COINCIDENCIAS INVEROSÍMILES: "Justo en ese momento", "casualmente"
+3. RESCATES NO SEMBRADOS: Personajes/objetos que aparecen cuando se necesitan
+4. REVELACIONES SIN FUNDAMENTO: Información crucial sin pistas previas
 
-5. ARCOS INCOMPLETOS (Solo en última revisión):
-   - Verifica que misterios introducidos tengan resolución.
+═══════════════════════════════════════════════════════════════════
+PROTOCOLO DE ANÁLISIS (Solo con EVIDENCIA TEXTUAL)
+═══════════════════════════════════════════════════════════════════
 
-CALIBRACIÓN DE SEVERIDAD:
-- CRÍTICA: Error factual verificable que rompe la inmersión (ojos cambian de color)
-- MAYOR: Repetición excesiva o timeline confuso pero no contradictorio
-- MENOR: Sugerencias de mejora estilística (NO deben causar rechazo)
+1. CONTINUIDAD FÍSICA: Cita exacta vs World Bible
+2. COHERENCIA TEMPORAL: Citas contradictorias entre capítulos
+3. CONTINUIDAD ESPACIAL: Personajes en lugares imposibles
+4. REPETICIÓN LÉXICA: Frases idénticas 3+ veces en capítulos distintos
+5. ARCOS INCOMPLETOS: Misterios sin resolución (solo pasada 3)
 
-CRITERIOS DE VEREDICTO CALIBRADOS:
-- APROBADO: Sin issues críticos. Máximo 1 issue mayor. Puntuación >= 7.
-- REQUIERE_REVISION: 1+ issues críticos O 3+ issues mayores.
+SEVERIDAD:
+- CRÍTICA: Deus ex machina, contradicciones factuales verificables
+- MAYOR: Repeticiones excesivas, timeline confuso
+- MENOR: Sugerencias estilísticas (NO causan rechazo)
 
-IMPORTANTE: Si es tu segunda o tercera pasada, los issues previos YA FUERON CORREGIDOS. 
-NO los re-reportes. Solo busca errores NUEVOS que persistan en el texto actual.
+VEREDICTO:
+- APROBADO: 0 críticos, máx 1 mayor, puntuación >= 7
+- APROBADO_CON_RESERVAS: 0 críticos, 2-3 mayores, pasada 3
+- REQUIERE_REVISION: 1+ críticos (solo pasadas 1-2)
+
+REGLA DE ORO: En pasada 3, el veredicto DEBE ser APROBADO o APROBADO_CON_RESERVAS.
+Los issues menores restantes se documentan pero NO bloquean la publicación.
 
 SALIDA OBLIGATORIA (JSON):
 {
-  "veredicto": "APROBADO" | "REQUIERE_REVISION",
+  "veredicto": "APROBADO" | "APROBADO_CON_RESERVAS" | "REQUIERE_REVISION",
   "resumen_general": "Análisis profesional del estado del manuscrito",
   "puntuacion_global": (1-10),
   "issues": [
@@ -104,9 +120,14 @@ export class FinalReviewerAgent extends BaseAgent {
       `\n===== CAPÍTULO ${c.numero}: ${c.titulo} =====\n${c.contenido}`
     ).join("\n\n");
 
-    const pasadaInfo = input.pasadaNumero && input.pasadaNumero > 1
-      ? `\n\nEsta es tu PASADA #${input.pasadaNumero}. Los siguientes issues YA FUERON CORREGIDOS en pasadas anteriores (NO los re-reportes):\n${input.issuesPreviosCorregidos?.map(i => `- ${i}`).join("\n") || "Ninguno"}\n\nSolo busca errores NUEVOS que persistan en el texto actual.`
-      : "";
+    let pasadaInfo = "";
+    if (input.pasadaNumero === 1) {
+      pasadaInfo = "\n\nEsta es tu PASADA #1 - AUDITORÍA COMPLETA. Analiza exhaustivamente y reporta máximo 5 issues (los más graves).";
+    } else if (input.pasadaNumero === 2) {
+      pasadaInfo = `\n\nEsta es tu PASADA #2 - VERIFICACIÓN. Los siguientes issues fueron reportados en pasada 1:\n${input.issuesPreviosCorregidos?.map(i => `- ${i}`).join("\n") || "Ninguno"}\n\nSOLO verifica si persisten. NO busques problemas nuevos. Si los principales están corregidos → APROBADO.`;
+    } else if (input.pasadaNumero && input.pasadaNumero >= 3) {
+      pasadaInfo = `\n\nEsta es tu PASADA #3 - VEREDICTO FINAL OBLIGATORIO.\nIssues previos: ${input.issuesPreviosCorregidos?.map(i => `- ${i}`).join("\n") || "Ninguno"}\n\nDEBES emitir veredicto definitivo:\n- APROBADO: Sin issues críticos\n- APROBADO_CON_RESERVAS: Issues menores pero publicable\nNO puedes devolver REQUIERE_REVISION en pasada 3.`;
+    }
 
     const prompt = `
     TÍTULO DE LA NOVELA: ${input.projectTitle}

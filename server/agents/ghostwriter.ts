@@ -32,6 +32,11 @@ interface GhostwriterInput {
       de?: string;
       a?: string;
     }>;
+    riesgos_de_verosimilitud?: {
+      posibles_deus_ex_machina?: string[];
+      setup_requerido?: string[];
+      justificacion_causal?: string;
+    };
   };
   worldBible: any;
   guiaEstilo: string;
@@ -99,6 +104,31 @@ D) INFORMACIÓN NO REPETIDA:
    - Si ya estableciste un hecho, NO lo repitas
    - El lector recuerda, no necesita que le repitan
    - Cada oración debe añadir información NUEVA
+
+═══════════════════════════════════════════════════════════════════
+PROHIBICIONES ABSOLUTAS - VEROSIMILITUD NARRATIVA
+═══════════════════════════════════════════════════════════════════
+El peor error es el DEUS EX MACHINA. NUNCA escribas:
+
+1. RESCATES CONVENIENTES:
+   - Un personaje NO puede aparecer "justo a tiempo" si no estaba ya establecido en la escena
+   - Ningún objeto/habilidad puede salvar al protagonista si no fue mencionado ANTES
+   - Los aliados deben tener razón lógica para estar ahí
+
+2. COINCIDENCIAS FORZADAS:
+   - Prohibido: "casualmente encontró", "por suerte apareció", "justo en ese momento"
+   - El protagonista debe GANARSE sus soluciones con acciones previas
+   - Los problemas no se resuelven solos
+
+3. REVELACIONES SIN FUNDAMENTO:
+   - No revelar información crucial sin haberla sembrado antes
+   - No introducir poderes/habilidades nuevas en el momento que se necesitan
+   - Todo giro debe ser "sorprendente pero inevitable"
+
+4. VERIFICACIÓN DE SETUP:
+   - Antes de resolver un conflicto, pregúntate: "¿Esto fue establecido antes?"
+   - Si la respuesta es NO, busca otra solución que SÍ esté fundamentada
+   - Consulta los "riesgos_de_verosimilitud" del Arquitecto si los hay
 
 ═══════════════════════════════════════════════════════════════════
 REGLAS DE CONTINUIDAD FÍSICA
@@ -231,6 +261,22 @@ export class GhostwriterAgent extends BaseAgent {
     PROHIBICIONES PARA ESTE CAPÍTULO (NO USAR):
     ${chapterData.prohibiciones_este_capitulo.join(", ")}
     Estos recursos ya se usaron en capítulos anteriores. Encuentra alternativas.
+    ═══════════════════════════════════════════════════════════════════
+    ` : ""}
+    
+    ${chapterData.riesgos_de_verosimilitud ? `
+    ═══════════════════════════════════════════════════════════════════
+    ALERTAS DE VEROSIMILITUD DEL ARQUITECTO (CRÍTICO):
+    ═══════════════════════════════════════════════════════════════════
+    Posibles DEUS EX MACHINA a evitar:
+    ${chapterData.riesgos_de_verosimilitud.posibles_deus_ex_machina?.length ? chapterData.riesgos_de_verosimilitud.posibles_deus_ex_machina.map((item: string) => `- ${item}`).join("\n    ") : "- Ninguno identificado"}
+    
+    SETUP REQUERIDO (debe haberse establecido en capítulos anteriores):
+    ${chapterData.riesgos_de_verosimilitud.setup_requerido?.length ? chapterData.riesgos_de_verosimilitud.setup_requerido.map((item: string) => `- ${item}`).join("\n    ") : "- Ninguno específico"}
+    
+    Justificación causal: ${chapterData.riesgos_de_verosimilitud.justificacion_causal || "No especificada"}
+    
+    IMPORTANTE: Cada resolución debe ser SORPRENDENTE pero INEVITABLE en retrospectiva.
     ═══════════════════════════════════════════════════════════════════
     ` : ""}
     
