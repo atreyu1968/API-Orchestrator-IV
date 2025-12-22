@@ -288,8 +288,69 @@ export class GhostwriterAgent extends BaseAgent {
     ═══════════════════════════════════════════════════════════════════
     Comienza directamente con la narrativa. Sin introducción ni comentarios.
     Recuerda: NO repitas expresiones, metáforas o conceptos. Cada imagen debe ser única.
+    
+    ═══════════════════════════════════════════════════════════════════
+    ESTADO DE CONTINUIDAD (OBLIGATORIO AL FINAL)
+    ═══════════════════════════════════════════════════════════════════
+    DESPUÉS de escribir el capítulo, DEBES incluir un bloque JSON con el estado de continuidad.
+    Este bloque DEBE estar al final, después del texto narrativo, separado por:
+    
+    ---CONTINUITY_STATE---
+    {
+      "characterStates": {
+        "Nombre del Personaje": {
+          "location": "Dónde termina este personaje",
+          "status": "alive|dead|injured|unconscious|missing|imprisoned",
+          "hasItems": ["objetos que posee"],
+          "emotionalState": "estado emocional al final",
+          "knowledgeGained": ["información nueva que sabe"]
+        }
+      },
+      "narrativeTime": "Fecha/hora narrativa al terminar el capítulo",
+      "keyReveals": ["revelaciones importantes hechas en este capítulo"],
+      "pendingThreads": ["hilos narrativos abiertos pendientes de resolver"],
+      "resolvedThreads": ["hilos narrativos cerrados en este capítulo"],
+      "locationState": {
+        "Nombre ubicación": "estado actual de la ubicación"
+      }
+    }
+    
+    INCLUYE TODOS los personajes que aparecen en el capítulo, no solo el protagonista.
+    Este estado es CRÍTICO para mantener la continuidad entre capítulos.
     `;
 
     return this.generateContent(prompt);
+  }
+  
+  extractContinuityState(content: string): { cleanContent: string; continuityState: any | null } {
+    const separator = "---CONTINUITY_STATE---";
+    const parts = content.split(separator);
+    
+    if (parts.length < 2) {
+      console.log("[Ghostwriter] No continuity state separator found in content");
+      return { cleanContent: content, continuityState: null };
+    }
+    
+    const cleanContent = parts[0].trim();
+    const stateJson = parts[1].trim();
+    
+    try {
+      const continuityState = JSON.parse(stateJson);
+      console.log("[Ghostwriter] Successfully extracted continuity state:", Object.keys(continuityState.characterStates || {}));
+      return { cleanContent, continuityState };
+    } catch (e) {
+      console.log("[Ghostwriter] Failed to parse continuity state JSON:", e);
+      const jsonMatch = stateJson.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const continuityState = JSON.parse(jsonMatch[0]);
+          console.log("[Ghostwriter] Extracted continuity state via regex");
+          return { cleanContent, continuityState };
+        } catch (e2) {
+          console.log("[Ghostwriter] Regex extraction also failed");
+        }
+      }
+      return { cleanContent: content, continuityState: null };
+    }
   }
 }

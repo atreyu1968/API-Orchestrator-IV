@@ -94,6 +94,7 @@ export const chapters = pgTable("chapters", {
   status: text("status").notNull().default("pending"),
   needsRevision: boolean("needs_revision").default(false),
   revisionReason: text("revision_reason"),
+  continuityState: jsonb("continuity_state"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -309,5 +310,22 @@ export type Character = z.infer<typeof characterSchema>;
 export type TimelineEvent = z.infer<typeof timelineEventSchema>;
 export type WorldRule = z.infer<typeof worldRuleSchema>;
 export type PlotOutline = z.infer<typeof plotOutlineSchema>;
+
+export const continuityStateSchema = z.object({
+  characterStates: z.record(z.string(), z.object({
+    location: z.string(),
+    status: z.enum(["alive", "dead", "injured", "unconscious", "missing", "imprisoned"]),
+    hasItems: z.array(z.string()).optional(),
+    emotionalState: z.string().optional(),
+    knowledgeGained: z.array(z.string()).optional(),
+  })).optional(),
+  narrativeTime: z.string().optional(),
+  keyReveals: z.array(z.string()).optional(),
+  pendingThreads: z.array(z.string()).optional(),
+  resolvedThreads: z.array(z.string()).optional(),
+  locationState: z.record(z.string(), z.string()).optional(),
+});
+
+export type ContinuityState = z.infer<typeof continuityStateSchema>;
 
 export * from "./models/chat";
