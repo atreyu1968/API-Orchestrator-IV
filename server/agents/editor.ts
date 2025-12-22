@@ -36,6 +36,7 @@ interface EditorInput {
   worldBible: any;
   guiaEstilo: string;
   estructuraTresActos?: any;
+  previousContinuityState?: any;
 }
 
 export interface EditorResult {
@@ -83,6 +84,18 @@ PROTOCOLO DE EVALUACIÓN INTEGRADO:
 3. CONTINUIDAD FÍSICA (Penaliza -2 puntos por fallo):
    - Compara CADA descripción física con la ficha canónica en World Bible.
    - Documenta: "La ficha dice X, el texto dice Y".
+
+3b. CONTINUIDAD CON CAPÍTULO ANTERIOR (CRÍTICO - Penaliza -3 puntos por fallo):
+   Si se proporciona el ESTADO DE CONTINUIDAD del capítulo anterior, verifica:
+   - ¿Los personajes aparecen en ubicaciones COHERENTES con donde terminaron?
+   - ¿Los personajes que estaban muertos/heridos/inconscientes siguen así (o hay justificación)?
+   - ¿Los objetos que poseían siguen en su poder (o hay explicación de pérdida)?
+   - ¿El tiempo narrativo es continuo (no hay saltos sin explicar)?
+   - ¿Las revelaciones del capítulo anterior son recordadas/referenciadas?
+   
+   Si un personaje que terminó en París ahora está en Nueva York sin explicación: ERROR CRÍTICO.
+   Si un personaje murió pero aparece vivo: ERROR CRÍTICO.
+   Si un personaje perdió un objeto importante pero lo tiene de nuevo: ERROR CRÍTICO.
 
 4. REPETICIÓN LÉXICA (Penaliza -1 punto por cada exceso):
    - Busca frases/metáforas que se repitan más de una vez EN ESTE CAPÍTULO.
@@ -170,6 +183,20 @@ ALERTAS DE VEROSIMILITUD:
 - Justificación causal esperada: ${chapterData.riesgos_de_verosimilitud.justificacion_causal || "No especificada"}` : ""}
 `;
 
+    const continuitySection = input.previousContinuityState ? `
+═══════════════════════════════════════════════════════════════════
+ESTADO DE CONTINUIDAD DEL CAPÍTULO ANTERIOR (CRÍTICO):
+═══════════════════════════════════════════════════════════════════
+${JSON.stringify(input.previousContinuityState, null, 2)}
+
+VALIDA que este capítulo sea COHERENTE con el estado anterior:
+- Ubicaciones de personajes al inicio deben coincidir con donde terminaron
+- Estados de personajes (vivo/muerto/herido) deben ser consistentes
+- Objetos poseídos deben seguir presentes o explicar su pérdida
+- Tiempo narrativo debe ser continuo
+═══════════════════════════════════════════════════════════════════
+` : "";
+
     const prompt = `
 DOCUMENTOS DE REFERENCIA:
 
@@ -182,6 +209,8 @@ ${JSON.stringify(input.worldBible, null, 2)}
 3. ${planArquitecto}
 
 ${input.estructuraTresActos ? `4. ESTRUCTURA DE TRES ACTOS:\n${JSON.stringify(input.estructuraTresActos, null, 2)}` : ""}
+
+${continuitySection}
 
 ===============================================
 TEXTO DEL CAPÍTULO ${input.chapterNumber} A EVALUAR:

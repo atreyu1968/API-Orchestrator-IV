@@ -192,6 +192,8 @@ export class Orchestrator {
         let refinementAttempts = 0;
         let refinementInstructions = "";
 
+        let extractedContinuityState: any = null;
+        
         while (!approved && refinementAttempts < this.maxRefinementLoops) {
           const baseStyleGuide = `Género: ${project.genre}, Tono: ${project.tone}`;
           const fullStyleGuide = styleGuideContent 
@@ -208,7 +210,10 @@ export class Orchestrator {
             authorName,
           });
 
-          chapterContent = writerResult.content;
+          const { cleanContent, continuityState } = this.ghostwriter.extractContinuityState(writerResult.content);
+          chapterContent = cleanContent;
+          extractedContinuityState = continuityState;
+          
           await this.trackTokenUsage(project.id, writerResult.tokenUsage);
 
           if (writerResult.thoughtSignature) {
@@ -230,6 +235,7 @@ export class Orchestrator {
             chapterData: sectionData,
             worldBible: worldBibleData.world_bible,
             guiaEstilo: `Género: ${project.genre}, Tono: ${project.tone}`,
+            previousContinuityState: extractedContinuityState,
           });
 
           await this.trackTokenUsage(project.id, editorResult.tokenUsage);
@@ -292,10 +298,16 @@ export class Orchestrator {
           content: finalContent,
           wordCount,
           status: "completed",
+          continuityState: extractedContinuityState,
         });
 
-        previousContinuity = sectionData.continuidad_salida || 
-          `${sectionLabel} completado. Los personajes terminaron en: ${sectionData.ubicacion}`;
+        if (extractedContinuityState) {
+          previousContinuity = JSON.stringify(extractedContinuityState);
+          console.log(`[Orchestrator] Passing continuity state to next chapter: ${Object.keys(extractedContinuityState.characterStates || {}).length} characters tracked`);
+        } else {
+          previousContinuity = sectionData.continuidad_salida || 
+            `${sectionLabel} completado. Los personajes terminaron en: ${sectionData.ubicacion}`;
+        }
 
         this.callbacks.onChapterComplete(i + 1, wordCount, sectionData.titulo);
         this.callbacks.onAgentStatus("copyeditor", "completed", `${sectionLabel} finalizado (${wordCount} palabras)`);
@@ -391,9 +403,11 @@ export class Orchestrator {
         ? completedChapters.sort((a, b) => b.chapterNumber - a.chapterNumber)[0]
         : null;
       
-      let previousContinuity = lastCompleted?.content 
-        ? `Capítulo anterior completado. Contenido termina con: ${lastCompleted.content.slice(-500)}`
-        : "";
+      let previousContinuity = lastCompleted?.continuityState 
+        ? JSON.stringify(lastCompleted.continuityState)
+        : lastCompleted?.content 
+          ? `Capítulo anterior completado. Contenido termina con: ${lastCompleted.content.slice(-500)}`
+          : "";
 
       this.callbacks.onAgentStatus("orchestrator", "resuming", 
         `Retomando generación. ${pendingChapters.length} capítulos pendientes de ${existingChapters.length} totales.`
@@ -413,6 +427,7 @@ export class Orchestrator {
         let approved = false;
         let refinementAttempts = 0;
         let refinementInstructions = "";
+        let extractedContinuityState: any = null;
 
         while (!approved && refinementAttempts < this.maxRefinementLoops) {
           const baseStyleGuide = `Género: ${project.genre}, Tono: ${project.tone}`;
@@ -430,7 +445,10 @@ export class Orchestrator {
             authorName,
           });
 
-          chapterContent = writerResult.content;
+          const { cleanContent, continuityState } = this.ghostwriter.extractContinuityState(writerResult.content);
+          chapterContent = cleanContent;
+          extractedContinuityState = continuityState;
+          
           await this.trackTokenUsage(project.id, writerResult.tokenUsage);
 
           if (writerResult.thoughtSignature) {
@@ -452,6 +470,7 @@ export class Orchestrator {
             chapterData: sectionData,
             worldBible: worldBibleData.world_bible,
             guiaEstilo: `Género: ${project.genre}, Tono: ${project.tone}`,
+            previousContinuityState: extractedContinuityState,
           });
 
           await this.trackTokenUsage(project.id, editorResult.tokenUsage);
@@ -506,9 +525,15 @@ export class Orchestrator {
           content: finalContent,
           wordCount,
           status: "completed",
+          continuityState: extractedContinuityState,
         });
 
-        previousContinuity = `${sectionLabel} completado.`;
+        if (extractedContinuityState) {
+          previousContinuity = JSON.stringify(extractedContinuityState);
+          console.log(`[Orchestrator Resume] Passing continuity state to next chapter`);
+        } else {
+          previousContinuity = `${sectionLabel} completado.`;
+        }
 
         const freshChapters = await storage.getChaptersByProject(project.id);
         const completedCount = freshChapters.filter(c => c.status === "completed").length;
