@@ -37,6 +37,13 @@ interface GhostwriterInput {
       setup_requerido?: string[];
       justificacion_causal?: string;
     };
+    transicion_ubicacion?: {
+      ubicacion_anterior?: string;
+      metodo_viaje?: string;
+      duracion_estimada?: string;
+      narrativa_puente?: string;
+      elementos_sensoriales_viaje?: string[];
+    };
   };
   worldBible: any;
   guiaEstilo: string;
@@ -132,6 +139,32 @@ El peor error es el DEUS EX MACHINA. NUNCA escribas:
    - Consulta los "riesgos_de_verosimilitud" del Arquitecto si los hay
 
 ═══════════════════════════════════════════════════════════════════
+TRANSICIONES DE UBICACIÓN (OBLIGATORIAS)
+═══════════════════════════════════════════════════════════════════
+Cuando hay cambio de ubicación entre capítulos, el inicio DEBE incluir una transición narrativa:
+- NUNCA comiences un capítulo con el personaje ya en la nueva ubicación sin narrar el viaje
+- Describe el trayecto: método de viaje, duración, sensaciones físicas (fatiga, clima, olores)
+- Si el Arquitecto proporciona "transicion_ubicacion", DEBES usarla como guía obligatoria
+- La transición debe integrarse naturalmente, no como un bloque informativo separado
+
+Ejemplo INCORRECTO: "Lucius entró en el Anfiteatro..." (sin transición desde ubicación anterior)
+Ejemplo CORRECTO: "El sol del mediodía castigaba sus hombros mientras Lucius atravesaba la Via Sacra. Una hora de caminata lo separaba del Atrium, tiempo suficiente para que el sudor empapara su túnica. Cuando finalmente divisó las columnas del Anfiteatro..."
+
+═══════════════════════════════════════════════════════════════════
+LÉXICO HISTÓRICO - VOZ DE ÉPOCA (CRÍTICO)
+═══════════════════════════════════════════════════════════════════
+Consulta SIEMPRE la sección "lexico_historico" del World Bible:
+- NUNCA uses términos de "terminos_anacronicos_prohibidos" - son palabras modernas inaceptables
+- PRIORIZA el "vocabulario_epoca_autorizado" para mantener la voz histórica auténtica
+- Respeta el "registro_linguistico" indicado (formal/coloquial/técnico de época)
+- Cuando dudes sobre una palabra, elige la alternativa más antigua/clásica
+
+TÉRMINOS MODERNOS PROHIBIDOS EN FICCIÓN HISTÓRICA (lista por defecto):
+"burguesa", "estrés", "impacto" (metafórico), "enfocarse", "rol", "empoderamiento", "básico", 
+"literal", "problemática", "dinámico", "autoestima", "productivo", "agenda" (metafórico), 
+"contexto", "paradigma", "priorizar", "gestionar", "implementar", "escenario" (metafórico)
+
+═══════════════════════════════════════════════════════════════════
 REGLAS DE CONTINUIDAD FÍSICA
 ═══════════════════════════════════════════════════════════════════
 
@@ -214,6 +247,21 @@ export class GhostwriterAgent extends BaseAgent {
     - Elenco Presente: ${chapterData.elenco_presente.join(", ")}
     ${chapterData.tono_especifico ? `- Tono específico: ${chapterData.tono_especifico}` : ""}
     ${chapterData.funcion_estructural ? `- Función estructural: ${chapterData.funcion_estructural}` : ""}
+    
+    ${chapterData.transicion_ubicacion ? `
+    ═══════════════════════════════════════════════════════════════════
+    TRANSICIÓN DE UBICACIÓN (OBLIGATORIO AL INICIO DEL CAPÍTULO)
+    ═══════════════════════════════════════════════════════════════════
+    El capítulo DEBE comenzar narrando la transición desde la ubicación anterior:
+    - Ubicación anterior: ${chapterData.transicion_ubicacion.ubicacion_anterior || "No especificada"}
+    - Método de viaje: ${chapterData.transicion_ubicacion.metodo_viaje || "No especificado"}
+    - Duración estimada: ${chapterData.transicion_ubicacion.duracion_estimada || "No especificada"}
+    - Narrativa puente sugerida: ${chapterData.transicion_ubicacion.narrativa_puente || "No especificada"}
+    - Elementos sensoriales del viaje: ${chapterData.transicion_ubicacion.elementos_sensoriales_viaje?.join(", ") || "No especificados"}
+    
+    IMPORTANTE: No comiences directamente en la nueva ubicación. Narra el trayecto.
+    ═══════════════════════════════════════════════════════════════════
+    ` : ""}
     
     OBJETIVO NARRATIVO:
     ${chapterData.objetivo_narrativo}
