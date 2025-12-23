@@ -15,7 +15,7 @@ interface FinalReviewerInput {
 
 export interface FinalReviewIssue {
   capitulos_afectados: number[];
-  categoria: "enganche" | "personajes" | "trama" | "atmosfera" | "ritmo" | "continuidad_fisica" | "timeline" | "ubicacion" | "repeticion_lexica" | "arco_incompleto" | "otro";
+  categoria: "enganche" | "personajes" | "trama" | "atmosfera" | "ritmo" | "continuidad_fisica" | "timeline" | "ubicacion" | "repeticion_lexica" | "arco_incompleto" | "tension_insuficiente" | "giro_predecible" | "hook_debil" | "otro";
   descripcion: string;
   severidad: "critica" | "mayor" | "menor";
   instrucciones_correccion: string;
