@@ -88,11 +88,98 @@ export class Orchestrator {
   private maxRefinementLoops = 3;
   private maxFinalReviewCycles = 3;
   private continuityCheckpointInterval = 5;
+  private currentProjectGenre = "";
   
   private cumulativeTokens = {
     inputTokens: 0,
     outputTokens: 0,
     thinkingTokens: 0,
+  };
+
+  private static readonly HISTORICAL_VOCABULARY: Record<string, { valid: string[], forbidden: string[], alternatives: Record<string, string> }> = {
+    historical_thriller: {
+      valid: [
+        "veneno", "pócima", "brebaje", "ungüento", "cataplasma",
+        "hierba venenosa", "extracto letal", "sustancia mortífera",
+        "el hongo del centeno", "el cornezuelo", "la cicuta", "el acónito",
+        "humores", "miasma", "putrefacción", "gangrena",
+        "médico", "galeno", "sanador", "boticario", "herbolario",
+        "bisturí", "escalpelo", "lanceta", "cauterio", "sanguijuela",
+        "pergamino", "códice", "tablilla", "estilete", "cálamo",
+        "denario", "sestercio", "as", "áureo",
+        "toga", "túnica", "estola", "palla", "calcei",
+        "ínsula", "domus", "villa", "thermae", "foro",
+        "legado", "pretor", "edil", "cuestor", "tribuno"
+      ],
+      forbidden: [
+        "formol", "formaldehído", "metrónomo", "Claviceps purpurea",
+        "bacteria", "virus", "célula", "microscopio", "antibiótico",
+        "ADN", "gen", "cromosoma", "proteína", "enzima",
+        "oxígeno", "hidrógeno", "nitrógeno", "carbono", "molécula",
+        "parálisis de análisis", "estrés", "trauma", "psicología",
+        "kilómetro", "metro", "centímetro", "gramo", "litro",
+        "reloj", "minuto", "segundo", "hora exacta",
+        "electricidad", "voltaje", "batería", "motor",
+        "nomenclatura binomial", "taxonomía científica moderna"
+      ],
+      alternatives: {
+        "Claviceps purpurea": "el hongo del centeno / cornezuelo",
+        "formol": "ungüento de conservación / aceites aromáticos",
+        "bacteria": "miasma / corrupción del aire / humores pútridos",
+        "virus": "pestilencia / mal invisible / aire corrupto",
+        "estrés": "agotamiento / tensión del ánimo / fatiga nerviosa",
+        "trauma": "herida del alma / cicatriz interior / shock",
+        "minutos": "el tiempo de un rezo / un suspiro / un instante",
+        "microscopio": "lupa / cristal de aumento",
+        "análisis": "examen / escrutinio / inspección minuciosa"
+      }
+    },
+    historical: {
+      valid: [
+        "carta", "misiva", "telegrama", "telégrafo",
+        "automóvil", "carruaje", "tranvía", "ferrocarril",
+        "peseta", "real", "duro", "céntimo",
+        "fonógrafo", "gramófono", "cinematógrafo",
+        "corsé", "polisón", "levita", "chistera", "bombín"
+      ],
+      forbidden: [
+        "internet", "ordenador", "teléfono móvil", "smartphone",
+        "avión comercial", "helicóptero", "televisión",
+        "plástico", "nylon", "poliéster", "sintético",
+        "antibiótico", "penicilina", "vacuna moderna",
+        "psicoanálisis", "inconsciente", "complejo de Edipo"
+      ],
+      alternatives: {
+        "estrés": "nerviosismo / agitación / desasosiego",
+        "trauma": "conmoción / impresión terrible",
+        "email": "carta / telegrama urgente"
+      }
+    },
+    thriller: {
+      valid: [],
+      forbidden: [],
+      alternatives: {}
+    },
+    mystery: {
+      valid: [],
+      forbidden: [],
+      alternatives: {}
+    },
+    romance: {
+      valid: [],
+      forbidden: [],
+      alternatives: {}
+    },
+    fantasy: {
+      valid: [],
+      forbidden: [],
+      alternatives: {}
+    },
+    scifi: {
+      valid: [],
+      forbidden: [],
+      alternatives: {}
+    }
   };
 
   constructor(callbacks: OrchestratorCallbacks) {
@@ -124,6 +211,7 @@ export class Orchestrator {
   async generateNovel(project: Project): Promise<void> {
     try {
       this.resetTokenTracking();
+      this.currentProjectGenre = project.genre;
       await storage.updateProject(project.id, { status: "generating" });
 
       let styleGuideContent = "";
@@ -1495,10 +1583,47 @@ export class Orchestrator {
       parts.push(`\n✅ FORTALEZAS A MANTENER:\n${editorResult.fortalezas.map(f => `  + ${f}`).join("\n")}`);
     }
     
+    const vocab = this.getHistoricalVocabularySection();
+    if (vocab) {
+      parts.push(vocab);
+    }
+
     parts.push(`\n═══════════════════════════════════════════════════════════════════`);
     parts.push(`INSTRUCCIÓN FINAL: Reescribe el capítulo corrigiendo TODOS los problemas`);
     parts.push(`listados arriba. Prioriza errores de continuidad y verosimilitud.`);
+    parts.push(`USA SOLO el vocabulario de época permitido. EVITA términos prohibidos.`);
     parts.push(`═══════════════════════════════════════════════════════════════════`);
+
+    return parts.join("\n");
+  }
+
+  private getHistoricalVocabularySection(): string | null {
+    const vocab = Orchestrator.HISTORICAL_VOCABULARY[this.currentProjectGenre];
+    if (!vocab || (vocab.valid.length === 0 && vocab.forbidden.length === 0)) {
+      return null;
+    }
+
+    const parts: string[] = [];
+    parts.push(`\n═══════════════════════════════════════════════════════════════════`);
+    parts.push(`VOCABULARIO DE ÉPOCA (CRÍTICO PARA EVITAR ANACRONISMOS)`);
+    parts.push(`═══════════════════════════════════════════════════════════════════`);
+
+    if (vocab.forbidden.length > 0) {
+      parts.push(`\n🚫 TÉRMINOS PROHIBIDOS (NUNCA USAR):`);
+      parts.push(vocab.forbidden.map(t => `  ❌ "${t}"`).join("\n"));
+    }
+
+    if (Object.keys(vocab.alternatives).length > 0) {
+      parts.push(`\n🔄 ALTERNATIVAS VÁLIDAS:`);
+      for (const [forbidden, valid] of Object.entries(vocab.alternatives)) {
+        parts.push(`  "${forbidden}" → usar: ${valid}`);
+      }
+    }
+
+    if (vocab.valid.length > 0) {
+      parts.push(`\n✅ VOCABULARIO DE ÉPOCA VÁLIDO (PREFERIR):`);
+      parts.push(`  ${vocab.valid.slice(0, 20).join(", ")}${vocab.valid.length > 20 ? "..." : ""}`);
+    }
 
     return parts.join("\n");
   }
