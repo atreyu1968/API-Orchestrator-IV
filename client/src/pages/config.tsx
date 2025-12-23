@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ConfigPanel, type ConfigFormData } from "@/components/config-panel";
@@ -10,18 +10,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Settings, Trash2, BookOpen, Clock, Pencil } from "lucide-react";
+import { Settings, Trash2, BookOpen, Clock, Pencil, FileText, Upload } from "lucide-react";
 import { Link } from "wouter";
-import type { Project } from "@shared/schema";
+import type { Project, ExtendedGuide } from "@shared/schema";
 
 export default function ConfigPage() {
   const { toast } = useToast();
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [deleteProjectId, setDeleteProjectId] = useState<number | null>(null);
+  const [deleteGuideId, setDeleteGuideId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: projects = [], isLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
+  });
+
+  const { data: extendedGuides = [], isLoading: isLoadingGuides } = useQuery<ExtendedGuide[]>({
+    queryKey: ["/api/extended-guides"],
   });
 
   const createProjectMutation = useMutation({
@@ -86,6 +92,81 @@ export default function ConfigPage() {
       });
     },
   });
+
+  const deleteGuideMutation = useMutation({
+    mutationFn: async (guideId: number) => {
+      await apiRequest("DELETE", `/api/extended-guides/${guideId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/extended-guides"] });
+      toast({
+        title: "Guía eliminada",
+        description: "La guía de escritura ha sido eliminada correctamente",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar la guía",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const uploadGuideMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/extended-guides/upload", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+      return response.json();
+    },
+    onSuccess: (guide: ExtendedGuide) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/extended-guides"] });
+      toast({
+        title: "Guía subida",
+        description: `"${guide.title}" se ha añadido correctamente (${(guide.wordCount || 0).toLocaleString()} palabras)`,
+      });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "No se pudo subir el archivo",
+        variant: "destructive",
+      });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    },
+  });
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.docx')) {
+      toast({
+        title: "Formato no soportado",
+        description: "Por favor sube un archivo .docx (Word)",
+        variant: "destructive",
+      });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
+
+    uploadGuideMutation.mutate(file);
+  };
 
   const handleSubmit = (data: ConfigFormData) => {
     createProjectMutation.mutate(data);
@@ -219,6 +300,90 @@ export default function ConfigPage() {
       </div>
 
       <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Guías de Escritura Extendidas
+            </CardTitle>
+            <CardDescription>
+              Sube documentos Word con instrucciones detalladas para la generación de novelas
+            </CardDescription>
+          </div>
+          <div>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept=".docx"
+              className="hidden"
+              data-testid="input-guide-upload"
+            />
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadGuideMutation.isPending}
+              data-testid="button-upload-guide"
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              {uploadGuideMutation.isPending ? "Subiendo..." : "Subir Guía"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoadingGuides ? (
+            <div className="flex items-center justify-center py-8">
+              <Clock className="h-8 w-8 text-muted-foreground/30 animate-pulse" />
+            </div>
+          ) : extendedGuides.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <FileText className="h-12 w-12 text-muted-foreground/30 mb-4" />
+              <p className="text-muted-foreground text-sm">
+                No hay guías de escritura todavía
+              </p>
+              <p className="text-muted-foreground/60 text-xs mt-1">
+                Sube un documento Word (.docx) con instrucciones detalladas
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {extendedGuides.map((guide) => (
+                <div 
+                  key={guide.id}
+                  className="flex items-center justify-between gap-4 p-3 rounded-md bg-muted/50"
+                  data-testid={`guide-item-${guide.id}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-medium text-sm truncate">{guide.title}</h3>
+                      <Badge variant="outline" className="text-xs">
+                        {(guide.wordCount || 0).toLocaleString()} palabras
+                      </Badge>
+                    </div>
+                    {guide.description && (
+                      <p className="text-xs text-muted-foreground truncate">{guide.description}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground/60 mt-1">
+                      {guide.originalFileName}
+                    </p>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    onClick={() => setDeleteGuideId(guide.id)}
+                    disabled={deleteGuideMutation.isPending}
+                    data-testid={`button-delete-guide-${guide.id}`}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader>
           <CardTitle>Acerca del Sistema</CardTitle>
         </CardHeader>
@@ -302,6 +467,21 @@ export default function ConfigPage() {
             deleteProjectMutation.mutate(deleteProjectId);
           }
           setDeleteProjectId(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteGuideId !== null}
+        onOpenChange={(open) => !open && setDeleteGuideId(null)}
+        title="Eliminar guía"
+        description="¿Estás seguro de que quieres eliminar esta guía de escritura? Los proyectos que la usen perderán la referencia."
+        confirmText="Eliminar"
+        variant="destructive"
+        onConfirm={() => {
+          if (deleteGuideId) {
+            deleteGuideMutation.mutate(deleteGuideId);
+          }
+          setDeleteGuideId(null);
         }}
       />
     </div>
