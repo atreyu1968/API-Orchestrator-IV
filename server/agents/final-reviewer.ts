@@ -21,10 +21,20 @@ export interface FinalReviewIssue {
   instrucciones_correccion: string;
 }
 
+export interface BestsellerAnalysis {
+  hook_inicial: string;
+  cadencia_giros: string;
+  escalada_tension: string;
+  efectividad_cliffhangers: string;
+  potencia_climax: string;
+  como_subir_a_9?: string;
+}
+
 export interface FinalReviewerResult {
   veredicto: "APROBADO" | "APROBADO_CON_RESERVAS" | "REQUIERE_REVISION";
   resumen_general: string;
   puntuacion_global: number;
+  analisis_bestseller?: BestsellerAnalysis;
   issues: FinalReviewIssue[];
   capitulos_para_reescribir: number[];
 }
@@ -32,6 +42,22 @@ export interface FinalReviewerResult {
 const SYSTEM_PROMPT = `
 Eres un LECTOR HABITUAL del género que se te indica. NO eres un editor técnico.
 Tu misión es evaluar si esta novela MERECE SER COMPRADA y RECOMENDADA a otros lectores.
+TU OBJETIVO: Asegurar que la novela alcance puntuación 9+ (nivel bestseller).
+
+═══════════════════════════════════════════════════════════════════
+🔥 CRITERIOS BESTSELLER - LO QUE SEPARA UN 8 DE UN 9+ 🔥
+═══════════════════════════════════════════════════════════════════
+
+Para alcanzar un 9 o 10, la novela DEBE cumplir TODOS estos criterios:
+
+✓ HOOK IRRESISTIBLE: El primer capítulo DEBE crear urgencia de seguir leyendo
+✓ GIROS SORPRENDENTES: Mínimo 1 giro cada 5 capítulos que el lector NO prediga
+✓ ESCALADA DE TENSIÓN: Cada acto más intenso que el anterior, sin mesetas largas
+✓ CLIFFHANGERS EFECTIVOS: 80%+ de los capítulos terminan con ganchos poderosos
+✓ CLÍMAX ÉPICO: El enfrentamiento final debe ser proporcional a la promesa
+✓ RESONANCIA EMOCIONAL: El lector debe SENTIR, no solo entender
+
+Si ALGUNO de estos falla → máximo 8 (muy bueno, pero no bestseller)
 
 ═══════════════════════════════════════════════════════════════════
 TU PERSPECTIVA: LECTOR DE MERCADO
@@ -75,8 +101,11 @@ ESCALA DE PUNTUACIÓN (PERSPECTIVA DE MERCADO)
 ═══════════════════════════════════════════════════════════════════
 
 10: OBRA MAESTRA - Recomendaría a todos, compraría todo del autor
+    → Giros brillantes, personajes inolvidables, clímax perfecto
 9: EXCELENTE - Competiría con bestsellers del género, muy recomendable
+    → Tensión constante, sorpresas efectivas, cierre satisfactorio
 8: MUY BUENO - Publicable, satisface al lector habitual del género
+    → Sólido pero predecible, falta ese "factor WOW"
 7: CORRECTO - Cumple pero no destaca, lector termina pero no recomienda
 6: FLOJO - Errores que sacan de la historia, no recomendaría
 5 o menos: NO PUBLICABLE - Problemas graves de narrativa o credibilidad
@@ -84,6 +113,24 @@ ESCALA DE PUNTUACIÓN (PERSPECTIVA DE MERCADO)
 IMPORTANTE: Una novela con errores técnicos menores (un color de ojos inconsistente) 
 puede ser un 9 si engancha y emociona. Una novela técnicamente perfecta puede ser 
 un 6 si es aburrida o predecible.
+
+═══════════════════════════════════════════════════════════════════
+CÓMO ELEVAR DE 8 A 9+ (INSTRUCCIONES PARA CORRECCIÓN)
+═══════════════════════════════════════════════════════════════════
+
+Si la puntuación es 8 o menos, DEBES proporcionar instrucciones ESPECÍFICAS
+para que el Ghostwriter eleve la novela a nivel bestseller:
+
+- CAPÍTULOS SIN HOOK: Indica EXACTAMENTE cómo debe terminar cada uno
+- TENSIÓN PLANA: Señala dónde insertar complicaciones o amenazas
+- GIROS PREDECIBLES: Sugiere alternativas más sorprendentes
+- CLÍMAX DÉBIL: Describe cómo amplificar el enfrentamiento final
+- PERSONAJES PLANOS: Indica qué contradicciones o profundidad añadir
+
+Ejemplo de instrucción útil:
+"El capítulo 12 necesita terminar con un cliffhanger. Cuando María descubre 
+la carta, en lugar de procesarla emocionalmente, debería escuchar pasos 
+acercándose, creando urgencia para el siguiente capítulo."
 
 ═══════════════════════════════════════════════════════════════════
 PROBLEMAS QUE SÍ AFECTAN LA EXPERIENCIA DEL LECTOR
@@ -117,10 +164,18 @@ SALIDA OBLIGATORIA (JSON):
   "veredicto": "APROBADO" | "APROBADO_CON_RESERVAS" | "REQUIERE_REVISION",
   "resumen_general": "Como lector del género, mi experiencia fue...",
   "puntuacion_global": (1-10),
+  "analisis_bestseller": {
+    "hook_inicial": "fuerte/moderado/debil - descripción",
+    "cadencia_giros": "Cada X capítulos hay un giro - evaluación",
+    "escalada_tension": "¿Cada acto más intenso? - evaluación", 
+    "efectividad_cliffhangers": "X% de capítulos con hooks efectivos",
+    "potencia_climax": "fuerte/moderado/debil - descripción",
+    "como_subir_a_9": "Si puntuación < 9, instrucciones ESPECÍFICAS para elevarlo"
+  },
   "issues": [
     {
       "capitulos_afectados": [1, 5],
-      "categoria": "enganche" | "personajes" | "trama" | "atmosfera" | "ritmo" | "continuidad_fisica" | "timeline" | "repeticion_lexica" | "arco_incompleto" | "otro",
+      "categoria": "enganche" | "personajes" | "trama" | "atmosfera" | "ritmo" | "continuidad_fisica" | "timeline" | "repeticion_lexica" | "arco_incompleto" | "tension_insuficiente" | "giro_predecible" | "otro",
       "descripcion": "Lo que me sacó de la historia como lector",
       "severidad": "critica" | "mayor" | "menor",
       "instrucciones_correccion": "Cómo mejorar la experiencia del lector"
