@@ -1330,5 +1330,102 @@ IMPORTANTE:
     }
   });
 
+  // Extended Writing Guides endpoints
+  app.get("/api/extended-guides", async (req: Request, res: Response) => {
+    try {
+      const guides = await storage.getAllExtendedGuides();
+      res.json(guides);
+    } catch (error) {
+      console.error("Error fetching extended guides:", error);
+      res.status(500).json({ error: "Failed to fetch extended guides" });
+    }
+  });
+
+  app.get("/api/extended-guides/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const guide = await storage.getExtendedGuide(id);
+      if (!guide) {
+        return res.status(404).json({ error: "Extended guide not found" });
+      }
+      res.json(guide);
+    } catch (error) {
+      console.error("Error fetching extended guide:", error);
+      res.status(500).json({ error: "Failed to fetch extended guide" });
+    }
+  });
+
+  app.post("/api/extended-guides/upload", upload.single("file"), async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const result = await mammoth.extractRawText({ buffer: req.file.buffer });
+      const content = result.value.trim();
+
+      if (!content) {
+        return res.status(400).json({ error: "El archivo está vacío o no se pudo extraer el texto" });
+      }
+
+      const title = req.body.title || req.file.originalname.replace(/\.docx?$/i, "");
+      const description = req.body.description || null;
+
+      const guide = await storage.createExtendedGuide({
+        title,
+        description,
+        originalFileName: req.file.originalname,
+        content,
+        wordCount: content.split(/\s+/).length,
+      });
+
+      res.status(201).json(guide);
+    } catch (error) {
+      console.error("Error uploading extended guide:", error);
+      res.status(500).json({ error: "Failed to upload extended guide" });
+    }
+  });
+
+  app.patch("/api/extended-guides/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const guide = await storage.getExtendedGuide(id);
+      if (!guide) {
+        return res.status(404).json({ error: "Extended guide not found" });
+      }
+
+      const allowedFields = ["title", "description"];
+      const updateData: Record<string, any> = {};
+      
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          updateData[field] = req.body[field];
+        }
+      }
+
+      const updated = await storage.updateExtendedGuide(id, updateData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating extended guide:", error);
+      res.status(500).json({ error: "Failed to update extended guide" });
+    }
+  });
+
+  app.delete("/api/extended-guides/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const guide = await storage.getExtendedGuide(id);
+      if (!guide) {
+        return res.status(404).json({ error: "Extended guide not found" });
+      }
+
+      await storage.deleteExtendedGuide(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting extended guide:", error);
+      res.status(500).json({ error: "Failed to delete extended guide" });
+    }
+  });
+
   return httpServer;
 }

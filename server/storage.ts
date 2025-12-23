@@ -1,14 +1,15 @@
 import { db } from "./db";
 import { 
   projects, chapters, worldBibles, thoughtLogs, agentStatuses, pseudonyms, styleGuides,
-  series, continuitySnapshots, importedManuscripts, importedChapters,
+  series, continuitySnapshots, importedManuscripts, importedChapters, extendedGuides,
   type Project, type InsertProject, type Chapter, type InsertChapter,
   type WorldBible, type InsertWorldBible, type ThoughtLog, type InsertThoughtLog,
   type AgentStatus, type InsertAgentStatus, type Pseudonym, type InsertPseudonym,
   type StyleGuide, type InsertStyleGuide, type Series, type InsertSeries,
   type ContinuitySnapshot, type InsertContinuitySnapshot,
   type ImportedManuscript, type InsertImportedManuscript,
-  type ImportedChapter, type InsertImportedChapter
+  type ImportedChapter, type InsertImportedChapter,
+  type ExtendedGuide, type InsertExtendedGuide
 } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 
@@ -68,6 +69,12 @@ export interface IStorage {
   getImportedChaptersByManuscript(manuscriptId: number): Promise<ImportedChapter[]>;
   getImportedChapter(id: number): Promise<ImportedChapter | undefined>;
   updateImportedChapter(id: number, data: Partial<ImportedChapter>): Promise<ImportedChapter | undefined>;
+
+  createExtendedGuide(data: InsertExtendedGuide): Promise<ExtendedGuide>;
+  getExtendedGuide(id: number): Promise<ExtendedGuide | undefined>;
+  getAllExtendedGuides(): Promise<ExtendedGuide[]>;
+  updateExtendedGuide(id: number, data: Partial<ExtendedGuide>): Promise<ExtendedGuide | undefined>;
+  deleteExtendedGuide(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -312,6 +319,29 @@ export class DatabaseStorage implements IStorage {
   async updateImportedChapter(id: number, data: Partial<ImportedChapter>): Promise<ImportedChapter | undefined> {
     const [updated] = await db.update(importedChapters).set(data).where(eq(importedChapters.id, id)).returning();
     return updated;
+  }
+
+  async createExtendedGuide(data: InsertExtendedGuide): Promise<ExtendedGuide> {
+    const [guide] = await db.insert(extendedGuides).values(data).returning();
+    return guide;
+  }
+
+  async getExtendedGuide(id: number): Promise<ExtendedGuide | undefined> {
+    const [guide] = await db.select().from(extendedGuides).where(eq(extendedGuides.id, id));
+    return guide;
+  }
+
+  async getAllExtendedGuides(): Promise<ExtendedGuide[]> {
+    return db.select().from(extendedGuides).orderBy(desc(extendedGuides.createdAt));
+  }
+
+  async updateExtendedGuide(id: number, data: Partial<ExtendedGuide>): Promise<ExtendedGuide | undefined> {
+    const [updated] = await db.update(extendedGuides).set(data).where(eq(extendedGuides.id, id)).returning();
+    return updated;
+  }
+
+  async deleteExtendedGuide(id: number): Promise<void> {
+    await db.delete(extendedGuides).where(eq(extendedGuides.id, id));
   }
 }
 
