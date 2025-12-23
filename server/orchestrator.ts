@@ -401,6 +401,20 @@ export class Orchestrator {
             
             refinementInstructions = this.buildRefinementInstructions(editorResult.result);
             
+            // LOG REJECTION PATTERN FOR POST-FIRST-REWRITE ANALYSIS
+            if (refinementAttempts >= 2 && editorResult.result) {
+              const diagnosis = editorResult.result.plan_quirurgico;
+              console.log(`\n${'='.repeat(80)}`);
+              console.log(`[REJECTION PATTERN DETECTED] ${sectionLabel} - Attempt ${refinementAttempts}/${this.maxRefinementLoops}`);
+              console.log(`Project: ${project.title} (ID: ${project.id})`);
+              console.log(`Genre: ${project.genre}`);
+              console.log(`Score: ${currentScore}/10`);
+              console.log(`Diagnosis: ${diagnosis?.diagnostico || 'N/A'}`);
+              console.log(`Procedure: ${diagnosis?.procedimiento || 'N/A'}`);
+              console.log(`Objective: ${diagnosis?.objetivo || 'N/A'}`);
+              console.log(`${'='.repeat(80)}\n`);
+            }
+            
             this.callbacks.onAgentStatus("editor", "editing", 
               `${sectionLabel} rechazado (${currentScore}/10). Mejor: ${bestVersion.score}/10. Intento ${refinementAttempts}/${this.maxRefinementLoops}.`
             );
