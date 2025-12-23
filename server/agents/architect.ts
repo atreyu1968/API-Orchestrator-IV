@@ -125,7 +125,23 @@ Genera un JSON con las siguientes claves:
   "watchpoints_continuidad": ["Elementos críticos que requieren verificación constante"],
   "temas_centrales": ["Los 2-3 temas filosóficos/morales que explora la novela"],
   "motivos_literarios": ["Símbolos recurrentes que unifican la obra"],
-  "vocabulario_prohibido": ["Palabras o frases a EVITAR por ser clichés del género"]
+  "vocabulario_prohibido": ["Palabras o frases a EVITAR por ser clichés del género"],
+  "lexico_historico": {
+    "epoca": "Roma Imperial / Medieval / Renacimiento / Victoriano / etc.",
+    "terminos_anacronicos_prohibidos": [
+      "Palabras modernas que NUNCA deben aparecer. Para Roma: 'burguesa', 'estrés', 'impacto', 'enfocarse', 'rol', 'empoderamiento', 'básico', 'literal', 'problemática', 'dinámico', 'autoestima', 'productivo', 'agenda', 'contexto', 'paradigma', 'priorizar'"
+    ],
+    "vocabulario_epoca_autorizado": [
+      "Términos preferidos para la época. Para Roma: 'estirpe', 'patricio', 'plebe', 'denario', 'sestercio', 'toga', 'estola', 'domus', 'insulae', 'thermae', 'vigiles'"
+    ],
+    "registro_linguistico": "Formal elevado / Coloquial histórico / Técnico de época",
+    "notas_voz_historica": "Instrucciones específicas para mantener la voz de la época sin caer en arcaísmos forzados"
+  },
+  "paleta_sensorial_global": {
+    "sentidos_dominantes": ["Visual, olfativo, táctil - priorizados para este género/época"],
+    "imagenes_recurrentes_permitidas": ["Metáforas y símbolos que pueden repetirse con variaciones"],
+    "imagenes_prohibidas_cliche": ["Metáforas gastadas a evitar: 'corazón latiendo', 'sudor frío', etc."]
+  }
 }
 
 "matriz_arcos": {
@@ -190,6 +206,14 @@ Genera un JSON con las siguientes claves:
     "cronologia": "Momento temporal específico",
     "ubicacion": "Lugar específico con detalles sensoriales",
     "elenco_presente": ["Solo personajes que APARECEN físicamente"],
+    
+    "transicion_ubicacion": {
+      "ubicacion_anterior": "Dónde estaban los personajes en el capítulo anterior (null si es cap 1)",
+      "metodo_viaje": "Cómo llegaron: caminando, cabalgando, carruaje, barco, teletransporte, elipsis temporal, etc.",
+      "duracion_estimada": "Tiempo transcurrido en el viaje/transición",
+      "narrativa_puente": "1-2 oraciones describiendo la transición que el Ghostwriter DEBE incluir al inicio del capítulo. Ejemplo: 'Lucius atravesó las calles empedradas durante una hora bajo el sol implacable antes de llegar al Foro.'",
+      "elementos_sensoriales_viaje": ["Detalles sensoriales del trayecto: olores, sonidos, fatiga, clima"]
+    },
     
     "funcion_estructural": "Qué rol cumple este capítulo en la estructura global (incidente incitador/escalada/punto medio/crisis/climax/etc)",
     
