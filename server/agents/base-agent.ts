@@ -103,8 +103,9 @@ export abstract class BaseAgent {
     return this.config.role;
   }
 
-  protected async generateContent(prompt: string, projectId?: number): Promise<AgentResponse> {
+  protected async generateContent(prompt: string, projectId?: number, options?: { temperature?: number }): Promise<AgentResponse> {
     let lastError: Error | null = null;
+    const temperature = options?.temperature ?? 1.0;
     
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (projectId && isProjectCancelled(projectId)) {
@@ -124,7 +125,7 @@ export abstract class BaseAgent {
             { role: "user", parts: [{ text: prompt }] },
           ],
           config: {
-            temperature: 1.0,
+            temperature,
             topP: 0.95,
             thinkingConfig: {
               thinkingBudget: 8192,

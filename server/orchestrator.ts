@@ -219,12 +219,15 @@ export class Orchestrator {
 
         let extractedContinuityState: any = null;
         
+        let bestVersion = { content: "", score: 0, continuityState: null as any };
+        
         while (!approved && refinementAttempts < this.maxRefinementLoops) {
           const baseStyleGuide = `Género: ${project.genre}, Tono: ${project.tone}`;
           const fullStyleGuide = styleGuideContent 
             ? `${baseStyleGuide}\n\n--- GUÍA DE ESTILO DEL AUTOR ---\n${styleGuideContent}`
             : baseStyleGuide;
 
+          const isRewrite = refinementAttempts > 0;
           const writerResult = await this.ghostwriter.execute({
             chapterNumber: sectionData.numero,
             chapterData: sectionData,
@@ -233,11 +236,12 @@ export class Orchestrator {
             previousContinuity,
             refinementInstructions,
             authorName,
+            isRewrite,
           });
 
           const { cleanContent, continuityState } = this.ghostwriter.extractContinuityState(writerResult.content);
-          chapterContent = cleanContent;
-          extractedContinuityState = continuityState;
+          const currentContent = cleanContent;
+          const currentContinuityState = continuityState;
           
           await this.trackTokenUsage(project.id, writerResult.tokenUsage);
 
@@ -256,7 +260,7 @@ export class Orchestrator {
 
           const editorResult = await this.editor.execute({
             chapterNumber: sectionData.numero,
-            chapterContent,
+            chapterContent: currentContent,
             chapterData: sectionData,
             worldBible: worldBibleData.world_bible,
             guiaEstilo: `Género: ${project.genre}, Tono: ${project.tone}`,
@@ -275,16 +279,29 @@ export class Orchestrator {
             });
           }
 
+          const currentScore = editorResult.result?.puntuacion || 0;
+          
+          if (currentScore >= bestVersion.score) {
+            bestVersion = { 
+              content: currentContent, 
+              score: currentScore, 
+              continuityState: currentContinuityState 
+            };
+            console.log(`[Orchestrator] New best version for ${sectionLabel}: ${currentScore}/10`);
+          } else {
+            console.log(`[Orchestrator] Keeping previous best version (${bestVersion.score}/10) over current (${currentScore}/10)`);
+          }
+
           if (editorResult.result?.aprobado) {
             approved = true;
-            this.callbacks.onAgentStatus("editor", "completed", `${sectionLabel} aprobado (${editorResult.result.puntuacion}/10)`);
+            this.callbacks.onAgentStatus("editor", "completed", `${sectionLabel} aprobado (${currentScore}/10)`);
           } else {
             refinementAttempts++;
             
             refinementInstructions = this.buildRefinementInstructions(editorResult.result);
             
             this.callbacks.onAgentStatus("editor", "editing", 
-              `${sectionLabel} rechazado (${editorResult.result?.puntuacion || 0}/10). Intento ${refinementAttempts}/${this.maxRefinementLoops}.`
+              `${sectionLabel} rechazado (${currentScore}/10). Mejor: ${bestVersion.score}/10. Intento ${refinementAttempts}/${this.maxRefinementLoops}.`
             );
 
             if (refinementAttempts < this.maxRefinementLoops) {
@@ -294,6 +311,10 @@ export class Orchestrator {
             }
           }
         }
+        
+        chapterContent = bestVersion.content;
+        extractedContinuityState = bestVersion.continuityState;
+        console.log(`[Orchestrator] Using best version for ${sectionLabel}: ${bestVersion.score}/10`);
 
         this.callbacks.onAgentStatus("copyeditor", "polishing", `El Estilista está puliendo ${sectionLabel}...`);
 
@@ -592,6 +613,8 @@ export class Orchestrator {
         let refinementAttempts = 0;
         let refinementInstructions = "";
         let extractedContinuityState: any = null;
+        
+        let bestVersion = { content: "", score: 0, continuityState: null as any };
 
         while (!approved && refinementAttempts < this.maxRefinementLoops) {
           const baseStyleGuide = `Género: ${project.genre}, Tono: ${project.tone}`;
@@ -599,6 +622,7 @@ export class Orchestrator {
             ? `${baseStyleGuide}\n\n--- GUÍA DE ESTILO DEL AUTOR ---\n${styleGuideContent}`
             : baseStyleGuide;
 
+          const isRewrite = refinementAttempts > 0;
           const writerResult = await this.ghostwriter.execute({
             chapterNumber: sectionData.numero,
             chapterData: sectionData,
@@ -607,11 +631,12 @@ export class Orchestrator {
             previousContinuity,
             refinementInstructions,
             authorName,
+            isRewrite,
           });
 
           const { cleanContent, continuityState } = this.ghostwriter.extractContinuityState(writerResult.content);
-          chapterContent = cleanContent;
-          extractedContinuityState = continuityState;
+          const currentContent = cleanContent;
+          const currentContinuityState = continuityState;
           
           await this.trackTokenUsage(project.id, writerResult.tokenUsage);
 
@@ -630,7 +655,7 @@ export class Orchestrator {
 
           const editorResult = await this.editor.execute({
             chapterNumber: sectionData.numero,
-            chapterContent,
+            chapterContent: currentContent,
             chapterData: sectionData,
             worldBible: worldBibleData.world_bible,
             guiaEstilo: `Género: ${project.genre}, Tono: ${project.tone}`,
@@ -649,17 +674,34 @@ export class Orchestrator {
             });
           }
 
+          const currentScore = editorResult.result?.puntuacion || 0;
+          
+          if (currentScore >= bestVersion.score) {
+            bestVersion = { 
+              content: currentContent, 
+              score: currentScore, 
+              continuityState: currentContinuityState 
+            };
+            console.log(`[Orchestrator Resume] New best version for ${sectionLabel}: ${currentScore}/10`);
+          } else {
+            console.log(`[Orchestrator Resume] Keeping previous best version (${bestVersion.score}/10) over current (${currentScore}/10)`);
+          }
+
           if (editorResult.result?.aprobado) {
             approved = true;
-            this.callbacks.onAgentStatus("editor", "completed", `${sectionLabel} aprobado (${editorResult.result.puntuacion}/10)`);
+            this.callbacks.onAgentStatus("editor", "completed", `${sectionLabel} aprobado (${currentScore}/10)`);
           } else {
             refinementAttempts++;
             refinementInstructions = this.buildRefinementInstructions(editorResult.result);
             this.callbacks.onAgentStatus("editor", "editing", 
-              `${sectionLabel} rechazado (${editorResult.result?.puntuacion || 0}/10). Intento ${refinementAttempts}/${this.maxRefinementLoops}.`
+              `${sectionLabel} rechazado (${currentScore}/10). Mejor: ${bestVersion.score}/10. Intento ${refinementAttempts}/${this.maxRefinementLoops}.`
             );
           }
         }
+        
+        chapterContent = bestVersion.content;
+        extractedContinuityState = bestVersion.continuityState;
+        console.log(`[Orchestrator Resume] Using best version for ${sectionLabel}: ${bestVersion.score}/10`);
 
         this.callbacks.onAgentStatus("copyeditor", "polishing", `El Estilista está puliendo ${sectionLabel}...`);
 

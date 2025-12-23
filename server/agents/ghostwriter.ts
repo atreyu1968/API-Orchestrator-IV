@@ -43,6 +43,7 @@ interface GhostwriterInput {
   previousContinuity?: string;
   refinementInstructions?: string;
   authorName?: string;
+  isRewrite?: boolean;
 }
 
 const SYSTEM_PROMPT = `
@@ -319,7 +320,8 @@ export class GhostwriterAgent extends BaseAgent {
     Este estado es CRÍTICO para mantener la continuidad entre capítulos.
     `;
 
-    return this.generateContent(prompt);
+    const temperature = input.isRewrite ? 0.7 : 1.0;
+    return this.generateContent(prompt, undefined, { temperature });
   }
   
   extractContinuityState(content: string): { cleanContent: string; continuityState: any | null } {
