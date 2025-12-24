@@ -51,6 +51,7 @@ export const series = pgTable("series", {
   description: text("description"),
   workType: text("work_type").notNull().default("trilogy"),
   totalPlannedBooks: integer("total_planned_books").default(3),
+  pseudonymId: integer("pseudonym_id").references(() => pseudonyms.id, { onDelete: "set null" }),
   seriesGuide: text("series_guide"),
   seriesGuideFileName: text("series_guide_file_name"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),

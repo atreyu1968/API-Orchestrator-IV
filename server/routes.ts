@@ -686,6 +686,33 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/series/registry", async (req: Request, res: Response) => {
+    try {
+      const allSeries = await storage.getAllSeries();
+      const allPseudonyms = await storage.getAllPseudonyms();
+      const allProjects = await storage.getAllProjects();
+      
+      const registry = allSeries.map(s => {
+        const pseudonym = s.pseudonymId ? allPseudonyms.find(p => p.id === s.pseudonymId) : null;
+        const seriesProjects = allProjects
+          .filter(p => p.seriesId === s.id)
+          .sort((a, b) => (a.seriesOrder || 0) - (b.seriesOrder || 0));
+        
+        return {
+          ...s,
+          pseudonym: pseudonym || null,
+          projects: seriesProjects,
+          completedVolumes: seriesProjects.filter(p => p.status === "completed").length,
+        };
+      });
+      
+      res.json(registry);
+    } catch (error) {
+      console.error("Error fetching series registry:", error);
+      res.status(500).json({ error: "Failed to fetch series registry" });
+    }
+  });
+
   app.get("/api/series/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
