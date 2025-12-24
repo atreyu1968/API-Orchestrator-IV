@@ -1535,25 +1535,39 @@ Eventos clave: ${JSON.stringify(snapshot.keyEvents)}
 
   private buildSectionsList(project: Project, worldBibleData: ParsedWorldBible): SectionData[] {
     const sections: SectionData[] = [];
+    const escaleta = worldBibleData.escaleta_capitulos || [];
+    
+    // Helper to find chapter data by numero instead of by array index
+    const findChapterByNumero = (numero: number) => 
+      escaleta.find((c: any) => c.numero === numero) || {};
 
     if (project.hasPrologue) {
+      // Look for prologue data from Architect (numero=0) instead of using synthetic defaults
+      const prologueData = findChapterByNumero(0);
       sections.push({
         numero: 0,
-        titulo: "Prólogo",
-        cronologia: "Antes del inicio de la historia",
-        ubicacion: "",
-        elenco_presente: [],
-        objetivo_narrativo: "Establecer el tono y generar intriga para la historia que está por comenzar",
-        beats: ["Gancho inicial", "Presentación del mundo", "Sembrar misterio"],
+        titulo: prologueData.titulo || "Prólogo",
+        cronologia: prologueData.cronologia || "Antes del inicio de la historia",
+        ubicacion: prologueData.ubicacion || "",
+        elenco_presente: prologueData.elenco_presente || [],
+        objetivo_narrativo: prologueData.objetivo_narrativo || "Establecer el tono y generar intriga para la historia que está por comenzar",
+        beats: prologueData.beats || ["Gancho inicial", "Presentación del mundo", "Sembrar misterio"],
         tipo: "prologue",
+        continuidad_salida: prologueData.continuidad_salida,
+        funcion_estructural: prologueData.funcion_estructural,
+        informacion_nueva: prologueData.informacion_nueva,
+        conflicto_central: prologueData.conflicto_central,
+        giro_emocional: prologueData.giro_emocional,
+        riesgos_de_verosimilitud: prologueData.riesgos_de_verosimilitud,
       });
     }
 
-    for (let i = 0; i < project.chapterCount; i++) {
-      const chapterData = worldBibleData.escaleta_capitulos?.[i] || {};
+    // Build chapters 1 through chapterCount by looking up by numero, not by array index
+    for (let chapterNum = 1; chapterNum <= project.chapterCount; chapterNum++) {
+      const chapterData = findChapterByNumero(chapterNum);
       sections.push({
-        numero: i + 1,
-        titulo: chapterData.titulo || `Capítulo ${i + 1}`,
+        numero: chapterNum,
+        titulo: chapterData.titulo || `Capítulo ${chapterNum}`,
         cronologia: chapterData.cronologia || "",
         ubicacion: chapterData.ubicacion || "",
         elenco_presente: chapterData.elenco_presente || [],
@@ -1576,15 +1590,20 @@ Eventos clave: ${JSON.stringify(snapshot.keyEvents)}
     }
 
     if (project.hasEpilogue) {
+      const epilogueData = findChapterByNumero(-1);
       sections.push({
         numero: -1,
-        titulo: "Epílogo",
-        cronologia: "Después del final de la historia",
-        ubicacion: "",
-        elenco_presente: [],
-        objetivo_narrativo: "Cerrar los arcos narrativos y ofrecer una conclusión satisfactoria",
-        beats: ["Resolución final", "Mirada al futuro", "Cierre emocional"],
+        titulo: epilogueData.titulo || "Epílogo",
+        cronologia: epilogueData.cronologia || "Después del final de la historia",
+        ubicacion: epilogueData.ubicacion || "",
+        elenco_presente: epilogueData.elenco_presente || [],
+        objetivo_narrativo: epilogueData.objetivo_narrativo || "Cerrar los arcos narrativos y ofrecer una conclusión satisfactoria",
+        beats: epilogueData.beats || ["Resolución final", "Mirada al futuro", "Cierre emocional"],
         tipo: "epilogue",
+        continuidad_entrada: epilogueData.continuidad_entrada,
+        funcion_estructural: epilogueData.funcion_estructural,
+        conflicto_central: epilogueData.conflicto_central,
+        giro_emocional: epilogueData.giro_emocional,
       });
     }
 
