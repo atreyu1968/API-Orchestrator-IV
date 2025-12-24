@@ -10,9 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Settings, Trash2, BookOpen, Clock, Pencil, FileText, Upload } from "lucide-react";
+import { Settings, Trash2, BookOpen, Clock, Pencil, FileText, Upload, Library } from "lucide-react";
 import { Link } from "wouter";
-import type { Project, ExtendedGuide } from "@shared/schema";
+import type { Project, ExtendedGuide, Series } from "@shared/schema";
 
 export default function ConfigPage() {
   const { toast } = useToast();
@@ -20,7 +20,9 @@ export default function ConfigPage() {
   const [editTitle, setEditTitle] = useState("");
   const [deleteProjectId, setDeleteProjectId] = useState<number | null>(null);
   const [deleteGuideId, setDeleteGuideId] = useState<number | null>(null);
+  const [uploadingSeriesId, setUploadingSeriesId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const seriesGuideInputRef = useRef<HTMLInputElement>(null);
 
   const { data: projects = [], isLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -28,6 +30,10 @@ export default function ConfigPage() {
 
   const { data: extendedGuides = [], isLoading: isLoadingGuides } = useQuery<ExtendedGuide[]>({
     queryKey: ["/api/extended-guides"],
+  });
+
+  const { data: allSeries = [], isLoading: isLoadingSeries } = useQuery<Series[]>({
+    queryKey: ["/api/series"],
   });
 
   const createProjectMutation = useMutation({
@@ -166,6 +172,82 @@ export default function ConfigPage() {
     }
 
     uploadGuideMutation.mutate(file);
+  };
+
+  const uploadSeriesGuideMutation = useMutation({
+    mutationFn: async ({ seriesId, file }: { seriesId: number; file: File }) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`/api/series/${seriesId}/guide`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+      return response.json();
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/series"] });
+      toast({
+        title: "Guía de serie cargada",
+        description: `Se han cargado ${result.wordCount?.toLocaleString() || 0} palabras de la guía`,
+      });
+      setUploadingSeriesId(null);
+      if (seriesGuideInputRef.current) {
+        seriesGuideInputRef.current.value = "";
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "No se pudo subir la guía de serie",
+        variant: "destructive",
+      });
+      if (seriesGuideInputRef.current) {
+        seriesGuideInputRef.current.value = "";
+      }
+    },
+  });
+
+  const deleteSeriesGuideMutation = useMutation({
+    mutationFn: async (seriesId: number) => {
+      await apiRequest("DELETE", `/api/series/${seriesId}/guide`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/series"] });
+      toast({
+        title: "Guía eliminada",
+        description: "La guía de serie ha sido eliminada",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar la guía",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSeriesGuideUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !uploadingSeriesId) return;
+
+    if (!file.name.endsWith('.docx')) {
+      toast({
+        title: "Formato no soportado",
+        description: "Por favor sube un archivo .docx (Word)",
+        variant: "destructive",
+      });
+      if (seriesGuideInputRef.current) {
+        seriesGuideInputRef.current.value = "";
+      }
+      return;
+    }
+
+    uploadSeriesGuideMutation.mutate({ seriesId: uploadingSeriesId, file });
   };
 
   const handleSubmit = (data: ConfigFormData) => {
@@ -376,6 +458,102 @@ export default function ConfigPage() {
                   >
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Library className="h-5 w-5" />
+            Guías de Series
+          </CardTitle>
+          <CardDescription>
+            Sube documentos Word con la trama general de cada serie. Los nuevos volúmenes usarán esta guía + los volúmenes anteriores como referencia.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <input
+            type="file"
+            ref={seriesGuideInputRef}
+            onChange={handleSeriesGuideUpload}
+            accept=".docx"
+            className="hidden"
+            data-testid="input-series-guide-upload"
+          />
+          {isLoadingSeries ? (
+            <div className="flex items-center justify-center py-8">
+              <Clock className="h-8 w-8 text-muted-foreground/30 animate-pulse" />
+            </div>
+          ) : allSeries.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Library className="h-12 w-12 text-muted-foreground/30 mb-4" />
+              <p className="text-muted-foreground text-sm">
+                No hay series creadas todavía
+              </p>
+              <p className="text-muted-foreground/60 text-xs mt-1">
+                Crea una serie al configurar un proyecto como "Serie" o "Trilogía"
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {allSeries.map((s) => (
+                <div 
+                  key={s.id}
+                  className="flex items-center justify-between gap-4 p-3 rounded-md bg-muted/50"
+                  data-testid={`series-item-${s.id}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h3 className="font-medium text-sm truncate">{s.title}</h3>
+                      <Badge variant="outline" className="text-xs">
+                        {s.workType === "trilogy" ? "Trilogía" : "Serie"}
+                      </Badge>
+                      {s.seriesGuide ? (
+                        <Badge variant="secondary" className="text-xs">
+                          Guía cargada
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">
+                          Sin guía
+                        </Badge>
+                      )}
+                    </div>
+                    {s.seriesGuideFileName && (
+                      <p className="text-xs text-muted-foreground/60 mt-1">
+                        {s.seriesGuideFileName}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setUploadingSeriesId(s.id);
+                        seriesGuideInputRef.current?.click();
+                      }}
+                      disabled={uploadSeriesGuideMutation.isPending}
+                      data-testid={`button-upload-series-guide-${s.id}`}
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      {s.seriesGuide ? "Reemplazar" : "Subir"} Guía
+                    </Button>
+                    {s.seriesGuide && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => deleteSeriesGuideMutation.mutate(s.id)}
+                        disabled={deleteSeriesGuideMutation.isPending}
+                        data-testid={`button-delete-series-guide-${s.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
