@@ -17,6 +17,7 @@ import ThoughtLogsPage from "@/pages/thought-logs";
 import ConfigPage from "@/pages/config";
 import PseudonymsPage from "@/pages/pseudonyms";
 import ImportPage from "@/pages/import";
+import SeriesPage from "@/pages/series";
 import asdLogo from "@assets/ASD_1766442257801.png";
 
 function Router() {
@@ -28,6 +29,7 @@ function Router() {
       <Route path="/world-bible" component={WorldBiblePage} />
       <Route path="/thought-logs" component={ThoughtLogsPage} />
       <Route path="/pseudonyms" component={PseudonymsPage} />
+      <Route path="/series" component={SeriesPage} />
       <Route path="/config" component={ConfigPage} />
       <Route component={NotFound} />
     </Switch>

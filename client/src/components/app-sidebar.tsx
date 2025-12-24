@@ -19,7 +19,8 @@ import {
   Settings,
   Feather,
   User,
-  Upload
+  Upload,
+  Library
 } from "lucide-react";
 
 const mainNavItems = [
@@ -35,6 +36,7 @@ const translationsNavItems = [
 
 const settingsNavItems = [
   { title: "Pseudónimos", url: "/pseudonyms", icon: User },
+  { title: "Series", url: "/series", icon: Library },
   { title: "Configuración", url: "/config", icon: Settings },
 ];
 
