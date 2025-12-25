@@ -177,15 +177,15 @@ export function ArcVerificationPanel({ seriesId, seriesTitle, totalVolumes }: Ar
     if (!lastVerificationResult?.milestoneVerifications) return;
     
     const unfulfilled = lastVerificationResult.milestoneVerifications
-      .filter((m: any) => !m.isFulfilled && m.suggestedChapter)
-      .map((m: any) => ({
-        chapterNumber: m.suggestedChapter || m.fulfilledInChapter || 1,
-        instruction: m.verificationNotes || m.description || "Incorporar elemento del arco argumental",
+      .filter((m: any) => !m.isFulfilled)
+      .map((m: any, index: number) => ({
+        chapterNumber: m.suggestedChapter || m.fulfilledInChapter || index + 1,
+        instruction: `HITO NO CUMPLIDO: ${m.description}. ${m.verificationNotes || "Incorporar este elemento del arco argumental en el capitulo."}`,
         milestoneId: m.milestoneId
       }));
 
     if (unfulfilled.length === 0) {
-      toast({ title: "Info", description: "No hay correcciones con capitulos identificados" });
+      toast({ title: "Info", description: "Todos los hitos estan cumplidos, no hay correcciones necesarias" });
       return;
     }
 
