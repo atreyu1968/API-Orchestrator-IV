@@ -9,9 +9,10 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Library, Plus, Trash2, User, BookOpen, Check, FileText, Loader2, Pencil, X, Upload, Target } from "lucide-react";
+import { Library, Plus, Trash2, User, BookOpen, Check, FileText, Loader2, Pencil, X, Upload, Target, Sparkles, ChevronDown } from "lucide-react";
 import { ArcVerificationPanel } from "@/components/arc-verification-panel";
 import type { Pseudonym, Project, Series } from "@shared/schema";
 
@@ -142,6 +143,27 @@ export default function SeriesPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo eliminar la guia", variant: "destructive" });
+    },
+  });
+
+  const [extractingSeriesId, setExtractingSeriesId] = useState<number | null>(null);
+  const extractMilestonesMutation = useMutation({
+    mutationFn: async (seriesId: number) => {
+      setExtractingSeriesId(seriesId);
+      const response = await apiRequest("POST", `/api/series/${seriesId}/guide/extract`);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setExtractingSeriesId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/series/registry"] });
+      toast({ 
+        title: "Extraccion completada", 
+        description: `${data.milestonesCreated} hitos y ${data.threadsCreated} hilos extraidos` 
+      });
+    },
+    onError: () => {
+      setExtractingSeriesId(null);
+      toast({ title: "Error", description: "No se pudo extraer de la guia", variant: "destructive" });
     },
   });
 
@@ -317,11 +339,34 @@ export default function SeriesPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <Accordion type="multiple" className="space-y-2">
           {registry.map((s) => (
-            <Card key={s.id} data-testid={`card-series-${s.id}`}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-4 flex-wrap">
+            <AccordionItem key={s.id} value={s.id.toString()} className="border rounded-lg bg-card" data-testid={`accordion-series-${s.id}`}>
+              <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                <div className="flex items-center gap-3 flex-wrap flex-1 text-left">
+                  <span className="font-semibold text-lg">{s.title}</span>
+                  <Badge variant="outline">
+                    {s.workType === "trilogy" ? "Trilogia" : "Serie"}
+                  </Badge>
+                  <Badge variant="secondary">
+                    {s.completedVolumes}/{s.totalPlannedBooks} vol.
+                  </Badge>
+                  {s.seriesGuide && (
+                    <Badge variant="outline" className="text-green-600 dark:text-green-400">
+                      <FileText className="h-3 w-3 mr-1" />
+                      Guia
+                    </Badge>
+                  )}
+                  {s.pseudonym && (
+                    <Badge variant="outline">
+                      <User className="h-3 w-3 mr-1" />
+                      {s.pseudonym.name}
+                    </Badge>
+                  )}
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
                   <div className="flex-1 min-w-0">
                     {editingSeriesId === s.id ? (
                       <div className="space-y-4">
@@ -382,26 +427,9 @@ export default function SeriesPage() {
                         </div>
                       </div>
                     ) : (
-                      <>
-                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <CardTitle className="text-xl">{s.title}</CardTitle>
-                          <Badge variant="outline">
-                            {s.workType === "trilogy" ? "Trilogia" : "Serie"}
-                          </Badge>
-                          <Badge variant="secondary">
-                            {s.completedVolumes}/{s.totalPlannedBooks} volumenes
-                          </Badge>
-                          {s.seriesGuide && (
-                            <Badge variant="outline" className="text-green-600 dark:text-green-400">
-                              <FileText className="h-3 w-3 mr-1" />
-                              Guia cargada
-                            </Badge>
-                          )}
-                        </div>
-                        <CardDescription>
-                          {s.description || "Sin descripcion"}
-                        </CardDescription>
-                      </>
+                      <p className="text-sm text-muted-foreground">
+                        {s.description || "Sin descripcion"}
+                      </p>
                     )}
                   </div>
                   {editingSeriesId !== s.id && (
@@ -425,8 +453,8 @@ export default function SeriesPage() {
                     </div>
                   )}
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
+                
+                <div className="space-y-4 mt-4">
                 <div className="flex items-center gap-4 flex-wrap">
                   <div className="flex items-center gap-2">
                     <User className="h-4 w-4 text-muted-foreground" />
@@ -489,15 +517,31 @@ export default function SeriesPage() {
                       {s.seriesGuide ? "Reemplazar" : "Subir"} Guia
                     </Button>
                     {s.seriesGuide && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteSeriesGuideMutation.mutate(s.id)}
-                        disabled={deleteSeriesGuideMutation.isPending}
-                        data-testid={`button-delete-guide-${s.id}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => extractMilestonesMutation.mutate(s.id)}
+                          disabled={extractMilestonesMutation.isPending && extractingSeriesId === s.id}
+                          data-testid={`button-extract-milestones-${s.id}`}
+                        >
+                          {extractMilestonesMutation.isPending && extractingSeriesId === s.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <Sparkles className="h-4 w-4 mr-2" />
+                          )}
+                          Extraer Hitos
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteSeriesGuideMutation.mutate(s.id)}
+                          disabled={deleteSeriesGuideMutation.isPending}
+                          data-testid={`button-delete-guide-${s.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -559,10 +603,11 @@ export default function SeriesPage() {
                     totalVolumes={s.totalPlannedBooks || 0}
                   />
                 </div>
-              </CardContent>
-            </Card>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
           ))}
-        </div>
+        </Accordion>
       )}
 
       <ConfirmDialog

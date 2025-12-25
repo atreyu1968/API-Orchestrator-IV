@@ -54,7 +54,7 @@ export default function QueuePage() {
   );
 
   const startQueueMutation = useMutation({
-    mutationFn: () => apiRequest("/api/queue/start", "POST"),
+    mutationFn: () => apiRequest("POST", "/api/queue/start"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue/state"] });
       toast({ title: "Cola iniciada", description: "El procesamiento autónomo ha comenzado" });
@@ -63,7 +63,7 @@ export default function QueuePage() {
   });
 
   const stopQueueMutation = useMutation({
-    mutationFn: () => apiRequest("/api/queue/stop", "POST"),
+    mutationFn: () => apiRequest("POST", "/api/queue/stop"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue/state"] });
       toast({ title: "Cola detenida" });
@@ -71,7 +71,7 @@ export default function QueuePage() {
   });
 
   const pauseQueueMutation = useMutation({
-    mutationFn: () => apiRequest("/api/queue/pause", "POST"),
+    mutationFn: () => apiRequest("POST", "/api/queue/pause"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue/state"] });
       toast({ title: "Cola pausada" });
@@ -79,7 +79,7 @@ export default function QueuePage() {
   });
 
   const resumeQueueMutation = useMutation({
-    mutationFn: () => apiRequest("/api/queue/resume", "POST"),
+    mutationFn: () => apiRequest("POST", "/api/queue/resume"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue/state"] });
       toast({ title: "Cola reanudada" });
@@ -87,7 +87,7 @@ export default function QueuePage() {
   });
 
   const skipCurrentMutation = useMutation({
-    mutationFn: () => apiRequest("/api/queue/skip-current", "POST"),
+    mutationFn: () => apiRequest("POST", "/api/queue/skip-current"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue"] });
       queryClient.invalidateQueries({ queryKey: ["/api/queue/state"] });
@@ -97,7 +97,7 @@ export default function QueuePage() {
 
   const addToQueueMutation = useMutation({
     mutationFn: (data: { projectId: number; priority: string }) => 
-      apiRequest("/api/queue", "POST", data),
+      apiRequest("POST", "/api/queue", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue"] });
       setSelectedProjectId("");
@@ -107,7 +107,7 @@ export default function QueuePage() {
   });
 
   const removeFromQueueMutation = useMutation({
-    mutationFn: (id: number) => apiRequest(`/api/queue/${id}`, "DELETE"),
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/queue/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue"] });
       toast({ title: "Proyecto eliminado de la cola" });
@@ -116,14 +116,14 @@ export default function QueuePage() {
 
   const reorderMutation = useMutation({
     mutationFn: ({ id, newPosition }: { id: number; newPosition: number }) =>
-      apiRequest(`/api/queue/${id}/reorder`, "PATCH", { newPosition }),
+      apiRequest("PATCH", `/api/queue/${id}/reorder`, { newPosition }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue"] });
     },
   });
 
   const makeUrgentMutation = useMutation({
-    mutationFn: (id: number) => apiRequest(`/api/queue/${id}/urgent`, "POST"),
+    mutationFn: (id: number) => apiRequest("POST", `/api/queue/${id}/urgent`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue"] });
       toast({ title: "Proyecto marcado como urgente" });
@@ -131,7 +131,7 @@ export default function QueuePage() {
   });
 
   const updateQueueStateMutation = useMutation({
-    mutationFn: (data: Partial<QueueState>) => apiRequest("/api/queue/state", "PATCH", data),
+    mutationFn: (data: Partial<QueueState>) => apiRequest("PATCH", "/api/queue/state", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue/state"] });
     },

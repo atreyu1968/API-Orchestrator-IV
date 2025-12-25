@@ -846,6 +846,102 @@ export async function registerRoutes(
     }
   });
 
+  // Extract milestones and plot threads from series guide using AI
+  app.post("/api/series/:id/guide/extract", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const series = await storage.getSeries(id);
+      if (!series) {
+        return res.status(404).json({ error: "Series not found" });
+      }
+
+      if (!series.seriesGuide) {
+        return res.status(400).json({ error: "No series guide uploaded. Upload a guide first." });
+      }
+
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({
+        apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY!,
+        httpOptions: { baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL! },
+      });
+
+      const extractionPrompt = `Analiza esta guía de serie literaria y extrae:
+
+1. HITOS NARRATIVOS (plot milestones): Eventos clave que DEBEN ocurrir en volúmenes específicos
+2. HILOS ARGUMENTALES (plot threads): Tramas secundarias que atraviesan múltiples volúmenes
+
+Responde ÚNICAMENTE en JSON válido con esta estructura exacta:
+{
+  "milestones": [
+    {
+      "description": "Descripción del hito",
+      "volumeNumber": 1,
+      "milestoneType": "plot_point|character_development|revelation|conflict_resolution|setup",
+      "isRequired": true
+    }
+  ],
+  "threads": [
+    {
+      "threadName": "Nombre del hilo",
+      "description": "Descripción del hilo argumental",
+      "introducedVolume": 1,
+      "importance": "major|minor|subplot"
+    }
+  ]
+}
+
+GUÍA DE SERIE:
+${series.seriesGuide.substring(0, 50000)}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: extractionPrompt }] }],
+        config: { temperature: 0.3 },
+      });
+
+      const text = response.text || (response as any).response?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return res.status(500).json({ error: "Failed to parse AI response" });
+      }
+
+      const extracted = JSON.parse(jsonMatch[0]);
+      const results = { milestonesCreated: 0, threadsCreated: 0 };
+
+      for (const m of extracted.milestones || []) {
+        await storage.createMilestone({
+          seriesId: id,
+          description: m.description,
+          volumeNumber: m.volumeNumber || 1,
+          milestoneType: m.milestoneType || "plot_point",
+          isRequired: m.isRequired !== false,
+        });
+        results.milestonesCreated++;
+      }
+
+      for (const t of extracted.threads || []) {
+        await storage.createPlotThread({
+          seriesId: id,
+          threadName: t.threadName,
+          description: t.description,
+          introducedVolume: t.introducedVolume || 1,
+          importance: t.importance || "major",
+          status: "active",
+        });
+        results.threadsCreated++;
+      }
+
+      res.json({
+        message: `Extraídos ${results.milestonesCreated} hitos y ${results.threadsCreated} hilos argumentales`,
+        ...results,
+        extracted
+      });
+    } catch (error) {
+      console.error("Error extracting from series guide:", error);
+      res.status(500).json({ error: "Failed to extract milestones and threads" });
+    }
+  });
+
   app.get("/api/pseudonyms", async (req: Request, res: Response) => {
     try {
       const pseudonyms = await storage.getAllPseudonyms();
