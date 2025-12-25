@@ -1553,5 +1553,310 @@ IMPORTANTE:
     }
   });
 
+  // =============================================
+  // PROJECT QUEUE MANAGEMENT
+  // =============================================
+  
+  // Get queue state
+  app.get("/api/queue/state", async (req: Request, res: Response) => {
+    try {
+      let state = await storage.getQueueState();
+      if (!state) {
+        state = await storage.updateQueueState({ status: "stopped" });
+      }
+      res.json(state);
+    } catch (error) {
+      console.error("Error fetching queue state:", error);
+      res.status(500).json({ error: "Failed to fetch queue state" });
+    }
+  });
+
+  // Update queue state (start, stop, pause)
+  app.patch("/api/queue/state", async (req: Request, res: Response) => {
+    try {
+      const state = await storage.updateQueueState(req.body);
+      res.json(state);
+    } catch (error) {
+      console.error("Error updating queue state:", error);
+      res.status(500).json({ error: "Failed to update queue state" });
+    }
+  });
+
+  // Get all queue items
+  app.get("/api/queue", async (req: Request, res: Response) => {
+    try {
+      const items = await storage.getQueueItems();
+      // Enrich with project data
+      const enrichedItems = await Promise.all(items.map(async (item) => {
+        const project = await storage.getProject(item.projectId);
+        return { ...item, project };
+      }));
+      res.json(enrichedItems);
+    } catch (error) {
+      console.error("Error fetching queue:", error);
+      res.status(500).json({ error: "Failed to fetch queue" });
+    }
+  });
+
+  // Add project to queue
+  app.post("/api/queue", async (req: Request, res: Response) => {
+    try {
+      const { projectId, priority } = req.body;
+      
+      // Check if project exists
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      
+      // Check if already in queue
+      const existing = await storage.getQueueItemByProject(projectId);
+      if (existing) {
+        return res.status(400).json({ error: "Project already in queue" });
+      }
+      
+      const item = await storage.addToQueue({
+        projectId,
+        priority: priority || "normal",
+        status: "waiting",
+        position: 0, // Will be set by storage
+      });
+      
+      res.status(201).json({ ...item, project });
+    } catch (error) {
+      console.error("Error adding to queue:", error);
+      res.status(500).json({ error: "Failed to add to queue" });
+    }
+  });
+
+  // Remove from queue
+  app.delete("/api/queue/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.removeFromQueue(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error removing from queue:", error);
+      res.status(500).json({ error: "Failed to remove from queue" });
+    }
+  });
+
+  // Reorder queue item
+  app.patch("/api/queue/:id/reorder", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { newPosition } = req.body;
+      
+      if (typeof newPosition !== "number" || newPosition < 1) {
+        return res.status(400).json({ error: "Invalid position" });
+      }
+      
+      await storage.reorderQueue(id, newPosition);
+      const items = await storage.getQueueItems();
+      res.json(items);
+    } catch (error) {
+      console.error("Error reordering queue:", error);
+      res.status(500).json({ error: "Failed to reorder queue" });
+    }
+  });
+
+  // Update queue item (priority, status)
+  app.patch("/api/queue/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { priority, status } = req.body;
+      
+      const updateData: Record<string, any> = {};
+      if (priority) updateData.priority = priority;
+      if (status) updateData.status = status;
+      
+      const updated = await storage.updateQueueItem(id, updateData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating queue item:", error);
+      res.status(500).json({ error: "Failed to update queue item" });
+    }
+  });
+
+  // Move item to front of queue (urgent)
+  app.post("/api/queue/:id/urgent", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.reorderQueue(id, 1);
+      await storage.updateQueueItem(id, { priority: "urgent" });
+      const items = await storage.getQueueItems();
+      res.json(items);
+    } catch (error) {
+      console.error("Error making urgent:", error);
+      res.status(500).json({ error: "Failed to make urgent" });
+    }
+  });
+
+  // Skip current project
+  app.post("/api/queue/skip-current", async (req: Request, res: Response) => {
+    try {
+      const state = await storage.getQueueState();
+      if (state?.currentProjectId) {
+        const queueItem = await storage.getQueueItemByProject(state.currentProjectId);
+        if (queueItem) {
+          await storage.updateQueueItem(queueItem.id, { 
+            status: "skipped",
+            completedAt: new Date()
+          });
+        }
+        await storage.updateQueueState({ currentProjectId: null });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error skipping current:", error);
+      res.status(500).json({ error: "Failed to skip current" });
+    }
+  });
+
+  // =============================================
+  // SERIES ARC TRACKING
+  // =============================================
+
+  // Get all milestones for a series
+  app.get("/api/series/:id/milestones", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const milestones = await storage.getMilestonesBySeries(id);
+      res.json(milestones);
+    } catch (error) {
+      console.error("Error fetching milestones:", error);
+      res.status(500).json({ error: "Failed to fetch milestones" });
+    }
+  });
+
+  // Create milestone
+  app.post("/api/series/:id/milestones", async (req: Request, res: Response) => {
+    try {
+      const seriesId = parseInt(req.params.id);
+      const milestone = await storage.createMilestone({
+        ...req.body,
+        seriesId,
+      });
+      res.status(201).json(milestone);
+    } catch (error) {
+      console.error("Error creating milestone:", error);
+      res.status(500).json({ error: "Failed to create milestone" });
+    }
+  });
+
+  // Update milestone
+  app.patch("/api/milestones/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateMilestone(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating milestone:", error);
+      res.status(500).json({ error: "Failed to update milestone" });
+    }
+  });
+
+  // Delete milestone
+  app.delete("/api/milestones/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteMilestone(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting milestone:", error);
+      res.status(500).json({ error: "Failed to delete milestone" });
+    }
+  });
+
+  // Get all plot threads for a series
+  app.get("/api/series/:id/threads", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const threads = await storage.getPlotThreadsBySeries(id);
+      res.json(threads);
+    } catch (error) {
+      console.error("Error fetching plot threads:", error);
+      res.status(500).json({ error: "Failed to fetch plot threads" });
+    }
+  });
+
+  // Create plot thread
+  app.post("/api/series/:id/threads", async (req: Request, res: Response) => {
+    try {
+      const seriesId = parseInt(req.params.id);
+      const thread = await storage.createPlotThread({
+        ...req.body,
+        seriesId,
+      });
+      res.status(201).json(thread);
+    } catch (error) {
+      console.error("Error creating plot thread:", error);
+      res.status(500).json({ error: "Failed to create plot thread" });
+    }
+  });
+
+  // Update plot thread
+  app.patch("/api/threads/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updatePlotThread(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating plot thread:", error);
+      res.status(500).json({ error: "Failed to update plot thread" });
+    }
+  });
+
+  // Delete plot thread
+  app.delete("/api/threads/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deletePlotThread(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting plot thread:", error);
+      res.status(500).json({ error: "Failed to delete plot thread" });
+    }
+  });
+
+  // Get arc verifications for a series
+  app.get("/api/series/:id/verifications", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const verifications = await storage.getArcVerificationsBySeries(id);
+      res.json(verifications);
+    } catch (error) {
+      console.error("Error fetching verifications:", error);
+      res.status(500).json({ error: "Failed to fetch verifications" });
+    }
+  });
+
+  // Create arc verification
+  app.post("/api/series/:id/verifications", async (req: Request, res: Response) => {
+    try {
+      const seriesId = parseInt(req.params.id);
+      const verification = await storage.createArcVerification({
+        ...req.body,
+        seriesId,
+      });
+      res.status(201).json(verification);
+    } catch (error) {
+      console.error("Error creating verification:", error);
+      res.status(500).json({ error: "Failed to create verification" });
+    }
+  });
+
+  // Update arc verification
+  app.patch("/api/verifications/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateArcVerification(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating verification:", error);
+      res.status(500).json({ error: "Failed to update verification" });
+    }
+  });
+
   return httpServer;
 }
