@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { Orchestrator } from "./orchestrator";
+import { queueManager } from "./queue-manager";
 import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema } from "@shared/schema";
 import multer from "multer";
 import mammoth from "mammoth";
@@ -1695,21 +1696,59 @@ IMPORTANTE:
   // Skip current project
   app.post("/api/queue/skip-current", async (req: Request, res: Response) => {
     try {
-      const state = await storage.getQueueState();
-      if (state?.currentProjectId) {
-        const queueItem = await storage.getQueueItemByProject(state.currentProjectId);
-        if (queueItem) {
-          await storage.updateQueueItem(queueItem.id, { 
-            status: "skipped",
-            completedAt: new Date()
-          });
-        }
-        await storage.updateQueueState({ currentProjectId: null });
-      }
+      await queueManager.skipCurrent();
       res.json({ success: true });
     } catch (error) {
       console.error("Error skipping current:", error);
       res.status(500).json({ error: "Failed to skip current" });
+    }
+  });
+
+  // Start queue processing
+  app.post("/api/queue/start", async (req: Request, res: Response) => {
+    try {
+      await queueManager.start();
+      const state = await queueManager.getState();
+      res.json(state);
+    } catch (error) {
+      console.error("Error starting queue:", error);
+      res.status(500).json({ error: "Failed to start queue" });
+    }
+  });
+
+  // Stop queue processing
+  app.post("/api/queue/stop", async (req: Request, res: Response) => {
+    try {
+      await queueManager.stop();
+      const state = await queueManager.getState();
+      res.json(state);
+    } catch (error) {
+      console.error("Error stopping queue:", error);
+      res.status(500).json({ error: "Failed to stop queue" });
+    }
+  });
+
+  // Pause queue processing
+  app.post("/api/queue/pause", async (req: Request, res: Response) => {
+    try {
+      await queueManager.pause();
+      const state = await queueManager.getState();
+      res.json(state);
+    } catch (error) {
+      console.error("Error pausing queue:", error);
+      res.status(500).json({ error: "Failed to pause queue" });
+    }
+  });
+
+  // Resume queue processing
+  app.post("/api/queue/resume", async (req: Request, res: Response) => {
+    try {
+      await queueManager.resume();
+      const state = await queueManager.getState();
+      res.json(state);
+    } catch (error) {
+      console.error("Error resuming queue:", error);
+      res.status(500).json({ error: "Failed to resume queue" });
     }
   });
 
