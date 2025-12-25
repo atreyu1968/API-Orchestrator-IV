@@ -1260,10 +1260,15 @@ Eventos clave: ${JSON.stringify(snapshot.keyEvents)}
 
       const result = reviewResult.result;
       
+      // Round score to integer for database storage (finalScore is integer type)
+      const scoreForDb = result?.puntuacion_global != null 
+        ? Math.round(result.puntuacion_global) 
+        : null;
+      
       await storage.updateProject(project.id, { 
         revisionCycle: revisionCycle + 1,
         finalReviewResult: result as any,
-        finalScore: result?.puntuacion_global ?? null
+        finalScore: scoreForDb
       });
 
       const currentScore = result?.puntuacion_global || 0;
