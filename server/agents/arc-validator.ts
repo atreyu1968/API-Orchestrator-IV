@@ -139,21 +139,70 @@ export class ArcValidatorAgent extends BaseAgent {
       (t.introducedVolume <= input.volumeNumber && !t.resolvedVolume)
     );
 
-    const milestonesText = milestonesForVolume.length > 0 
-      ? milestonesForVolume.map(m => `
+    if (milestonesForVolume.length === 0 && activeThreads.length === 0) {
+      return {
+        content: "No hay hitos ni hilos definidos para verificar.",
+        result: {
+          overallScore: 100,
+          passed: true,
+          milestonesChecked: 0,
+          milestonesFulfilled: 0,
+          threadsProgressed: 0,
+          threadsResolved: 0,
+          milestoneVerifications: [],
+          threadProgressions: [],
+          findings: ["No hay hitos ni hilos argumentales definidos para este volumen. Define hitos e hilos en la guia de serie para habilitar la verificacion automatica."],
+          recommendations: "Sube una guia de serie y usa 'Extraer Hitos' para definir automaticamente los puntos de verificacion del arco.",
+          arcHealthSummary: "Sin elementos de arco definidos - el volumen no puede ser verificado hasta que se definan hitos y/o hilos argumentales.",
+        }
+      };
+    }
+
+    if (!input.chaptersSummary || input.chaptersSummary.trim().length < 100) {
+      return {
+        content: "No hay contenido suficiente para verificar el arco.",
+        result: {
+          overallScore: 0,
+          passed: false,
+          milestonesChecked: milestonesForVolume.length,
+          milestonesFulfilled: 0,
+          threadsProgressed: 0,
+          threadsResolved: 0,
+          milestoneVerifications: milestonesForVolume.map(m => ({
+            milestoneId: m.id,
+            description: m.description,
+            isFulfilled: false,
+            verificationNotes: "No hay contenido de capitulos para verificar",
+            confidence: 0,
+          })),
+          threadProgressions: activeThreads.map(t => ({
+            threadId: t.id,
+            threadName: t.threadName,
+            currentStatus: t.status as "active" | "developing" | "resolved" | "abandoned",
+            progressedInVolume: false,
+            resolvedInVolume: false,
+            progressNotes: "No hay contenido de capitulos para verificar",
+          })),
+          findings: ["El proyecto no tiene capitulos escritos o el contenido es insuficiente para verificar el arco narrativo."],
+          recommendations: "Genera capitulos para este volumen antes de ejecutar la verificacion de arco.",
+          arcHealthSummary: "Verificacion imposible - se requiere contenido de capitulos para analizar.",
+        }
+      };
+    }
+
+    const milestonesText = milestonesForVolume.map(m => `
 - ID: ${m.id}
   Tipo: ${m.milestoneType}
-  Descripción: ${m.description}
-  Requerido: ${m.isRequired ? "SÍ" : "NO"}
+  Descripcion: ${m.description}
+  Requerido: ${m.isRequired ? "SI" : "NO"}
   Estado actual: ${m.isFulfilled ? "CUMPLIDO" : "PENDIENTE"}
-`).join("\n")
-      : "No hay hitos específicos definidos para este volumen.";
+`).join("\n");
 
     const threadsText = activeThreads.length > 0
       ? activeThreads.map(t => `
 - ID: ${t.id}
   Nombre: ${t.threadName}
-  Descripción: ${t.description || "Sin descripción"}
+  Descripcion: ${t.description || "Sin descripcion"}
   Introducido en: Volumen ${t.introducedVolume}
   Importancia: ${t.importance}
   Estado actual: ${t.status}
@@ -161,7 +210,7 @@ export class ArcValidatorAgent extends BaseAgent {
       : "No hay hilos argumentales activos definidos.";
 
     const previousContext = input.previousVolumesContext 
-      ? `\nCONTEXTO DE VOLÚMENES ANTERIORES:\n${input.previousVolumesContext}`
+      ? `\nCONTEXTO DE VOLUMENES ANTERIORES:\n${input.previousVolumesContext}`
       : "";
 
     const prompt = `
@@ -170,64 +219,97 @@ VOLUMEN: ${input.volumeNumber} de ${input.totalVolumes}
 PROYECTO: "${input.projectTitle}"
 ${previousContext}
 
-═══════════════════════════════════════════════════════════════════
-WORLD BIBLE (Datos Canónicos):
-═══════════════════════════════════════════════════════════════════
+WORLD BIBLE:
 ${JSON.stringify(input.worldBible, null, 2)}
 
-═══════════════════════════════════════════════════════════════════
 HITOS A VERIFICAR PARA ESTE VOLUMEN:
-═══════════════════════════════════════════════════════════════════
 ${milestonesText}
 
-═══════════════════════════════════════════════════════════════════
 HILOS ARGUMENTALES ACTIVOS:
-═══════════════════════════════════════════════════════════════════
 ${threadsText}
 
-═══════════════════════════════════════════════════════════════════
-RESUMEN DEL VOLUMEN A ANALIZAR:
-═══════════════════════════════════════════════════════════════════
-${input.chaptersSummary}
+RESUMEN DEL VOLUMEN (contenido de capitulos):
+${input.chaptersSummary.substring(0, 80000)}
 
-═══════════════════════════════════════════════════════════════════
 INSTRUCCIONES:
-═══════════════════════════════════════════════════════════════════
 1. Analiza el resumen del volumen buscando evidencia de cumplimiento de hitos
-2. Para cada hito, indica si se cumple y en qué capítulo (si es identificable)
-3. Verifica la progresión de cada hilo argumental activo
-4. Evalúa la salud general del arco de la serie en este punto
-5. Calcula una puntuación general (0-100)
+2. Para cada hito listado arriba, indica si se cumple y en que capitulo
+3. Verifica la progresion de cada hilo argumental activo
+4. Evalua la salud general del arco de la serie
+5. Calcula una puntuacion general (0-100)
 
-Responde ÚNICAMENTE con el JSON estructurado.
+IMPORTANTE: Responde UNICAMENTE con JSON valido, sin texto adicional.
 `;
 
+    console.log(`[ArcValidator] Starting verification for project "${input.projectTitle}" vol ${input.volumeNumber}`);
+    console.log(`[ArcValidator] Milestones to check: ${milestonesForVolume.length}, Active threads: ${activeThreads.length}`);
+    console.log(`[ArcValidator] Chapters summary length: ${input.chaptersSummary.length} chars`);
+
     const response = await this.generateContent(prompt);
+    
+    if (response.error) {
+      console.error("[ArcValidator] AI generation error:", response.error);
+      return {
+        ...response,
+        result: {
+          overallScore: 0,
+          passed: false,
+          milestonesChecked: milestonesForVolume.length,
+          milestonesFulfilled: 0,
+          threadsProgressed: 0,
+          threadsResolved: 0,
+          milestoneVerifications: [],
+          threadProgressions: [],
+          findings: [`Error de IA: ${response.error}`],
+          recommendations: "Reintenta la verificacion. Si el error persiste, contacta soporte.",
+          arcHealthSummary: "Error en la verificacion automatica.",
+        }
+      };
+    }
+
+    console.log(`[ArcValidator] Raw response length: ${response.content.length}`);
     
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const result = JSON.parse(jsonMatch[0]) as ArcValidatorResult;
+        console.log(`[ArcValidator] Successfully parsed result: score=${result.overallScore}, passed=${result.passed}`);
         return { ...response, result };
+      } else {
+        console.error("[ArcValidator] No JSON found in response. Content preview:", response.content.substring(0, 500));
       }
     } catch (e) {
       console.error("[ArcValidator] Failed to parse JSON response:", e);
+      console.error("[ArcValidator] Content that failed to parse:", response.content.substring(0, 1000));
     }
 
     return { 
       ...response, 
       result: { 
-        overallScore: 70,
-        passed: true,
+        overallScore: 50,
+        passed: false,
         milestonesChecked: milestonesForVolume.length,
         milestonesFulfilled: 0,
         threadsProgressed: 0,
         threadsResolved: 0,
-        milestoneVerifications: [],
-        threadProgressions: [],
-        findings: ["No se pudo analizar correctamente el arco"],
-        recommendations: "Revisar manualmente el cumplimiento de hitos y progresión de hilos",
-        arcHealthSummary: "Verificación automática fallida - requiere revisión manual",
+        milestoneVerifications: milestonesForVolume.map(m => ({
+          milestoneId: m.id,
+          description: m.description,
+          isFulfilled: false,
+          verificationNotes: "No se pudo analizar automaticamente",
+          confidence: 0,
+        })),
+        threadProgressions: activeThreads.map(t => ({
+          threadId: t.id,
+          threadName: t.threadName,
+          currentStatus: t.status as "active" | "developing" | "resolved" | "abandoned",
+          progressedInVolume: false,
+          resolvedInVolume: false,
+          progressNotes: "No se pudo analizar automaticamente",
+        })),
+        findings: ["La IA no devolvio un formato JSON valido. Verifica los logs del servidor para mas detalles."],
+        recommendations: "Reintenta la verificacion. Si el problema persiste, revisa que los capitulos tengan contenido narrativo claro.",
+        arcHealthSummary: "Verificacion parcial - el analisis automatico fallo pero se listaron los elementos a verificar.",
       }
     };
   }
