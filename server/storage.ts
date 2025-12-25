@@ -2,6 +2,7 @@ import { db } from "./db";
 import { 
   projects, chapters, worldBibles, thoughtLogs, agentStatuses, pseudonyms, styleGuides,
   series, continuitySnapshots, importedManuscripts, importedChapters, extendedGuides, activityLogs,
+  projectQueue, queueState, seriesArcMilestones, seriesPlotThreads, seriesArcVerifications,
   type Project, type InsertProject, type Chapter, type InsertChapter,
   type WorldBible, type InsertWorldBible, type ThoughtLog, type InsertThoughtLog,
   type AgentStatus, type InsertAgentStatus, type Pseudonym, type InsertPseudonym,
@@ -10,9 +11,14 @@ import {
   type ImportedManuscript, type InsertImportedManuscript,
   type ImportedChapter, type InsertImportedChapter,
   type ExtendedGuide, type InsertExtendedGuide,
-  type ActivityLog, type InsertActivityLog
+  type ActivityLog, type InsertActivityLog,
+  type ProjectQueueItem, type InsertProjectQueueItem,
+  type QueueState, type InsertQueueState,
+  type SeriesArcMilestone, type InsertSeriesArcMilestone,
+  type SeriesPlotThread, type InsertSeriesPlotThread,
+  type SeriesArcVerification, type InsertSeriesArcVerification
 } from "@shared/schema";
-import { eq, desc, and, lt, isNull, or } from "drizzle-orm";
+import { eq, desc, asc, and, lt, isNull, or, sql } from "drizzle-orm";
 
 export interface IStorage {
   createPseudonym(data: InsertPseudonym): Promise<Pseudonym>;
@@ -80,6 +86,38 @@ export interface IStorage {
   createActivityLog(data: InsertActivityLog): Promise<ActivityLog>;
   getActivityLogsByProject(projectId: number | null, limit?: number): Promise<ActivityLog[]>;
   cleanupOldActivityLogs(projectId: number | null, keepCount: number): Promise<void>;
+
+  // Project Queue operations
+  addToQueue(data: InsertProjectQueueItem): Promise<ProjectQueueItem>;
+  getQueueItems(): Promise<ProjectQueueItem[]>;
+  getQueueItem(id: number): Promise<ProjectQueueItem | undefined>;
+  getQueueItemByProject(projectId: number): Promise<ProjectQueueItem | undefined>;
+  updateQueueItem(id: number, data: Partial<ProjectQueueItem>): Promise<ProjectQueueItem | undefined>;
+  removeFromQueue(id: number): Promise<void>;
+  reorderQueue(itemId: number, newPosition: number): Promise<void>;
+  getNextInQueue(): Promise<ProjectQueueItem | undefined>;
+  
+  // Queue State operations
+  getQueueState(): Promise<QueueState | undefined>;
+  updateQueueState(data: Partial<QueueState>): Promise<QueueState>;
+  
+  // Series Arc Milestones
+  createMilestone(data: InsertSeriesArcMilestone): Promise<SeriesArcMilestone>;
+  getMilestonesBySeries(seriesId: number): Promise<SeriesArcMilestone[]>;
+  updateMilestone(id: number, data: Partial<SeriesArcMilestone>): Promise<SeriesArcMilestone | undefined>;
+  deleteMilestone(id: number): Promise<void>;
+  
+  // Series Plot Threads
+  createPlotThread(data: InsertSeriesPlotThread): Promise<SeriesPlotThread>;
+  getPlotThreadsBySeries(seriesId: number): Promise<SeriesPlotThread[]>;
+  updatePlotThread(id: number, data: Partial<SeriesPlotThread>): Promise<SeriesPlotThread | undefined>;
+  deletePlotThread(id: number): Promise<void>;
+  
+  // Series Arc Verifications
+  createArcVerification(data: InsertSeriesArcVerification): Promise<SeriesArcVerification>;
+  getArcVerificationsBySeries(seriesId: number): Promise<SeriesArcVerification[]>;
+  getArcVerificationByProject(projectId: number): Promise<SeriesArcVerification | undefined>;
+  updateArcVerification(id: number, data: Partial<SeriesArcVerification>): Promise<SeriesArcVerification | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -383,6 +421,181 @@ export class DatabaseStorage implements IStorage {
         await db.delete(activityLogs).where(eq(activityLogs.id, id));
       }
     }
+  }
+
+  // Project Queue operations
+  async addToQueue(data: InsertProjectQueueItem): Promise<ProjectQueueItem> {
+    // Get max position to add at end
+    const items = await db.select({ position: projectQueue.position })
+      .from(projectQueue)
+      .orderBy(desc(projectQueue.position))
+      .limit(1);
+    const maxPosition = items.length > 0 ? items[0].position : 0;
+    const [item] = await db.insert(projectQueue).values({
+      ...data,
+      position: data.position ?? maxPosition + 1
+    }).returning();
+    return item;
+  }
+
+  async getQueueItems(): Promise<ProjectQueueItem[]> {
+    return db.select().from(projectQueue).orderBy(asc(projectQueue.position));
+  }
+
+  async getQueueItem(id: number): Promise<ProjectQueueItem | undefined> {
+    const [item] = await db.select().from(projectQueue).where(eq(projectQueue.id, id));
+    return item;
+  }
+
+  async getQueueItemByProject(projectId: number): Promise<ProjectQueueItem | undefined> {
+    const [item] = await db.select().from(projectQueue).where(eq(projectQueue.projectId, projectId));
+    return item;
+  }
+
+  async updateQueueItem(id: number, data: Partial<ProjectQueueItem>): Promise<ProjectQueueItem | undefined> {
+    const [updated] = await db.update(projectQueue).set(data).where(eq(projectQueue.id, id)).returning();
+    return updated;
+  }
+
+  async removeFromQueue(id: number): Promise<void> {
+    const item = await this.getQueueItem(id);
+    if (!item) return;
+    
+    await db.delete(projectQueue).where(eq(projectQueue.id, id));
+    
+    // Reorder remaining items
+    await db.update(projectQueue)
+      .set({ position: sql`${projectQueue.position} - 1` })
+      .where(sql`${projectQueue.position} > ${item.position}`);
+  }
+
+  async reorderQueue(itemId: number, newPosition: number): Promise<void> {
+    const item = await this.getQueueItem(itemId);
+    if (!item) return;
+    
+    const oldPosition = item.position;
+    if (oldPosition === newPosition) return;
+    
+    if (newPosition > oldPosition) {
+      // Moving down: shift items between old and new up
+      await db.update(projectQueue)
+        .set({ position: sql`${projectQueue.position} - 1` })
+        .where(and(
+          sql`${projectQueue.position} > ${oldPosition}`,
+          sql`${projectQueue.position} <= ${newPosition}`
+        ));
+    } else {
+      // Moving up: shift items between new and old down
+      await db.update(projectQueue)
+        .set({ position: sql`${projectQueue.position} + 1` })
+        .where(and(
+          sql`${projectQueue.position} >= ${newPosition}`,
+          sql`${projectQueue.position} < ${oldPosition}`
+        ));
+    }
+    
+    await db.update(projectQueue)
+      .set({ position: newPosition })
+      .where(eq(projectQueue.id, itemId));
+  }
+
+  async getNextInQueue(): Promise<ProjectQueueItem | undefined> {
+    const [item] = await db.select().from(projectQueue)
+      .where(eq(projectQueue.status, "waiting"))
+      .orderBy(asc(projectQueue.position))
+      .limit(1);
+    return item;
+  }
+
+  // Queue State operations
+  async getQueueState(): Promise<QueueState | undefined> {
+    const [state] = await db.select().from(queueState).limit(1);
+    return state;
+  }
+
+  async updateQueueState(data: Partial<QueueState>): Promise<QueueState> {
+    const existing = await this.getQueueState();
+    if (existing) {
+      const [updated] = await db.update(queueState)
+        .set({ ...data, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .where(eq(queueState.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(queueState).values({
+        status: data.status || "stopped",
+        autoAdvance: data.autoAdvance ?? true,
+        skipOnError: data.skipOnError ?? true,
+        pauseAfterEach: data.pauseAfterEach ?? false,
+        currentProjectId: data.currentProjectId || null,
+      }).returning();
+      return created;
+    }
+  }
+
+  // Series Arc Milestones
+  async createMilestone(data: InsertSeriesArcMilestone): Promise<SeriesArcMilestone> {
+    const [milestone] = await db.insert(seriesArcMilestones).values(data).returning();
+    return milestone;
+  }
+
+  async getMilestonesBySeries(seriesId: number): Promise<SeriesArcMilestone[]> {
+    return db.select().from(seriesArcMilestones)
+      .where(eq(seriesArcMilestones.seriesId, seriesId))
+      .orderBy(asc(seriesArcMilestones.volumeNumber), asc(seriesArcMilestones.id));
+  }
+
+  async updateMilestone(id: number, data: Partial<SeriesArcMilestone>): Promise<SeriesArcMilestone | undefined> {
+    const [updated] = await db.update(seriesArcMilestones).set(data).where(eq(seriesArcMilestones.id, id)).returning();
+    return updated;
+  }
+
+  async deleteMilestone(id: number): Promise<void> {
+    await db.delete(seriesArcMilestones).where(eq(seriesArcMilestones.id, id));
+  }
+
+  // Series Plot Threads
+  async createPlotThread(data: InsertSeriesPlotThread): Promise<SeriesPlotThread> {
+    const [thread] = await db.insert(seriesPlotThreads).values(data).returning();
+    return thread;
+  }
+
+  async getPlotThreadsBySeries(seriesId: number): Promise<SeriesPlotThread[]> {
+    return db.select().from(seriesPlotThreads)
+      .where(eq(seriesPlotThreads.seriesId, seriesId))
+      .orderBy(asc(seriesPlotThreads.introducedVolume), asc(seriesPlotThreads.id));
+  }
+
+  async updatePlotThread(id: number, data: Partial<SeriesPlotThread>): Promise<SeriesPlotThread | undefined> {
+    const [updated] = await db.update(seriesPlotThreads).set(data).where(eq(seriesPlotThreads.id, id)).returning();
+    return updated;
+  }
+
+  async deletePlotThread(id: number): Promise<void> {
+    await db.delete(seriesPlotThreads).where(eq(seriesPlotThreads.id, id));
+  }
+
+  // Series Arc Verifications
+  async createArcVerification(data: InsertSeriesArcVerification): Promise<SeriesArcVerification> {
+    const [verification] = await db.insert(seriesArcVerifications).values(data).returning();
+    return verification;
+  }
+
+  async getArcVerificationsBySeries(seriesId: number): Promise<SeriesArcVerification[]> {
+    return db.select().from(seriesArcVerifications)
+      .where(eq(seriesArcVerifications.seriesId, seriesId))
+      .orderBy(desc(seriesArcVerifications.verificationDate));
+  }
+
+  async getArcVerificationByProject(projectId: number): Promise<SeriesArcVerification | undefined> {
+    const [verification] = await db.select().from(seriesArcVerifications)
+      .where(eq(seriesArcVerifications.projectId, projectId));
+    return verification;
+  }
+
+  async updateArcVerification(id: number, data: Partial<SeriesArcVerification>): Promise<SeriesArcVerification | undefined> {
+    const [updated] = await db.update(seriesArcVerifications).set(data).where(eq(seriesArcVerifications.id, id)).returning();
+    return updated;
   }
 }
 

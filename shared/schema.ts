@@ -365,4 +365,113 @@ export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ i
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
 export type ActivityLog = typeof activityLogs.$inferSelect;
 
+// Project Queue System - Autonomous project processing queue
+export const projectQueue = pgTable("project_queue", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  status: text("status").notNull().default("waiting"), // waiting, active, paused, completed, skipped, error
+  priority: text("priority").notNull().default("normal"), // low, normal, high, urgent
+  addedAt: timestamp("added_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  errorMessage: text("error_message"),
+});
+
+export const queueState = pgTable("queue_state", {
+  id: serial("id").primaryKey(),
+  status: text("status").notNull().default("stopped"), // running, paused, stopped
+  currentProjectId: integer("current_project_id").references(() => projects.id, { onDelete: "set null" }),
+  autoAdvance: boolean("auto_advance").notNull().default(true),
+  skipOnError: boolean("skip_on_error").notNull().default(true),
+  pauseAfterEach: boolean("pause_after_each").notNull().default(false),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertProjectQueueSchema = createInsertSchema(projectQueue).omit({
+  id: true,
+  addedAt: true,
+  startedAt: true,
+  completedAt: true,
+});
+
+export const insertQueueStateSchema = createInsertSchema(queueState).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type ProjectQueueItem = typeof projectQueue.$inferSelect;
+export type InsertProjectQueueItem = z.infer<typeof insertProjectQueueSchema>;
+export type QueueState = typeof queueState.$inferSelect;
+export type InsertQueueState = z.infer<typeof insertQueueStateSchema>;
+
+// Series Arc Tracking - For verifying story arc progression across volumes
+export const seriesArcMilestones = pgTable("series_arc_milestones", {
+  id: serial("id").primaryKey(),
+  seriesId: integer("series_id").notNull().references(() => series.id, { onDelete: "cascade" }),
+  volumeNumber: integer("volume_number").notNull(),
+  milestoneType: text("milestone_type").notNull(), // plot_point, character_development, revelation, conflict, resolution
+  description: text("description").notNull(),
+  isRequired: boolean("is_required").notNull().default(true),
+  isFulfilled: boolean("is_fulfilled").notNull().default(false),
+  fulfilledInProjectId: integer("fulfilled_in_project_id").references(() => projects.id, { onDelete: "set null" }),
+  fulfilledInChapter: integer("fulfilled_in_chapter"),
+  verificationNotes: text("verification_notes"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const seriesPlotThreads = pgTable("series_plot_threads", {
+  id: serial("id").primaryKey(),
+  seriesId: integer("series_id").notNull().references(() => series.id, { onDelete: "cascade" }),
+  threadName: text("thread_name").notNull(),
+  description: text("description"),
+  introducedVolume: integer("introduced_volume").notNull(),
+  introducedChapter: integer("introduced_chapter"),
+  resolvedVolume: integer("resolved_volume"),
+  resolvedChapter: integer("resolved_chapter"),
+  status: text("status").notNull().default("active"), // active, developing, resolved, abandoned
+  importance: text("importance").notNull().default("major"), // major, minor, subplot
+  relatedCharacters: text("related_characters").array(),
+  progressNotes: jsonb("progress_notes").default([]), // [{volume, chapter, note}]
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const seriesArcVerifications = pgTable("series_arc_verifications", {
+  id: serial("id").primaryKey(),
+  seriesId: integer("series_id").notNull().references(() => series.id, { onDelete: "cascade" }),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  volumeNumber: integer("volume_number").notNull(),
+  verificationDate: timestamp("verification_date").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  overallScore: integer("overall_score"), // 0-100 percentage
+  milestonesChecked: integer("milestones_checked").default(0),
+  milestonesFulfilled: integer("milestones_fulfilled").default(0),
+  threadsProgressed: integer("threads_progressed").default(0),
+  threadsResolved: integer("threads_resolved").default(0),
+  findings: jsonb("findings").default([]),
+  recommendations: text("recommendations"),
+  status: text("status").notNull().default("pending"), // pending, passed, needs_attention, failed
+});
+
+export const insertSeriesArcMilestoneSchema = createInsertSchema(seriesArcMilestones).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSeriesPlotThreadSchema = createInsertSchema(seriesPlotThreads).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSeriesArcVerificationSchema = createInsertSchema(seriesArcVerifications).omit({
+  id: true,
+  verificationDate: true,
+});
+
+export type SeriesArcMilestone = typeof seriesArcMilestones.$inferSelect;
+export type InsertSeriesArcMilestone = z.infer<typeof insertSeriesArcMilestoneSchema>;
+export type SeriesPlotThread = typeof seriesPlotThreads.$inferSelect;
+export type InsertSeriesPlotThread = z.infer<typeof insertSeriesPlotThreadSchema>;
+export type SeriesArcVerification = typeof seriesArcVerifications.$inferSelect;
+export type InsertSeriesArcVerification = z.infer<typeof insertSeriesArcVerificationSchema>;
+
 export * from "./models/chat";
