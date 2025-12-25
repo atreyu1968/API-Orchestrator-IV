@@ -127,7 +127,7 @@ export class ArcValidatorAgent extends BaseAgent {
       name: "Arc Validator",
       role: "arc-validator",
       systemPrompt: SYSTEM_PROMPT,
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       useThinking: false,
     });
   }

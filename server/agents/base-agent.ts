@@ -22,7 +22,7 @@ export interface AgentResponse {
   error?: string;
 }
 
-export type GeminiModel = "gemini-3-pro-preview" | "gemini-2.0-flash";
+export type GeminiModel = "gemini-3-pro-preview" | "gemini-2.5-flash";
 
 export interface AgentConfig {
   name: string;
