@@ -11,7 +11,8 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Library, Plus, Trash2, User, BookOpen, Check, FileText, Loader2, Pencil, X, Upload } from "lucide-react";
+import { Library, Plus, Trash2, User, BookOpen, Check, FileText, Loader2, Pencil, X, Upload, Target } from "lucide-react";
+import { ArcVerificationPanel } from "@/components/arc-verification-panel";
 import type { Pseudonym, Project, Series } from "@shared/schema";
 
 interface SeriesWithDetails extends Series {
@@ -543,6 +544,20 @@ export default function SeriesPage() {
                       ))}
                     </div>
                   )}
+                </div>
+
+                <Separator />
+
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Target className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Verificación de Arco Argumental</span>
+                  </div>
+                  <ArcVerificationPanel 
+                    seriesId={s.id} 
+                    seriesTitle={s.title}
+                    totalVolumes={s.totalPlannedBooks}
+                  />
                 </div>
               </CardContent>
             </Card>
