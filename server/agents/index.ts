@@ -8,3 +8,4 @@ export { FinalReviewerAgent, type FinalReviewerResult, type FinalReviewIssue } f
 export { ContinuitySentinelAgent, type ContinuitySentinelResult, type ContinuityIssue } from "./continuity-sentinel";
 export { VoiceRhythmAuditorAgent, type VoiceRhythmAuditorResult, type VoiceRhythmIssue } from "./voice-rhythm-auditor";
 export { SemanticRepetitionDetectorAgent, type SemanticRepetitionResult, type RepetitionCluster } from "./semantic-repetition-detector";
+export { ArcValidatorAgent, type ArcValidatorResult, type MilestoneVerification, type ThreadProgression } from "./arc-validator";

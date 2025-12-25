@@ -49,34 +49,22 @@ export function ArcVerificationPanel({ seriesId, seriesTitle, totalVolumes }: Ar
   });
 
   const { data: milestones = [], isLoading: milestonesLoading } = useQuery<SeriesArcMilestone[]>({
-    queryKey: ["/api/series", seriesId, "milestones"],
-    queryFn: async () => {
-      const res = await fetch(`/api/series/${seriesId}/milestones`);
-      return res.json();
-    },
+    queryKey: [`/api/series/${seriesId}/milestones`],
   });
 
   const { data: threads = [], isLoading: threadsLoading } = useQuery<SeriesPlotThread[]>({
-    queryKey: ["/api/series", seriesId, "threads"],
-    queryFn: async () => {
-      const res = await fetch(`/api/series/${seriesId}/threads`);
-      return res.json();
-    },
+    queryKey: [`/api/series/${seriesId}/threads`],
   });
 
   const { data: verifications = [] } = useQuery<SeriesArcVerification[]>({
-    queryKey: ["/api/series", seriesId, "verifications"],
-    queryFn: async () => {
-      const res = await fetch(`/api/series/${seriesId}/verifications`);
-      return res.json();
-    },
+    queryKey: [`/api/series/${seriesId}/verifications`],
   });
 
   const addMilestoneMutation = useMutation({
     mutationFn: async (data: typeof newMilestone) => 
-      apiRequest(`/api/series/${seriesId}/milestones`, "POST", data),
+      apiRequest("POST", `/api/series/${seriesId}/milestones`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/series", seriesId, "milestones"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/series/${seriesId}/milestones`] });
       setShowAddMilestone(false);
       setNewMilestone({ description: "", volumeNumber: 1, milestoneType: "plot_point", isRequired: true });
       toast({ title: "Hito añadido" });
@@ -85,25 +73,25 @@ export function ArcVerificationPanel({ seriesId, seriesTitle, totalVolumes }: Ar
 
   const updateMilestoneMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<SeriesArcMilestone> }) =>
-      apiRequest(`/api/milestones/${id}`, "PATCH", data),
+      apiRequest("PATCH", `/api/milestones/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/series", seriesId, "milestones"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/series/${seriesId}/milestones`] });
     },
   });
 
   const deleteMilestoneMutation = useMutation({
-    mutationFn: async (id: number) => apiRequest(`/api/milestones/${id}`, "DELETE"),
+    mutationFn: async (id: number) => apiRequest("DELETE", `/api/milestones/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/series", seriesId, "milestones"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/series/${seriesId}/milestones`] });
       toast({ title: "Hito eliminado" });
     },
   });
 
   const addThreadMutation = useMutation({
     mutationFn: async (data: typeof newThread) => 
-      apiRequest(`/api/series/${seriesId}/threads`, "POST", data),
+      apiRequest("POST", `/api/series/${seriesId}/threads`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/series", seriesId, "threads"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/series/${seriesId}/threads`] });
       setShowAddThread(false);
       setNewThread({ threadName: "", description: "", introducedVolume: 1, importance: "major" });
       toast({ title: "Hilo argumental añadido" });
@@ -112,16 +100,16 @@ export function ArcVerificationPanel({ seriesId, seriesTitle, totalVolumes }: Ar
 
   const updateThreadMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<SeriesPlotThread> }) =>
-      apiRequest(`/api/threads/${id}`, "PATCH", data),
+      apiRequest("PATCH", `/api/threads/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/series", seriesId, "threads"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/series/${seriesId}/threads`] });
     },
   });
 
   const deleteThreadMutation = useMutation({
-    mutationFn: async (id: number) => apiRequest(`/api/threads/${id}`, "DELETE"),
+    mutationFn: async (id: number) => apiRequest("DELETE", `/api/threads/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/series", seriesId, "threads"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/series/${seriesId}/threads`] });
       toast({ title: "Hilo eliminado" });
     },
   });
