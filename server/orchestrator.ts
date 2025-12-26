@@ -261,6 +261,13 @@ ${contextParts.join("\n")}
 
   async generateNovel(project: Project): Promise<void> {
     try {
+      // Check if chapters already exist (recovery after crash)
+      const existingChapters = await storage.getChaptersByProject(project.id);
+      if (existingChapters.length > 0) {
+        console.log(`[Orchestrator] Found ${existingChapters.length} existing chapters for project ${project.id}. Delegating to resumeNovel instead.`);
+        return this.resumeNovel(project);
+      }
+
       this.resetTokenTracking();
       this.currentProjectGenre = project.genre;
       await storage.updateProject(project.id, { status: "generating" });
