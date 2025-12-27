@@ -2532,14 +2532,19 @@ El capítulo debe incorporar el elemento indicado mientras mantiene la coherenci
         return res.status(400).json({ error: "No data provided. Send { data: {...} } or { sourceUrl: '...' }" });
       }
 
+      // Helper to convert date strings to Date objects and remove id/createdAt
+      const prepareForInsert = (item: any) => {
+        const { id, createdAt, ...rest } = item;
+        return rest;
+      };
+
       const results: any = { imported: {}, errors: [] };
 
       // Import in order of dependencies
       if (importData.pseudonyms?.length) {
         for (const item of importData.pseudonyms) {
           try {
-            const { id, ...rest } = item;
-            await storage.createPseudonym(rest);
+            await storage.createPseudonym(prepareForInsert(item));
             results.imported.pseudonyms = (results.imported.pseudonyms || 0) + 1;
           } catch (e: any) {
             if (!e.message?.includes('duplicate')) {
@@ -2552,8 +2557,7 @@ El capítulo debe incorporar el elemento indicado mientras mantiene la coherenci
       if (importData.styleGuides?.length) {
         for (const item of importData.styleGuides) {
           try {
-            const { id, ...rest } = item;
-            await storage.createStyleGuide(rest);
+            await storage.createStyleGuide(prepareForInsert(item));
             results.imported.styleGuides = (results.imported.styleGuides || 0) + 1;
           } catch (e: any) {
             if (!e.message?.includes('duplicate')) {
@@ -2566,7 +2570,7 @@ El capítulo debe incorporar el elemento indicado mientras mantiene la coherenci
       if (importData.extendedGuides?.length) {
         for (const item of importData.extendedGuides) {
           try {
-            const { id, ...rest } = item;
+            const rest = prepareForInsert(item);
             await storage.createExtendedGuide(rest);
             results.imported.extendedGuides = (results.imported.extendedGuides || 0) + 1;
           } catch (e: any) {
@@ -2580,8 +2584,7 @@ El capítulo debe incorporar el elemento indicado mientras mantiene la coherenci
       if (importData.series?.length) {
         for (const item of importData.series) {
           try {
-            const { id, ...rest } = item;
-            await storage.createSeries(rest);
+            await storage.createSeries(prepareForInsert(item));
             results.imported.series = (results.imported.series || 0) + 1;
           } catch (e: any) {
             if (!e.message?.includes('duplicate')) {
@@ -2594,8 +2597,7 @@ El capítulo debe incorporar el elemento indicado mientras mantiene la coherenci
       if (importData.projects?.length) {
         for (const item of importData.projects) {
           try {
-            const { id, ...rest } = item;
-            await storage.createProject(rest);
+            await storage.createProject(prepareForInsert(item));
             results.imported.projects = (results.imported.projects || 0) + 1;
           } catch (e: any) {
             if (!e.message?.includes('duplicate')) {
@@ -2608,8 +2610,7 @@ El capítulo debe incorporar el elemento indicado mientras mantiene la coherenci
       if (importData.chapters?.length) {
         for (const item of importData.chapters) {
           try {
-            const { id, ...rest } = item;
-            await storage.createChapter(rest);
+            await storage.createChapter(prepareForInsert(item));
             results.imported.chapters = (results.imported.chapters || 0) + 1;
           } catch (e: any) {
             if (!e.message?.includes('duplicate')) {
@@ -2622,8 +2623,7 @@ El capítulo debe incorporar el elemento indicado mientras mantiene la coherenci
       if (importData.worldBibles?.length) {
         for (const item of importData.worldBibles) {
           try {
-            const { id, ...rest } = item;
-            await storage.createWorldBible(rest);
+            await storage.createWorldBible(prepareForInsert(item));
             results.imported.worldBibles = (results.imported.worldBibles || 0) + 1;
           } catch (e: any) {
             if (!e.message?.includes('duplicate')) {
