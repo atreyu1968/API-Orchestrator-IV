@@ -1183,11 +1183,38 @@ ${series.seriesGuide.substring(0, 50000)}`;
       console.log(`[ExtractMilestones] Starting extraction for series ${id}`);
       console.log(`[ExtractMilestones] Series guide length: ${series.seriesGuide?.length || 0} chars`);
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{ role: "user", parts: [{ text: extractionPrompt }] }],
-        config: { temperature: 0.3 },
-      });
+      // Retry logic for rate limiting
+      let response;
+      let attempts = 0;
+      const maxAttempts = 5;
+      
+      while (attempts < maxAttempts) {
+        try {
+          attempts++;
+          console.log(`[ExtractMilestones] Attempt ${attempts}/${maxAttempts}`);
+          response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [{ role: "user", parts: [{ text: extractionPrompt }] }],
+            config: { temperature: 0.3 },
+          });
+          break; // Success, exit loop
+        } catch (err: any) {
+          const isRateLimit = err?.message?.includes("RATELIMIT") || 
+                             err?.message?.includes("429") ||
+                             err?.message?.includes("Rate limit");
+          if (isRateLimit && attempts < maxAttempts) {
+            const waitTime = Math.pow(2, attempts) * 10; // 20s, 40s, 80s, 160s
+            console.log(`[ExtractMilestones] Rate limit hit (attempt ${attempts}/${maxAttempts}). Waiting ${waitTime}s...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+          } else {
+            throw err;
+          }
+        }
+      }
+
+      if (!response) {
+        return res.status(503).json({ error: "Servicio temporalmente no disponible. Inténtalo en unos minutos." });
+      }
 
       // Try multiple ways to extract the text from the response
       let text = "";
