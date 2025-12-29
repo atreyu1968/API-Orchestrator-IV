@@ -1269,12 +1269,21 @@ export async function registerRoutes(
           continuityAnalysisStatus: "error",
           ...tokenUpdate,
         });
-        res.status(500).json({ error: "Failed to analyze manuscript continuity" });
+        console.error("[ManuscriptAnalysis] Analysis returned null result - possible rate limit or parsing error");
+        res.status(500).json({ error: "El análisis no pudo completarse. Posible límite de velocidad de la API. Espere unos minutos e intente de nuevo." });
       }
-    } catch (error) {
+    } catch (error: any) {
       activeManuscriptAnalysis.delete(manuscriptId);
-      console.error("Error analyzing manuscript continuity:", error);
-      res.status(500).json({ error: "Failed to analyze manuscript continuity" });
+      const errorMessage = String(error?.message || error || "");
+      console.error("Error analyzing manuscript continuity:", errorMessage);
+      
+      if (errorMessage.includes("RATELIMIT") || errorMessage.includes("429") || errorMessage.includes("rate limit")) {
+        res.status(429).json({ error: "Límite de velocidad alcanzado. Por favor, espere unos minutos e intente de nuevo." });
+      } else if (errorMessage.includes("TIMEOUT")) {
+        res.status(504).json({ error: "El análisis tardó demasiado tiempo. El manuscrito puede ser muy largo." });
+      } else {
+        res.status(500).json({ error: `Error al analizar: ${errorMessage.substring(0, 100)}` });
+      }
     }
   });
   

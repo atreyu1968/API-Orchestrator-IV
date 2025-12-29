@@ -98,8 +98,9 @@ Responde SIEMPRE en formato JSON válido con esta estructura exacta:
 
   async analyze(input: AnalyzerInput): Promise<AnalyzerResult> {
     const chaptersSummary = input.chapters.map(ch => {
-      const preview = ch.content.length > 3000 
-        ? ch.content.substring(0, 1500) + "\n\n[...]\n\n" + ch.content.substring(ch.content.length - 1500)
+      const maxChapterLength = 2000;
+      const preview = ch.content.length > maxChapterLength 
+        ? ch.content.substring(0, 1000) + "\n\n[...contenido resumido...]\n\n" + ch.content.substring(ch.content.length - 1000)
         : ch.content;
       return `### Cap ${ch.chapterNumber}${ch.title ? `: ${ch.title}` : ""}\n${preview}`;
     }).join("\n\n---\n\n");
