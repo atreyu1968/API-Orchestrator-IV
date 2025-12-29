@@ -41,11 +41,11 @@ export default function ManuscriptPage() {
 
     const content = sortChaptersForDisplay(chapters.filter(c => c.content))
       .map(c => {
-        const chapterContent = cleanContent(c.content || "");
-        const startsWithHeading = /^#/.test(chapterContent);
+        let chapterContent = cleanContent(c.content || "");
         
-        if (startsWithHeading) {
-          return chapterContent;
+        const headingMatch = chapterContent.match(/^(#{1,2})\s*.+\n+/);
+        if (headingMatch) {
+          chapterContent = chapterContent.substring(headingMatch[0].length).trim();
         }
         
         let header: string;
@@ -60,7 +60,7 @@ export default function ManuscriptPage() {
         }
         return `${header}\n\n${chapterContent}`;
       })
-      .join('\n\n---\n\n');
+      .join('\n\n\n');
 
     const blob = new Blob([content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
