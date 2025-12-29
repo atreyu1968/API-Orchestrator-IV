@@ -241,15 +241,23 @@ export class FinalReviewerAgent extends BaseAgent {
       pasadaInfo = "\n\nEsta es tu PASADA #1 - AUDITORÍA COMPLETA. Analiza exhaustivamente y reporta máximo 5 issues (los más graves). OBJETIVO: puntuación 9+.";
     } else if (input.pasadaNumero && input.pasadaNumero >= 2) {
       pasadaInfo = `\n\nEsta es tu PASADA #${input.pasadaNumero} - VERIFICACIÓN Y RE-EVALUACIÓN.
-Issues previos: ${input.issuesPreviosCorregidos?.map(i => `- ${i}`).join("\n") || "Ninguno"}
 
-INSTRUCCIONES:
-1. Verifica si los issues anteriores fueron corregidos
-2. Re-evalúa la puntuación global con criterio fresco
-3. Si puntuación >= 9 → APROBADO
-4. Si puntuación < 9 → REQUIERE_REVISION con instrucciones específicas en "como_subir_a_9"
+═══════════════════════════════════════════════════════════════════
+ISSUES YA CORREGIDOS EN PASADAS ANTERIORES (NO REPORTAR DE NUEVO):
+═══════════════════════════════════════════════════════════════════
+${input.issuesPreviosCorregidos?.map(i => `- ${i}`).join("\n") || "Ninguno"}
 
-RECUERDA: El objetivo es alcanzar 9+ puntos. No apruebes con puntuación inferior.`;
+REGLAS CRÍTICAS PARA ESTA PASADA:
+1. Los capítulos HAN SIDO REESCRITOS desde la última evaluación
+2. NO reportes issues que aparecen en la lista anterior - YA fueron corregidos
+3. Solo reporta problemas NUEVOS o que NO estaban en la lista anterior
+4. Evalúa el manuscrito CON OJOS FRESCOS - el texto ha cambiado
+5. Si puntuación >= 9 → APROBADO (no busques problemas inexistentes)
+6. Si puntuación < 9 → REQUIERE_REVISION con instrucciones específicas NUEVAS
+
+IMPORTANTE: Si un issue previo fue corregido satisfactoriamente, NO lo menciones.
+Si el mismo problema persiste EXACTAMENTE igual, puedes reportarlo, pero con nueva redacción.
+El objetivo es alcanzar 9+ puntos. No apruebes con puntuación inferior.`;
     }
 
     const prompt = `
