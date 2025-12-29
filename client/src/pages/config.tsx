@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Settings, Trash2, BookOpen, Clock, Pencil, FileText, Upload, BookMarked } from "lucide-react";
 import { Link } from "wouter";
-import type { Project, ExtendedGuide, Series } from "@shared/schema";
+import type { Project, ExtendedGuide, Series, ImportedManuscript } from "@shared/schema";
 
 export default function ConfigPage() {
   const { toast } = useToast();
@@ -37,6 +37,10 @@ export default function ConfigPage() {
 
   const { data: extendedGuides = [], isLoading: isLoadingGuides } = useQuery<ExtendedGuide[]>({
     queryKey: ["/api/extended-guides"],
+  });
+
+  const { data: allManuscripts = [] } = useQuery<ImportedManuscript[]>({
+    queryKey: ["/api/imported-manuscripts"],
   });
 
   const createProjectMutation = useMutation({
@@ -493,7 +497,22 @@ export default function ConfigPage() {
                   <Label>Serie / Saga</Label>
                   <Select 
                     value={editSeriesId?.toString() || "none"} 
-                    onValueChange={(value) => setEditSeriesId(value === "none" ? null : parseInt(value))}
+                    onValueChange={(value) => {
+                      const newSeriesId = value === "none" ? null : parseInt(value);
+                      setEditSeriesId(newSeriesId);
+                      if (newSeriesId) {
+                        const seriesProjects = projects.filter(p => p.seriesId === newSeriesId && p.id !== editingProject?.id);
+                        const seriesManuscripts = allManuscripts.filter(m => m.seriesId === newSeriesId);
+                        const existingOrders = [
+                          ...seriesProjects.map(p => p.seriesOrder),
+                          ...seriesManuscripts.map(m => m.seriesOrder)
+                        ].filter((o): o is number => o !== null);
+                        const suggestedOrder = existingOrders.length > 0 ? Math.max(...existingOrders) + 1 : 1;
+                        setEditSeriesOrder(suggestedOrder);
+                      } else {
+                        setEditSeriesOrder(null);
+                      }
+                    }}
                   >
                     <SelectTrigger data-testid="select-edit-series">
                       <SelectValue placeholder="Selecciona una serie" />

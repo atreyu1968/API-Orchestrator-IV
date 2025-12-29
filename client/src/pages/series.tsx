@@ -12,13 +12,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Library, Plus, Trash2, User, BookOpen, Check, FileText, Loader2, Pencil, X, Upload, Target, Sparkles, ChevronDown } from "lucide-react";
+import { Library, Plus, Trash2, User, BookOpen, Check, FileText, Loader2, Pencil, X, Upload, Target, Sparkles, ChevronDown, Link2 } from "lucide-react";
 import { ArcVerificationPanel } from "@/components/arc-verification-panel";
-import type { Pseudonym, Project, Series } from "@shared/schema";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import type { Pseudonym, Project, Series, ImportedManuscript } from "@shared/schema";
+
+interface SeriesVolume {
+  type: "project" | "imported";
+  id: number;
+  title: string;
+  seriesOrder: number | null;
+  status: string;
+  wordCount: number;
+}
 
 interface SeriesWithDetails extends Series {
   pseudonym: Pseudonym | null;
   projects: Project[];
+  importedManuscripts?: ImportedManuscript[];
+  volumes?: SeriesVolume[];
   completedVolumes: number;
 }
 
@@ -38,6 +50,10 @@ export default function SeriesPage() {
   
   const [uploadingSeriesId, setUploadingSeriesId] = useState<number | null>(null);
   const seriesGuideInputRef = useRef<HTMLInputElement>(null);
+  
+  const [linkingSeriesId, setLinkingSeriesId] = useState<number | null>(null);
+  const [linkManuscriptId, setLinkManuscriptId] = useState<string>("");
+  const [linkSeriesOrder, setLinkSeriesOrder] = useState<number>(1);
 
   const { data: registry = [], isLoading } = useQuery<SeriesWithDetails[]>({
     queryKey: ["/api/series/registry"],
@@ -45,6 +61,10 @@ export default function SeriesPage() {
 
   const { data: pseudonyms = [] } = useQuery<Pseudonym[]>({
     queryKey: ["/api/pseudonyms"],
+  });
+  
+  const { data: allManuscripts = [] } = useQuery<ImportedManuscript[]>({
+    queryKey: ["/api/imported-manuscripts"],
   });
 
   const createSeriesMutation = useMutation({
@@ -175,6 +195,59 @@ export default function SeriesPage() {
       toast({ title: "Error", description: details, variant: "destructive" });
     },
   });
+
+  const linkManuscriptMutation = useMutation({
+    mutationFn: async ({ seriesId, manuscriptId, seriesOrder }: { seriesId: number; manuscriptId: number; seriesOrder: number }) => {
+      const response = await apiRequest("POST", `/api/series/${seriesId}/link-manuscript`, { manuscriptId, seriesOrder });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/series/registry"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/imported-manuscripts"] });
+      setLinkingSeriesId(null);
+      setLinkManuscriptId("");
+      setLinkSeriesOrder(1);
+      toast({ title: "Volumen vinculado", description: "El manuscrito ha sido añadido a la serie" });
+    },
+    onError: async (error: any) => {
+      let details = "No se pudo vincular el manuscrito";
+      try {
+        if (error?.response) {
+          const data = await error.response.json();
+          details = data.error || details;
+        }
+      } catch { /* ignore */ }
+      toast({ title: "Error", description: details, variant: "destructive" });
+    },
+  });
+
+  const handleLinkManuscript = () => {
+    if (!linkingSeriesId || !linkManuscriptId) return;
+    linkManuscriptMutation.mutate({
+      seriesId: linkingSeriesId,
+      manuscriptId: parseInt(linkManuscriptId),
+      seriesOrder: linkSeriesOrder,
+    });
+  };
+
+  const openLinkModal = async (seriesId: number) => {
+    setLinkingSeriesId(seriesId);
+    setLinkManuscriptId("");
+    
+    try {
+      const response = await fetch(`/api/series/${seriesId}/volumes`, { credentials: "include" });
+      if (response.ok) {
+        const data = await response.json();
+        setLinkSeriesOrder(data.nextOrder || 1);
+      } else {
+        setLinkSeriesOrder(1);
+      }
+    } catch {
+      setLinkSeriesOrder(1);
+    }
+  };
+
+  const availableManuscriptsForLinking = allManuscripts.filter(m => !m.seriesId);
 
   const handleCreateSeries = () => {
     if (!newTitle.trim()) return;
@@ -558,38 +631,62 @@ export default function SeriesPage() {
                 <Separator />
 
                 <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <BookOpen className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Volumenes</span>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Volumenes</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openLinkModal(s.id)}
+                      disabled={availableManuscriptsForLinking.length === 0}
+                      data-testid={`button-link-manuscript-${s.id}`}
+                    >
+                      <Link2 className="h-4 w-4 mr-2" />
+                      Vincular Volumen Existente
+                    </Button>
                   </div>
                   
-                  {s.projects.length === 0 ? (
+                  {(!s.volumes || s.volumes.length === 0) ? (
                     <div className="text-sm text-muted-foreground/60 py-4 text-center bg-muted/30 rounded-md">
-                      No hay proyectos asignados a esta serie todavia.
+                      No hay volumenes en esta serie todavia.
                       <br />
-                      Crea un proyecto y selecciona esta serie en la configuracion.
+                      Vincula un manuscrito importado o crea un nuevo proyecto.
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {s.projects.map((project) => (
+                      {s.volumes.map((vol) => (
                         <div
-                          key={project.id}
+                          key={`${vol.type}-${vol.id}`}
                           className="flex items-center justify-between gap-4 p-3 rounded-md bg-muted/50"
-                          data-testid={`project-item-${project.id}`}
+                          data-testid={`volume-item-${vol.type}-${vol.id}`}
                         >
                           <div className="flex items-center gap-3 flex-1 min-w-0">
                             <Badge variant="outline" className="shrink-0">
-                              Vol. {project.seriesOrder || "?"}
+                              Vol. {vol.seriesOrder || "?"}
                             </Badge>
-                            <span className="font-medium truncate">{project.title}</span>
+                            <span className="font-medium truncate">{vol.title}</span>
+                            {vol.type === "imported" && (
+                              <Badge variant="secondary" className="shrink-0">
+                                <FileText className="h-3 w-3 mr-1" />
+                                Importado
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge className={statusColors[project.status] || ""}>
-                              {statusLabels[project.status] || project.status}
-                            </Badge>
-                            {project.finalScore && (
+                            {vol.type === "project" ? (
+                              <Badge className={statusColors[vol.status] || ""}>
+                                {statusLabels[vol.status] || vol.status}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-green-600 dark:text-green-400">
+                                Completado
+                              </Badge>
+                            )}
+                            {vol.wordCount > 0 && (
                               <Badge variant="secondary">
-                                {project.finalScore}/10
+                                {vol.wordCount.toLocaleString()} palabras
                               </Badge>
                             )}
                           </div>
@@ -632,6 +729,67 @@ export default function SeriesPage() {
           }
         }}
       />
+
+      <Dialog open={linkingSeriesId !== null} onOpenChange={(open) => !open && setLinkingSeriesId(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Vincular Volumen Existente</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Manuscrito Importado</Label>
+              <Select value={linkManuscriptId} onValueChange={setLinkManuscriptId}>
+                <SelectTrigger data-testid="select-link-manuscript">
+                  <SelectValue placeholder="Seleccionar manuscrito..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableManuscriptsForLinking.map((m) => (
+                    <SelectItem key={m.id} value={m.id.toString()}>
+                      {m.title} ({m.totalChapters} caps.)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {availableManuscriptsForLinking.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No hay manuscritos disponibles. Importa un manuscrito primero desde la seccion "Edicion".
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Numero de Volumen</Label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={linkSeriesOrder}
+                onChange={(e) => setLinkSeriesOrder(parseInt(e.target.value) || 1)}
+                data-testid="input-link-series-order"
+              />
+              <p className="text-xs text-muted-foreground">
+                Este numero indica la posicion del libro en la serie.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                onClick={handleLinkManuscript}
+                disabled={!linkManuscriptId || linkManuscriptMutation.isPending}
+                data-testid="button-confirm-link"
+              >
+                {linkManuscriptMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Link2 className="h-4 w-4 mr-2" />
+                )}
+                Vincular
+              </Button>
+              <Button variant="outline" onClick={() => setLinkingSeriesId(null)}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
