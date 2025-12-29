@@ -135,6 +135,7 @@ export default function Dashboard() {
   const { data: chapters = [] } = useQuery<Chapter[]>({
     queryKey: ["/api/projects", currentProject?.id, "chapters"],
     enabled: !!currentProject?.id,
+    refetchInterval: currentProject?.status === "generating" ? 3000 : false,
   });
 
   const fetchLogs = () => {
