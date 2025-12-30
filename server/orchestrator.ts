@@ -438,6 +438,21 @@ ${chapterSummaries || "Sin capítulos disponibles"}
 
       const worldBibleData = this.parseArchitectOutput(architectResult.content);
       
+      const hasCharacters = (worldBibleData.world_bible?.personajes?.length || 0) > 0;
+      const hasChapters = (worldBibleData.escaleta_capitulos?.length || 0) > 0;
+      
+      if (!hasCharacters || !hasChapters) {
+        const errorMsg = `World Bible vacía o incompleta: ${hasCharacters ? '✓' : '✗'} personajes (${worldBibleData.world_bible?.personajes?.length || 0}), ${hasChapters ? '✓' : '✗'} capítulos (${worldBibleData.escaleta_capitulos?.length || 0}). El Arquitecto puede haber devuelto un formato inválido.`;
+        console.error(`[Orchestrator] CRITICAL: ${errorMsg}`);
+        console.error(`[Orchestrator] Architect raw content preview (first 3000 chars):\n${architectResult.content?.substring(0, 3000)}`);
+        this.callbacks.onAgentStatus("architect", "error", errorMsg);
+        this.callbacks.onError(`Error del Arquitecto: ${errorMsg}`);
+        await storage.updateProject(project.id, { status: "failed" });
+        return;
+      }
+      
+      console.log(`[Orchestrator] World Bible parsed successfully: ${worldBibleData.world_bible?.personajes?.length || 0} characters, ${worldBibleData.escaleta_capitulos?.length || 0} chapters`);
+      
       const worldBible = await storage.createWorldBible({
         projectId: project.id,
         timeline: this.convertTimeline(worldBibleData),
