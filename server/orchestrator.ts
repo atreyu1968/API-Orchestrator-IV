@@ -2269,9 +2269,24 @@ ${chapterSummaries || "Sin capítulos disponibles"}
   private parseArchitectOutput(content: string): ParsedWorldBible {
     console.log(`[Orchestrator] Parsing architect output, length: ${content.length}`);
     
+    // Pre-processing: Clean content
+    let cleanContent = content
+      .replace(/^\uFEFF/, '')  // Remove BOM
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')  // Remove control chars
+      .trim();
+    
+    // Remove markdown code blocks if present
+    const jsonBlockMatch = cleanContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonBlockMatch) {
+      console.log(`[Orchestrator] Found markdown code block, extracting JSON`);
+      cleanContent = jsonBlockMatch[1].trim();
+    }
+    
+    console.log(`[Orchestrator] Clean content length: ${cleanContent.length}, starts with: "${cleanContent.substring(0, 50)}"`);
+    
     // Método 1: Parse directo
     try {
-      const parsed = JSON.parse(content);
+      const parsed = JSON.parse(cleanContent);
       console.log(`[Orchestrator] Direct JSON parse SUCCESS - Characters: ${parsed.world_bible?.personajes?.length || 0}, Chapters: ${parsed.escaleta_capitulos?.length || 0}`);
       return this.sanitizeChapterTitles(parsed);
     } catch (e1) {
@@ -2280,18 +2295,15 @@ ${chapterSummaries || "Sin capítulos disponibles"}
     
     // Método 2: Extraer JSON del texto (buscar estructura con world_bible)
     try {
-      // Buscar el inicio del JSON real (puede estar precedido por texto)
-      const worldBibleMatch = content.match(/"world_bible"\s*:/);
+      const worldBibleMatch = cleanContent.match(/"world_bible"\s*:/);
       if (worldBibleMatch && worldBibleMatch.index !== undefined) {
-        // Encontrar la llave de apertura antes de world_bible
-        let braceStart = content.lastIndexOf('{', worldBibleMatch.index);
+        let braceStart = cleanContent.lastIndexOf('{', worldBibleMatch.index);
         if (braceStart !== -1) {
-          // Contar llaves para encontrar el cierre correcto
           let depth = 0;
           let jsonEnd = -1;
-          for (let i = braceStart; i < content.length; i++) {
-            if (content[i] === '{') depth++;
-            if (content[i] === '}') {
+          for (let i = braceStart; i < cleanContent.length; i++) {
+            if (cleanContent[i] === '{') depth++;
+            if (cleanContent[i] === '}') {
               depth--;
               if (depth === 0) {
                 jsonEnd = i + 1;
@@ -2301,7 +2313,7 @@ ${chapterSummaries || "Sin capítulos disponibles"}
           }
           
           if (jsonEnd !== -1) {
-            const jsonStr = content.substring(braceStart, jsonEnd);
+            const jsonStr = cleanContent.substring(braceStart, jsonEnd);
             const parsed = JSON.parse(jsonStr);
             console.log(`[Orchestrator] Extracted JSON SUCCESS - Characters: ${parsed.world_bible?.personajes?.length || 0}, Chapters: ${parsed.escaleta_capitulos?.length || 0}`);
             return this.sanitizeChapterTitles(parsed);
@@ -2314,11 +2326,11 @@ ${chapterSummaries || "Sin capítulos disponibles"}
     
     // Método 3: Buscar primer { y último } (fallback)
     try {
-      const firstBrace = content.indexOf('{');
-      const lastBrace = content.lastIndexOf('}');
+      const firstBrace = cleanContent.indexOf('{');
+      const lastBrace = cleanContent.lastIndexOf('}');
       
       if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-        const jsonStr = content.substring(firstBrace, lastBrace + 1);
+        const jsonStr = cleanContent.substring(firstBrace, lastBrace + 1);
         const parsed = JSON.parse(jsonStr);
         console.log(`[Orchestrator] Fallback JSON parse SUCCESS - Characters: ${parsed.world_bible?.personajes?.length || 0}, Chapters: ${parsed.escaleta_capitulos?.length || 0}`);
         return this.sanitizeChapterTitles(parsed);
@@ -2327,9 +2339,29 @@ ${chapterSummaries || "Sin capítulos disponibles"}
       console.log(`[Orchestrator] Fallback parse failed: ${(e3 as Error).message}`);
     }
     
-    // CRITICAL: Log the first 2000 chars to see what architect returned
-    console.error(`[Orchestrator] ALL PARSE METHODS FAILED. Content preview (first 2000 chars):\n${content.substring(0, 2000)}`);
-    console.error(`[Orchestrator] Content ends with (last 500 chars):\n${content.substring(content.length - 500)}`);
+    // Método 4: Try with repaired JSON (fix common issues)
+    try {
+      let repairedContent = cleanContent
+        .replace(/,\s*}/g, '}')  // Remove trailing commas before }
+        .replace(/,\s*]/g, ']')  // Remove trailing commas before ]
+        .replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3');  // Quote unquoted keys
+      
+      const firstBrace = repairedContent.indexOf('{');
+      const lastBrace = repairedContent.lastIndexOf('}');
+      
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        const jsonStr = repairedContent.substring(firstBrace, lastBrace + 1);
+        const parsed = JSON.parse(jsonStr);
+        console.log(`[Orchestrator] Repaired JSON parse SUCCESS - Characters: ${parsed.world_bible?.personajes?.length || 0}, Chapters: ${parsed.escaleta_capitulos?.length || 0}`);
+        return this.sanitizeChapterTitles(parsed);
+      }
+    } catch (e4) {
+      console.log(`[Orchestrator] Repaired JSON parse failed: ${(e4 as Error).message}`);
+    }
+    
+    // CRITICAL: Log the first 3000 chars to see what architect returned
+    console.error(`[Orchestrator] ALL PARSE METHODS FAILED. Content preview (first 3000 chars):\n${cleanContent.substring(0, 3000)}`);
+    console.error(`[Orchestrator] Content ends with (last 500 chars):\n${cleanContent.substring(cleanContent.length - 500)}`);
     
     return {
       world_bible: { personajes: [], lugares: [], reglas_lore: [] },
