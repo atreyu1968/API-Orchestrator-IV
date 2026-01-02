@@ -16,7 +16,8 @@ import {
   type QueueState, type InsertQueueState,
   type SeriesArcMilestone, type InsertSeriesArcMilestone,
   type SeriesPlotThread, type InsertSeriesPlotThread,
-  type SeriesArcVerification, type InsertSeriesArcVerification
+  type SeriesArcVerification, type InsertSeriesArcVerification,
+  type Translation, type InsertTranslation, translations
 } from "@shared/schema";
 import { eq, desc, asc, and, lt, isNull, or, sql } from "drizzle-orm";
 
@@ -129,6 +130,13 @@ export interface IStorage {
   getArcVerificationsBySeries(seriesId: number): Promise<SeriesArcVerification[]>;
   getArcVerificationByProject(projectId: number): Promise<SeriesArcVerification | undefined>;
   updateArcVerification(id: number, data: Partial<SeriesArcVerification>): Promise<SeriesArcVerification | undefined>;
+
+  // Translations
+  createTranslation(data: InsertTranslation): Promise<Translation>;
+  getTranslation(id: number): Promise<Translation | undefined>;
+  getAllTranslations(): Promise<Translation[]>;
+  getTranslationsByProject(projectId: number): Promise<Translation[]>;
+  deleteTranslation(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -662,6 +670,31 @@ export class DatabaseStorage implements IStorage {
   async updateArcVerification(id: number, data: Partial<SeriesArcVerification>): Promise<SeriesArcVerification | undefined> {
     const [updated] = await db.update(seriesArcVerifications).set(data).where(eq(seriesArcVerifications.id, id)).returning();
     return updated;
+  }
+
+  // Translations
+  async createTranslation(data: InsertTranslation): Promise<Translation> {
+    const [translation] = await db.insert(translations).values(data).returning();
+    return translation;
+  }
+
+  async getTranslation(id: number): Promise<Translation | undefined> {
+    const [translation] = await db.select().from(translations).where(eq(translations.id, id));
+    return translation;
+  }
+
+  async getAllTranslations(): Promise<Translation[]> {
+    return db.select().from(translations).orderBy(desc(translations.createdAt));
+  }
+
+  async getTranslationsByProject(projectId: number): Promise<Translation[]> {
+    return db.select().from(translations)
+      .where(eq(translations.projectId, projectId))
+      .orderBy(desc(translations.createdAt));
+  }
+
+  async deleteTranslation(id: number): Promise<void> {
+    await db.delete(translations).where(eq(translations.id, id));
   }
 }
 

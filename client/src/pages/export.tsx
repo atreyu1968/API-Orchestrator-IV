@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,16 +16,18 @@ import {
   CheckCircle,
   BookOpen,
   DollarSign,
+  Trash2,
+  Library,
 } from "lucide-react";
 
 const SUPPORTED_LANGUAGES = [
-  { code: "es", name: "Espa\u00f1ol" },
+  { code: "es", name: "Español" },
   { code: "en", name: "English" },
-  { code: "fr", name: "Fran\u00e7ais" },
+  { code: "fr", name: "Français" },
   { code: "de", name: "Deutsch" },
   { code: "it", name: "Italiano" },
-  { code: "pt", name: "Portugu\u00eas" },
-  { code: "ca", name: "Catal\u00e0" },
+  { code: "pt", name: "Português" },
+  { code: "ca", name: "Català" },
 ];
 
 interface CompletedProject {
@@ -38,25 +40,25 @@ interface CompletedProject {
   createdAt: string;
 }
 
+interface SavedTranslation {
+  id: number;
+  projectId: number;
+  projectTitle: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  chaptersTranslated: number;
+  totalWords: number;
+  inputTokens: number;
+  outputTokens: number;
+  createdAt: string;
+}
+
 interface ExportResult {
   projectId: number;
   title: string;
   chapterCount: number;
   totalWords: number;
   markdown: string;
-}
-
-interface TranslateResult {
-  projectId: number;
-  title: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-  chaptersTranslated: number;
-  markdown: string;
-  tokensUsed: {
-    input: number;
-    output: number;
-  };
 }
 
 const INPUT_PRICE_PER_MILLION = 0.80;
@@ -84,15 +86,22 @@ function formatNumber(num: number): string {
   return num.toLocaleString("es-ES");
 }
 
+function getLangName(code: string): string {
+  return SUPPORTED_LANGUAGES.find(l => l.code === code)?.name || code.toUpperCase();
+}
+
 export default function ExportPage() {
   const { toast } = useToast();
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [sourceLanguage, setSourceLanguage] = useState("es");
   const [targetLanguage, setTargetLanguage] = useState("en");
-  const [translationResult, setTranslationResult] = useState<TranslateResult | null>(null);
 
   const { data: completedProjects = [], isLoading } = useQuery<CompletedProject[]>({
     queryKey: ["/api/projects/completed"],
+  });
+
+  const { data: savedTranslations = [], isLoading: isLoadingTranslations } = useQuery<SavedTranslation[]>({
+    queryKey: ["/api/translations"],
   });
 
   const exportMutation = useMutation({
@@ -106,7 +115,7 @@ export default function ExportPage() {
       downloadMarkdown(`${safeFilename}.md`, data.markdown);
       toast({
         title: "Exportado",
-        description: `${data.chapterCount} cap\u00edtulos exportados (${formatNumber(data.totalWords)} palabras)`,
+        description: `${data.chapterCount} capítulos exportados (${formatNumber(data.totalWords)} palabras)`,
       });
     },
     onError: (error: Error) => {
@@ -121,22 +130,61 @@ export default function ExportPage() {
   const translateMutation = useMutation({
     mutationFn: async ({ projectId, sourceLanguage, targetLanguage }: { projectId: number; sourceLanguage: string; targetLanguage: string }) => {
       const response = await apiRequest("POST", `/api/projects/${projectId}/translate`, { sourceLanguage, targetLanguage });
-      return response.json() as Promise<TranslateResult>;
+      return response.json();
     },
-    onSuccess: (data) => {
-      const langName = SUPPORTED_LANGUAGES.find(l => l.code === data.targetLanguage)?.name || data.targetLanguage;
-      const cost = calculateCost(data.tokensUsed.input, data.tokensUsed.output);
-      
-      setTranslationResult(data);
-      
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/translations"] });
       toast({
-        title: "Traducción completada",
-        description: `${data.chaptersTranslated} capítulos traducidos a ${langName}. Coste: $${cost.toFixed(4)}`,
+        title: "Traducción guardada",
+        description: "La traducción se ha guardado en el repositorio. Puedes descargarla cuando quieras.",
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Error de traducci\u00f3n",
+        title: "Error de traducción",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const downloadTranslationMutation = useMutation({
+    mutationFn: async (translationId: number) => {
+      const response = await fetch(`/api/translations/${translationId}/download`);
+      if (!response.ok) throw new Error("Failed to download translation");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      const safeFilename = data.projectTitle.replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g, "").replace(/\s+/g, "_");
+      downloadMarkdown(`${safeFilename}_${data.targetLanguage.toUpperCase()}.md`, data.markdown);
+      toast({
+        title: "Descargado",
+        description: `${data.projectTitle} en ${getLangName(data.targetLanguage)}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteTranslationMutation = useMutation({
+    mutationFn: async (translationId: number) => {
+      await apiRequest("DELETE", `/api/translations/${translationId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/translations"] });
+      toast({
+        title: "Eliminado",
+        description: "Traducción eliminada del repositorio",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
         description: error.message,
         variant: "destructive",
       });
@@ -150,7 +198,7 @@ export default function ExportPage() {
       <div>
         <h1 className="text-3xl font-bold">Exportar y Traducir</h1>
         <p className="text-muted-foreground">
-          Exporta proyectos completados en Markdown o trad\u00facelos a otros idiomas
+          Exporta proyectos completados en Markdown o tradúcelos a otros idiomas
         </p>
       </div>
 
@@ -174,10 +222,10 @@ export default function ExportPage() {
               <div className="text-center py-8 text-muted-foreground">
                 <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-50" />
                 <p>No hay proyectos completados</p>
-                <p className="text-sm">Los proyectos aparecer\u00e1n aqu\u00ed cuando finalicen con \u00e9xito</p>
+                <p className="text-sm">Los proyectos aparecerán aquí cuando finalicen con éxito</p>
               </div>
             ) : (
-              <ScrollArea className="h-[400px]">
+              <ScrollArea className="h-[300px]">
                 <div className="space-y-3 pr-4">
                   {completedProjects.map((project) => (
                     <Card
@@ -201,15 +249,15 @@ export default function ExportPage() {
                         </div>
                       </CardHeader>
                       <CardContent>
-                        <div className="flex items-center justify-between text-sm text-muted-foreground">
+                        <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground flex-wrap">
                           <div className="flex items-center gap-1">
                             <FileText className="h-3 w-3" />
-                            <span>{project.chapterCount} cap\u00edtulos</span>
+                            <span>{project.chapterCount} cap.</span>
                           </div>
                           <span>{formatNumber(project.totalWords)} palabras</span>
                           {project.finalScore && (
                             <Badge variant="outline">
-                              {project.finalScore.toFixed(1)}/10
+                              {project.finalScore}/10
                             </Badge>
                           )}
                         </div>
@@ -230,7 +278,7 @@ export default function ExportPage() {
                 Exportar Markdown
               </CardTitle>
               <CardDescription>
-                Descarga el manuscrito completo en formato Markdown
+                Descarga el manuscrito original en formato Markdown
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -239,7 +287,7 @@ export default function ExportPage() {
                   <div className="p-3 bg-muted rounded-md">
                     <p className="font-medium">{selectedProject.title}</p>
                     <p className="text-sm text-muted-foreground">
-                      {selectedProject.chapterCount} cap\u00edtulos \u2022 {formatNumber(selectedProject.totalWords)} palabras
+                      {selectedProject.chapterCount} capítulos - {formatNumber(selectedProject.totalWords)} palabras
                     </p>
                   </div>
                   <Button
@@ -269,10 +317,10 @@ export default function ExportPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Languages className="h-5 w-5" />
-                Traducir Proyecto
+                Nueva Traducción
               </CardTitle>
               <CardDescription>
-                Traduce el manuscrito a otro idioma con IA
+                Traduce y guarda en el repositorio
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -317,7 +365,7 @@ export default function ExportPage() {
                       <span className="font-medium">Coste estimado</span>
                     </div>
                     <p className="text-muted-foreground mt-1">
-                      Aproximadamente ${((selectedProject.totalWords * 1.5 / 1_000_000) * (INPUT_PRICE_PER_MILLION + OUTPUT_PRICE_PER_MILLION * 1.2)).toFixed(2)} - ${((selectedProject.totalWords * 2 / 1_000_000) * (INPUT_PRICE_PER_MILLION + OUTPUT_PRICE_PER_MILLION * 1.5)).toFixed(2)} dependiendo del idioma
+                      ~${((selectedProject.totalWords * 1.5 / 1_000_000) * (INPUT_PRICE_PER_MILLION + OUTPUT_PRICE_PER_MILLION * 1.2)).toFixed(2)} - ${((selectedProject.totalWords * 2 / 1_000_000) * (INPUT_PRICE_PER_MILLION + OUTPUT_PRICE_PER_MILLION * 1.5)).toFixed(2)}
                     </p>
                   </div>
 
@@ -339,7 +387,7 @@ export default function ExportPage() {
                     ) : (
                       <>
                         <Languages className="h-4 w-4 mr-2" />
-                        Traducir a {SUPPORTED_LANGUAGES.find(l => l.code === targetLanguage)?.name}
+                        Traducir a {getLangName(targetLanguage)}
                       </>
                     )}
                   </Button>
@@ -352,41 +400,80 @@ export default function ExportPage() {
               )}
             </CardContent>
           </Card>
-
-          {translationResult && (
-            <Card className="border-green-500/30 bg-green-500/5">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400">
-                  <CheckCircle className="h-5 w-5" />
-                  Traducción Lista
-                </CardTitle>
-                <CardDescription>
-                  {translationResult.title} - {SUPPORTED_LANGUAGES.find(l => l.code === translationResult.targetLanguage)?.name}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="p-3 bg-muted rounded-md text-sm space-y-1">
-                  <p><span className="text-muted-foreground">Capítulos:</span> {translationResult.chaptersTranslated}</p>
-                  <p><span className="text-muted-foreground">Tokens entrada:</span> {formatNumber(translationResult.tokensUsed.input)}</p>
-                  <p><span className="text-muted-foreground">Tokens salida:</span> {formatNumber(translationResult.tokensUsed.output)}</p>
-                  <p><span className="text-muted-foreground">Coste:</span> ${calculateCost(translationResult.tokensUsed.input, translationResult.tokensUsed.output).toFixed(4)}</p>
-                </div>
-                <Button
-                  onClick={() => {
-                    const safeFilename = translationResult.title.replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g, "").replace(/\s+/g, "_");
-                    downloadMarkdown(`${safeFilename}_${translationResult.targetLanguage.toUpperCase()}.md`, translationResult.markdown);
-                  }}
-                  className="w-full"
-                  data-testid="button-download-translation"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Descargar Markdown Traducido
-                </Button>
-              </CardContent>
-            </Card>
-          )}
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Library className="h-5 w-5" />
+            Repositorio de Traducciones
+          </CardTitle>
+          <CardDescription>
+            Traducciones guardadas listas para descargar
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoadingTranslations ? (
+            <div className="flex items-center justify-center h-24">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : savedTranslations.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Library className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p>No hay traducciones guardadas</p>
+              <p className="text-sm">Las traducciones aparecerán aquí cuando las generes</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {savedTranslations.map((translation) => (
+                <div
+                  key={translation.id}
+                  className="flex items-center justify-between gap-4 p-4 bg-muted/50 rounded-md"
+                  data-testid={`translation-${translation.id}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{translation.projectTitle}</p>
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+                      <Badge variant="outline">
+                        {getLangName(translation.sourceLanguage)} → {getLangName(translation.targetLanguage)}
+                      </Badge>
+                      <span>{translation.chaptersTranslated} cap.</span>
+                      <span>{formatNumber(translation.totalWords || 0)} palabras</span>
+                      <span className="text-xs">
+                        ${calculateCost(translation.inputTokens || 0, translation.outputTokens || 0).toFixed(4)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => downloadTranslationMutation.mutate(translation.id)}
+                      disabled={downloadTranslationMutation.isPending}
+                      data-testid={`button-download-translation-${translation.id}`}
+                    >
+                      {downloadTranslationMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => deleteTranslationMutation.mutate(translation.id)}
+                      disabled={deleteTranslationMutation.isPending}
+                      data-testid={`button-delete-translation-${translation.id}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -458,6 +458,28 @@ export const seriesArcVerifications = pgTable("series_arc_verifications", {
   status: text("status").notNull().default("pending"), // pending, passed, needs_attention, failed
 });
 
+export const translations = pgTable("translations", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  projectTitle: text("project_title").notNull(),
+  sourceLanguage: text("source_language").notNull(),
+  targetLanguage: text("target_language").notNull(),
+  chaptersTranslated: integer("chapters_translated").default(0),
+  totalWords: integer("total_words").default(0),
+  markdown: text("markdown").notNull(),
+  inputTokens: integer("input_tokens").default(0),
+  outputTokens: integer("output_tokens").default(0),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertTranslationSchema = createInsertSchema(translations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type Translation = typeof translations.$inferSelect;
+export type InsertTranslation = z.infer<typeof insertTranslationSchema>;
+
 export const insertSeriesArcMilestoneSchema = createInsertSchema(seriesArcMilestones).omit({
   id: true,
   createdAt: true,

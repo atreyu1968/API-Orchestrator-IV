@@ -3251,7 +3251,22 @@ El capítulo debe incorporar el elemento indicado mientras mantiene la coherenci
       
       const markdown = lines.join("\n");
       
+      const totalWords = markdown.split(/\s+/).filter(w => w.length > 0).length;
+      
+      const savedTranslation = await storage.createTranslation({
+        projectId,
+        projectTitle: project.title,
+        sourceLanguage,
+        targetLanguage,
+        chaptersTranslated: translatedChapters.length,
+        totalWords,
+        markdown,
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+      });
+      
       res.json({
+        id: savedTranslation.id,
         projectId,
         title: project.title,
         sourceLanguage,
@@ -3266,6 +3281,60 @@ El capítulo debe incorporar el elemento indicado mientras mantiene la coherenci
     } catch (error) {
       console.error("Error translating project:", error);
       res.status(500).json({ error: "Failed to translate project" });
+    }
+  });
+
+  app.get("/api/translations", async (_req: Request, res: Response) => {
+    try {
+      const allTranslations = await storage.getAllTranslations();
+      const translationsWithoutMarkdown = allTranslations.map(t => ({
+        id: t.id,
+        projectId: t.projectId,
+        projectTitle: t.projectTitle,
+        sourceLanguage: t.sourceLanguage,
+        targetLanguage: t.targetLanguage,
+        chaptersTranslated: t.chaptersTranslated,
+        totalWords: t.totalWords,
+        inputTokens: t.inputTokens,
+        outputTokens: t.outputTokens,
+        createdAt: t.createdAt,
+      }));
+      res.json(translationsWithoutMarkdown);
+    } catch (error) {
+      console.error("Error fetching translations:", error);
+      res.status(500).json({ error: "Failed to fetch translations" });
+    }
+  });
+
+  app.get("/api/translations/:id/download", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const translation = await storage.getTranslation(id);
+      
+      if (!translation) {
+        return res.status(404).json({ error: "Translation not found" });
+      }
+      
+      res.json({
+        id: translation.id,
+        projectTitle: translation.projectTitle,
+        targetLanguage: translation.targetLanguage,
+        markdown: translation.markdown,
+      });
+    } catch (error) {
+      console.error("Error downloading translation:", error);
+      res.status(500).json({ error: "Failed to download translation" });
+    }
+  });
+
+  app.delete("/api/translations/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteTranslation(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting translation:", error);
+      res.status(500).json({ error: "Failed to delete translation" });
     }
   });
 
