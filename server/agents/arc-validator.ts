@@ -213,32 +213,51 @@ export class ArcValidatorAgent extends BaseAgent {
       ? `\nCONTEXTO DE VOLUMENES ANTERIORES:\n${input.previousVolumesContext}`
       : "";
 
+    const worldBiblePreview = {
+      characters: input.worldBible?.characters?.slice(0, 10) || [],
+      worldRules: input.worldBible?.worldRules || [],
+    };
+
     const prompt = `
 SERIE: "${input.seriesTitle}"
 VOLUMEN: ${input.volumeNumber} de ${input.totalVolumes}
 PROYECTO: "${input.projectTitle}"
 ${previousContext}
 
-WORLD BIBLE:
-${JSON.stringify(input.worldBible, null, 2)}
+PERSONAJES Y REGLAS DEL MUNDO:
+${JSON.stringify(worldBiblePreview, null, 2)}
 
-HITOS A VERIFICAR PARA ESTE VOLUMEN:
-${milestonesText}
+═══════════════════════════════════════════════════════════════════
+HITOS DEFINIDOS POR EL USUARIO PARA ESTE VOLUMEN:
+═══════════════════════════════════════════════════════════════════
+${milestonesText || "No hay hitos definidos para este volumen. El usuario debe definir hitos desde la guia de serie."}
 
+═══════════════════════════════════════════════════════════════════
 HILOS ARGUMENTALES ACTIVOS:
+═══════════════════════════════════════════════════════════════════
 ${threadsText}
 
-RESUMEN DEL VOLUMEN (contenido de capitulos):
-${input.chaptersSummary.substring(0, 80000)}
+═══════════════════════════════════════════════════════════════════
+CONTENIDO REAL DE LOS CAPÍTULOS DEL VOLUMEN:
+═══════════════════════════════════════════════════════════════════
+${input.chaptersSummary.substring(0, 100000)}
 
-INSTRUCCIONES:
-1. Analiza el resumen del volumen buscando evidencia de cumplimiento de hitos
-2. Para cada hito listado arriba, indica si se cumple y en que capitulo
-3. Verifica la progresion de cada hilo argumental activo
-4. Evalua la salud general del arco de la serie
-5. Calcula una puntuacion general (0-100)
+═══════════════════════════════════════════════════════════════════
+INSTRUCCIONES DE VERIFICACIÓN:
+═══════════════════════════════════════════════════════════════════
+1. Tu tarea es verificar si los HITOS DEFINIDOS arriba se cumplen en el CONTENIDO DE LOS CAPÍTULOS
+2. Para cada hito, busca evidencia concreta en los capitulos proporcionados
+3. Verifica si los hilos argumentales activos progresan o se resuelven
+4. NO te quejes de datos faltantes en la timeline - solo verifica los hitos definidos explícitamente
+5. Los hilos argumentales pueden pausarse en algunos volúmenes - esto NO es un error si no hay hilos definidos para este volumen
+6. Basa tu verificación ÚNICAMENTE en los hitos y hilos listados arriba, NO en eventos de la timeline
 
-IMPORTANTE: Responde UNICAMENTE con JSON valido, sin texto adicional.
+PUNTUACIÓN:
+- 80-100: Todos los hitos requeridos cumplidos
+- 60-79: Mayoría de hitos cumplidos, algunos menores faltan  
+- 0-59: Hitos requeridos no cumplidos
+
+IMPORTANTE: Responde UNICAMENTE con JSON valido siguiendo el formato especificado. Sin texto adicional.
 `;
 
     console.log(`[ArcValidator] Starting verification for project "${input.projectTitle}" vol ${input.volumeNumber}`);
