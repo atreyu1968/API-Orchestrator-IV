@@ -3065,5 +3065,210 @@ El capítulo debe incorporar el elemento indicado mientras mantiene la coherenci
     }
   });
 
+  // Export completed project chapters as Markdown
+  app.get("/api/projects/:id/export-markdown", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      
+      const chapters = await storage.getChaptersByProject(projectId);
+      
+      if (chapters.length === 0) {
+        return res.status(400).json({ error: "No chapters found in project" });
+      }
+      
+      const sortedChapters = [...chapters].sort((a, b) => {
+        const orderA = a.chapterNumber === 0 ? -1000 : a.chapterNumber === -1 ? 1000 : a.chapterNumber === -2 ? 1001 : a.chapterNumber;
+        const orderB = b.chapterNumber === 0 ? -1000 : b.chapterNumber === -1 ? 1000 : b.chapterNumber === -2 ? 1001 : b.chapterNumber;
+        return orderA - orderB;
+      });
+      
+      const lines: string[] = [];
+      lines.push(`# ${project.title}`);
+      lines.push("");
+      lines.push("---");
+      lines.push("");
+      
+      for (const chapter of sortedChapters) {
+        if (!chapter.content) continue;
+        
+        let heading: string;
+        if (chapter.chapterNumber === 0) {
+          heading = chapter.title || "Prólogo";
+        } else if (chapter.chapterNumber === -1) {
+          heading = chapter.title || "Epílogo";
+        } else if (chapter.chapterNumber === -2) {
+          heading = chapter.title || "Nota del Autor";
+        } else {
+          heading = chapter.title || `Capítulo ${chapter.chapterNumber}`;
+        }
+        
+        lines.push(`## ${heading}`);
+        lines.push("");
+        lines.push(chapter.content.trim());
+        lines.push("");
+        lines.push("---");
+        lines.push("");
+      }
+      
+      const markdown = lines.join("\n");
+      
+      res.json({
+        projectId,
+        title: project.title,
+        chapterCount: sortedChapters.filter(c => c.content).length,
+        totalWords: sortedChapters.reduce((acc, c) => acc + (c.wordCount || 0), 0),
+        markdown,
+      });
+    } catch (error) {
+      console.error("Error exporting project markdown:", error);
+      res.status(500).json({ error: "Failed to export project" });
+    }
+  });
+
+  // Translate a project to another language
+  app.post("/api/projects/:id/translate", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const { targetLanguage, sourceLanguage = "es" } = req.body;
+      
+      if (!targetLanguage) {
+        return res.status(400).json({ error: "targetLanguage is required" });
+      }
+      
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      
+      const chapters = await storage.getChaptersByProject(projectId);
+      if (chapters.length === 0) {
+        return res.status(400).json({ error: "No chapters found in project" });
+      }
+      
+      const sortedChapters = [...chapters].sort((a, b) => {
+        const orderA = a.chapterNumber === 0 ? -1000 : a.chapterNumber === -1 ? 1000 : a.chapterNumber === -2 ? 1001 : a.chapterNumber;
+        const orderB = b.chapterNumber === 0 ? -1000 : b.chapterNumber === -1 ? 1000 : b.chapterNumber === -2 ? 1001 : b.chapterNumber;
+        return orderA - orderB;
+      });
+      
+      const chaptersWithContent = sortedChapters.filter(c => c.content && c.content.length > 50);
+      
+      const { TranslatorAgent } = await import("./agents/translator");
+      const translator = new TranslatorAgent();
+      
+      const translatedChapters: Array<{
+        chapterNumber: number;
+        title: string;
+        translatedContent: string;
+        notes: string;
+      }> = [];
+      
+      let totalInputTokens = 0;
+      let totalOutputTokens = 0;
+      
+      for (const chapter of chaptersWithContent) {
+        console.log(`[Translate] Translating chapter ${chapter.chapterNumber}: ${chapter.title}`);
+        
+        const result = await translator.execute({
+          content: chapter.content || "",
+          sourceLanguage,
+          targetLanguage,
+          chapterTitle: chapter.title || undefined,
+          chapterNumber: chapter.chapterNumber,
+        });
+        
+        if (result.result) {
+          translatedChapters.push({
+            chapterNumber: chapter.chapterNumber,
+            title: chapter.title || `Chapter ${chapter.chapterNumber}`,
+            translatedContent: result.result.translated_text,
+            notes: result.result.notes,
+          });
+        }
+        
+        totalInputTokens += (result as any).inputTokens || 0;
+        totalOutputTokens += (result as any).outputTokens || 0;
+      }
+      
+      const lines: string[] = [];
+      lines.push(`# ${project.title}`);
+      lines.push("");
+      lines.push("---");
+      lines.push("");
+      
+      for (const chapter of translatedChapters) {
+        let heading: string;
+        if (chapter.chapterNumber === 0) {
+          heading = "Prologue";
+        } else if (chapter.chapterNumber === -1) {
+          heading = "Epilogue";
+        } else if (chapter.chapterNumber === -2) {
+          heading = "Author's Note";
+        } else {
+          heading = `Chapter ${chapter.chapterNumber}`;
+        }
+        
+        lines.push(`## ${heading}`);
+        lines.push("");
+        lines.push(chapter.translatedContent.trim());
+        lines.push("");
+        lines.push("---");
+        lines.push("");
+      }
+      
+      const markdown = lines.join("\n");
+      
+      res.json({
+        projectId,
+        title: project.title,
+        sourceLanguage,
+        targetLanguage,
+        chaptersTranslated: translatedChapters.length,
+        markdown,
+        tokensUsed: {
+          input: totalInputTokens,
+          output: totalOutputTokens,
+        },
+      });
+    } catch (error) {
+      console.error("Error translating project:", error);
+      res.status(500).json({ error: "Failed to translate project" });
+    }
+  });
+
+  // Get list of completed projects available for export
+  app.get("/api/projects/completed", async (_req: Request, res: Response) => {
+    try {
+      const allProjects = await storage.getProjects();
+      const completedProjects = allProjects.filter(p => p.status === "completed");
+      
+      const projectsWithStats = await Promise.all(
+        completedProjects.map(async (project) => {
+          const chapters = await storage.getChaptersByProject(project.id);
+          const totalWords = chapters.reduce((acc, c) => acc + (c.wordCount || 0), 0);
+          return {
+            id: project.id,
+            title: project.title,
+            genre: project.genre,
+            chapterCount: chapters.length,
+            totalWords,
+            finalScore: project.finalScore,
+            createdAt: project.createdAt,
+          };
+        })
+      );
+      
+      res.json(projectsWithStats);
+    } catch (error) {
+      console.error("Error fetching completed projects:", error);
+      res.status(500).json({ error: "Failed to fetch completed projects" });
+    }
+  });
+
   return httpServer;
 }
