@@ -154,10 +154,13 @@ export function ArcVerificationPanel({ seriesId, seriesTitle, totalVolumes }: Ar
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: [`/api/series/${seriesId}/verifications`] });
       queryClient.invalidateQueries({ queryKey: [`/api/series/${seriesId}/milestones`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/chapters', parseInt(selectedProjectId)] });
       setLastVerificationResult(null);
+      
+      const hasUnverified = data.needsReview > 0;
       toast({ 
-        title: "Correcciones aplicadas",
-        description: `${data.totalCorrected} capitulos corregidos`
+        title: hasUnverified ? "Correcciones con observaciones" : "Correcciones verificadas",
+        description: data.message || `${data.totalCorrected} capitulos corregidos`
       });
     },
     onError: () => {

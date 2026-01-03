@@ -2812,13 +2812,13 @@ IMPORTANTE:
         return res.status(404).json({ error: "Series not found" });
       }
 
-      const worldBible = await storage.getWorldBibleByProject(projectId);
       const milestones = await storage.getMilestonesBySeries(seriesId);
       
       const { CopyEditorAgent } = await import("./agents/copyeditor");
       const copyEditor = new CopyEditorAgent();
       
       const results: any[] = [];
+      const MAX_RETRIES = 2;
       
       for (const correction of corrections) {
         const { chapterNumber, instruction, milestoneId } = correction;
@@ -2832,49 +2832,134 @@ IMPORTANTE:
         }
 
         const milestone = milestones.find((m: any) => m.id === milestoneId);
-        const milestoneContext = milestone 
-          ? `\n\nHITO A CUMPLIR:\n- Descripción: ${milestone.description}\n- Tipo: ${milestone.milestoneType}\n`
-          : "";
+        let currentContent = chapter.content || "";
+        let verificationPassed = false;
+        let attempts = 0;
+        let lastResult: any = null;
+        
+        while (!verificationPassed && attempts < MAX_RETRIES) {
+          attempts++;
+          
+          const correctionPrompt = milestone ? `
+═══════════════════════════════════════════════════════════════════════════════
+CORRECCIÓN OBLIGATORIA DE ARCO ARGUMENTAL - INTENTO ${attempts}/${MAX_RETRIES}
+═══════════════════════════════════════════════════════════════════════════════
 
-        const correctionPrompt = `INSTRUCCIÓN DE CORRECCIÓN DE ARCO ARGUMENTAL:
+HITO QUE DEBE CUMPLIRSE EN ESTE CAPÍTULO:
+• Tipo: ${milestone.milestoneType}
+• Descripción exacta: "${milestone.description}"
+
+INSTRUCCIONES IMPERATIVAS:
+1. AÑADE una escena o pasaje NUEVO de 3-5 párrafos que CUMPLA EXPLÍCITAMENTE el hito
+2. La escena debe ser NARRATIVA (mostrar, no decir) - diálogos, acciones, descripciones
+3. El hito "${milestone.description}" debe ser EVIDENTE para cualquier lector
+4. MANTÉN TODO el contenido original del capítulo intacto
+5. INTEGRA la nueva escena de forma natural en el flujo narrativo
+6. NO cambies el tono, estilo ni la voz narrativa existente
+
+EJEMPLO DE INTEGRACIÓN:
+- Si el hito es "El protagonista descubre la traición de su aliado"
+- Añade una escena donde el protagonista LITERALMENTE descubre pruebas o presencia la traición
+- No basta con insinuaciones o sospechas - debe ser un MOMENTO CLARO
+
+${attempts > 1 ? `
+⚠️ ATENCIÓN: El intento anterior NO cumplió el hito. Esta vez:
+- Sé MÁS EXPLÍCITO en mostrar el hito
+- Usa DIÁLOGOS DIRECTOS que evidencien el cumplimiento
+- Asegúrate de que el momento sea INEQUÍVOCO
+` : ""}
+
+CRITERIO DE VERIFICACIÓN: El texto resultante debe contener un momento narrativo claro donde "${milestone.description}" OCURRA de manera explícita.
+═══════════════════════════════════════════════════════════════════════════════
+` : `
+CORRECCIÓN DE ARCO ARGUMENTAL:
 ${instruction}
-${milestoneContext}
 
-El capítulo debe incorporar el elemento indicado mientras mantiene la coherencia narrativa y el estilo existente.`;
+Añade contenido narrativo explícito que cumpla este requisito, manteniendo todo el contenido original.
+`;
 
-        const result = await copyEditor.execute({
-          chapterContent: chapter.content || "",
-          chapterNumber,
-          chapterTitle: chapter.title || `Capítulo ${chapterNumber}`,
-          guiaEstilo: correctionPrompt,
-        });
+          const result = await copyEditor.execute({
+            chapterContent: currentContent,
+            chapterNumber,
+            chapterTitle: chapter.title || `Capítulo ${chapterNumber}`,
+            guiaEstilo: correctionPrompt,
+          });
 
-        if ((result as any).result?.texto_final) {
+          lastResult = result;
+
+          if ((result as any).result?.texto_final) {
+            const newContent = (result as any).result.texto_final;
+            
+            // Verify the correction with semantic analysis
+            if (milestone) {
+              const contentLower = newContent.toLowerCase();
+              const descLower = milestone.description.toLowerCase();
+              
+              // Check for key concept words (words > 4 chars)
+              const keyWords = descLower.split(/\s+/).filter((w: string) => w.length > 4);
+              const foundWords = keyWords.filter((word: string) => contentLower.includes(word));
+              const wordCoverage = keyWords.length > 0 ? foundWords.length / keyWords.length : 0;
+              
+              // Check if content grew (new scene added)
+              const contentGrew = newContent.length > currentContent.length * 1.02;
+              
+              // Pass if: good word coverage AND content grew
+              verificationPassed = wordCoverage >= 0.4 && contentGrew;
+              
+              console.log(`[ArcCorrection] Attempt ${attempts}: wordCoverage=${wordCoverage.toFixed(2)}, contentGrew=${contentGrew}, passed=${verificationPassed}`);
+            } else {
+              verificationPassed = true;
+            }
+            
+            currentContent = newContent;
+          } else {
+            break; // Editor failed, stop retrying
+          }
+        }
+        
+        // Save the final result
+        if (lastResult?.result?.texto_final) {
           await storage.updateChapter(chapter.id, {
-            content: (result as any).result.texto_final,
-            status: "pending_review",
+            content: currentContent,
+            status: "completed", // Always mark completed - the correction was applied
           });
           
           if (milestoneId && milestone) {
             await storage.updateMilestone(milestoneId, {
-              isFulfilled: true,
+              isFulfilled: verificationPassed,
               fulfilledInProjectId: projectId,
               fulfilledInChapter: chapterNumber,
-              verificationNotes: `Corregido automáticamente: ${instruction}`,
+              verificationNotes: verificationPassed 
+                ? `Corregido y verificado (${attempts} intentos)` 
+                : `Corregido pero requiere verificación manual (${attempts} intentos)`,
             });
           }
 
           results.push({ 
             chapterNumber, 
-            success: true, 
-            tokensUsed: { input: (result as any).inputTokens || 0, output: (result as any).outputTokens || 0 }
+            success: true,
+            verified: verificationPassed,
+            attempts,
+            tokensUsed: { 
+              input: (lastResult as any).inputTokens || 0, 
+              output: (lastResult as any).outputTokens || 0 
+            }
           });
         } else {
           results.push({ chapterNumber, success: false, error: "Editor failed" });
         }
       }
 
-      res.json({ results, totalCorrected: results.filter(r => r.success).length });
+      const verified = results.filter(r => r.success && r.verified).length;
+      const applied = results.filter(r => r.success).length;
+      
+      res.json({ 
+        results, 
+        totalCorrected: applied,
+        verified,
+        needsReview: applied - verified,
+        message: `${applied} correcciones aplicadas, ${verified} verificadas automáticamente`
+      });
     } catch (error) {
       console.error("Error applying arc corrections:", error);
       res.status(500).json({ error: "Failed to apply arc corrections" });
