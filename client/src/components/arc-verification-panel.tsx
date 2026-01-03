@@ -21,7 +21,9 @@ import {
   CheckCircle2,
   Circle,
   Play,
-  Wrench
+  Wrench,
+  Pencil,
+  LayoutTemplate
 } from "lucide-react";
 import type { SeriesArcMilestone, SeriesPlotThread, SeriesArcVerification, Project } from "@shared/schema";
 
@@ -168,6 +170,28 @@ export function ArcVerificationPanel({ seriesId, seriesTitle, totalVolumes }: Ar
     },
   });
 
+  const structuralRewriteMutation = useMutation({
+    mutationFn: async ({ chapterNumbers, instructions }: { chapterNumbers: number[], instructions: string }) => {
+      const response = await apiRequest("POST", `/api/series/${seriesId}/structural-rewrite`, { 
+        projectId: parseInt(selectedProjectId), 
+        chapterNumbers,
+        structuralInstructions: instructions
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/series/${seriesId}/verifications`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/chapters', parseInt(selectedProjectId)] });
+      toast({ 
+        title: "Reescritura completada",
+        description: data.message || `${data.totalRewritten} capitulos reescritos`
+      });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo completar la reescritura estructural", variant: "destructive" });
+    },
+  });
+
   const handleRunVerification = () => {
     if (!selectedProjectId) {
       toast({ title: "Error", description: "Selecciona un proyecto primero", variant: "destructive" });
@@ -305,7 +329,47 @@ export function ArcVerificationPanel({ seriesId, seriesTitle, totalVolumes }: Ar
             {lastVerificationResult.recommendations && (
               <p className="text-sm mt-2 text-muted-foreground">{lastVerificationResult.recommendations}</p>
             )}
-            {lastVerificationResult.findings?.length > 0 && (
+            {lastVerificationResult.classifiedFindings?.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                <span className="text-xs font-medium text-muted-foreground">Hallazgos Clasificados:</span>
+                {lastVerificationResult.classifiedFindings.map((cf: any, i: number) => (
+                  <div key={i} className="flex items-start gap-2 p-2 rounded bg-muted/50 text-xs">
+                    <Badge 
+                      variant={cf.type === "structural" ? "destructive" : "secondary"}
+                      className="shrink-0"
+                    >
+                      {cf.type === "structural" ? (
+                        <><LayoutTemplate className="h-3 w-3 mr-1" />Estructural</>
+                      ) : (
+                        <><Pencil className="h-3 w-3 mr-1" />Cosmetico</>
+                      )}
+                    </Badge>
+                    <span className="flex-1 text-muted-foreground">{cf.text}</span>
+                    {cf.type === "structural" && cf.affectedChapters?.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 h-6 text-xs"
+                        disabled={structuralRewriteMutation.isPending || !selectedProjectId}
+                        onClick={() => {
+                          structuralRewriteMutation.mutate({
+                            chapterNumbers: cf.affectedChapters,
+                            instructions: cf.text
+                          });
+                        }}
+                        data-testid={`button-structural-${i}`}
+                      >
+                        {structuralRewriteMutation.isPending ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          "Reescribir"
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : lastVerificationResult.findings?.length > 0 && (
               <div className="mt-2">
                 <span className="text-xs font-medium text-muted-foreground">Hallazgos:</span>
                 <ul className="text-xs text-muted-foreground list-disc pl-4">

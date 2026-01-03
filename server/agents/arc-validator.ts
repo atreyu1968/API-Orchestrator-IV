@@ -32,6 +32,13 @@ export interface ThreadProgression {
   progressNotes: string;
 }
 
+export interface ClassifiedFinding {
+  text: string;
+  type: "cosmetic" | "structural";
+  affectedChapters?: number[];
+  severity: "low" | "medium" | "high";
+}
+
 export interface ArcValidatorResult {
   overallScore: number;
   passed: boolean;
@@ -42,6 +49,7 @@ export interface ArcValidatorResult {
   milestoneVerifications: MilestoneVerification[];
   threadProgressions: ThreadProgression[];
   findings: string[];
+  classifiedFindings: ClassifiedFinding[];
   recommendations: string;
   arcHealthSummary: string;
 }
@@ -152,6 +160,7 @@ export class ArcValidatorAgent extends BaseAgent {
           milestoneVerifications: [],
           threadProgressions: [],
           findings: ["No hay hitos ni hilos argumentales definidos para este volumen. Define hitos e hilos en la guia de serie para habilitar la verificacion automatica."],
+          classifiedFindings: [],
           recommendations: "Sube una guia de serie y usa 'Extraer Hitos' para definir automaticamente los puntos de verificacion del arco.",
           arcHealthSummary: "Sin elementos de arco definidos - el volumen no puede ser verificado hasta que se definan hitos y/o hilos argumentales.",
         }
@@ -184,6 +193,7 @@ export class ArcValidatorAgent extends BaseAgent {
             progressNotes: "No hay contenido de capitulos para verificar",
           })),
           findings: ["El proyecto no tiene capitulos escritos o el contenido es insuficiente para verificar el arco narrativo."],
+          classifiedFindings: [],
           recommendations: "Genera capitulos para este volumen antes de ejecutar la verificacion de arco.",
           arcHealthSummary: "Verificacion imposible - se requiere contenido de capitulos para analizar.",
         }
@@ -280,6 +290,7 @@ IMPORTANTE: Responde UNICAMENTE con JSON valido siguiendo el formato especificad
           milestoneVerifications: [],
           threadProgressions: [],
           findings: [`Error de IA: ${response.error}`],
+          classifiedFindings: [],
           recommendations: "Reintenta la verificacion. Si el error persiste, contacta soporte.",
           arcHealthSummary: "Error en la verificacion automatica.",
         }
@@ -292,7 +303,8 @@ IMPORTANTE: Responde UNICAMENTE con JSON valido siguiendo el formato especificad
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const result = JSON.parse(jsonMatch[0]) as ArcValidatorResult;
-        console.log(`[ArcValidator] Successfully parsed result: score=${result.overallScore}, passed=${result.passed}`);
+        result.classifiedFindings = this.classifyFindings(result.findings || [], result.recommendations || "");
+        console.log(`[ArcValidator] Successfully parsed result: score=${result.overallScore}, passed=${result.passed}, classifiedFindings=${result.classifiedFindings.length}`);
         return { ...response, result };
       } else {
         console.error("[ArcValidator] No JSON found in response. Content preview:", response.content.substring(0, 500));
@@ -327,9 +339,60 @@ IMPORTANTE: Responde UNICAMENTE con JSON valido siguiendo el formato especificad
           progressNotes: "No se pudo analizar automaticamente",
         })),
         findings: ["La IA no devolvio un formato JSON valido. Verifica los logs del servidor para mas detalles."],
+        classifiedFindings: [],
         recommendations: "Reintenta la verificacion. Si el problema persiste, revisa que los capitulos tengan contenido narrativo claro.",
         arcHealthSummary: "Verificacion parcial - el analisis automatico fallo pero se listaron los elementos a verificar.",
       }
     };
+  }
+
+  private classifyFindings(findings: string[], recommendations: string): ClassifiedFinding[] {
+    const classified: ClassifiedFinding[] = [];
+    
+    const structuralKeywords = [
+      "reestructurar", "restructure", "mover", "move", "crear capítulo", "create chapter",
+      "expandir", "expand", "desarrollar más", "develop more", "mostrar en lugar de",
+      "show instead of", "relegado al epílogo", "relegated to epilogue", "clímax",
+      "climax", "añadir escenas", "add scenes", "reescribir", "rewrite",
+      "pacing", "ritmo narrativo", "estructura", "structure"
+    ];
+    
+    const allText = [...findings, recommendations].join(" ").toLowerCase();
+    
+    for (const finding of findings) {
+      const findingLower = finding.toLowerCase();
+      const isStructural = structuralKeywords.some(kw => findingLower.includes(kw));
+      
+      const chapterMatches = finding.match(/cap[íi]tulo\s*(\d+)/gi) || 
+                              finding.match(/chapter\s*(\d+)/gi) ||
+                              finding.match(/ep[íi]logo/gi);
+      const affectedChapters: number[] = [];
+      if (chapterMatches) {
+        for (const match of chapterMatches) {
+          const numMatch = match.match(/\d+/);
+          if (numMatch) affectedChapters.push(parseInt(numMatch[0]));
+          if (match.toLowerCase().includes("epílogo") || match.toLowerCase().includes("epilogo")) {
+            affectedChapters.push(-1);
+          }
+        }
+      }
+      
+      classified.push({
+        text: finding,
+        type: isStructural ? "structural" : "cosmetic",
+        affectedChapters: affectedChapters.length > 0 ? affectedChapters : undefined,
+        severity: isStructural ? "high" : "medium",
+      });
+    }
+    
+    if (recommendations && structuralKeywords.some(kw => recommendations.toLowerCase().includes(kw))) {
+      classified.push({
+        text: recommendations,
+        type: "structural",
+        severity: "high",
+      });
+    }
+    
+    return classified;
   }
 }

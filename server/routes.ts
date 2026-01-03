@@ -2966,6 +2966,124 @@ Añade contenido narrativo explícito que cumpla este requisito, manteniendo tod
     }
   });
 
+  // Structural rewrite endpoint - uses Ghostwriter to regenerate chapters with structural instructions
+  app.post("/api/series/:id/structural-rewrite", async (req: Request, res: Response) => {
+    try {
+      const seriesId = parseInt(req.params.id);
+      const { projectId, chapterNumbers, structuralInstructions } = req.body;
+
+      if (!projectId || !chapterNumbers?.length || !structuralInstructions) {
+        return res.status(400).json({ error: "projectId, chapterNumbers array, and structuralInstructions required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const series = await storage.getSeries(seriesId);
+      if (!series) {
+        return res.status(404).json({ error: "Series not found" });
+      }
+
+      const worldBible = await storage.getWorldBibleByProject(projectId);
+      const styleGuide = project.styleGuideId ? await storage.getStyleGuide(project.styleGuideId) : null;
+      
+      const { GhostwriterAgent } = await import("./agents/ghostwriter");
+      const ghostwriter = new GhostwriterAgent();
+      
+      const results: any[] = [];
+      
+      for (const chapterNumber of chapterNumbers) {
+        const chapters = await storage.getChaptersByProject(projectId);
+        const chapter = chapters.find((c: any) => c.chapterNumber === chapterNumber);
+        
+        if (!chapter) {
+          results.push({ chapterNumber, success: false, error: "Chapter not found" });
+          continue;
+        }
+
+        const chapterLabel = chapterNumber === 0 ? "Prólogo" : 
+                            chapterNumber === -1 ? "Epílogo" : 
+                            `Capítulo ${chapterNumber}`;
+
+        const rewriteData = {
+          numero: chapterNumber,
+          titulo: chapter.title || chapterLabel,
+          cronologia: "Mantener la cronología existente",
+          ubicacion: "Mantener las ubicaciones existentes",
+          elenco_presente: [],
+          objetivo_narrativo: structuralInstructions,
+          beats: [
+            `REESCRITURA ESTRUCTURAL: ${structuralInstructions}`,
+            "Mantener los personajes y sus arcos existentes",
+            "Expandir las escenas para MOSTRAR los eventos en lugar de CONTAR",
+            "Desarrollar el clímax narrativo con tensión dramática",
+            "Asegurar que todos los hitos del arco se cumplan explícitamente"
+          ],
+          funcion_estructural: "Reescritura para cumplir requisitos estructurales del arco de la serie",
+        };
+
+        const guiaEstilo = styleGuide?.content || `
+Estilo: Prosa profesional de bestseller internacional
+Tono: ${project.tone || "Dramático y envolvente"}
+Género: ${project.genre || "Ficción literaria"}
+
+INSTRUCCIONES ESPECIALES DE REESCRITURA:
+${structuralInstructions}
+
+CONTENIDO ORIGINAL DEL CAPÍTULO (para referencia y expansión):
+${chapter.content?.substring(0, 15000) || "Sin contenido previo"}
+`;
+
+        console.log(`[StructuralRewrite] Rewriting ${chapterLabel} with instructions: ${structuralInstructions.substring(0, 100)}...`);
+
+        const result = await ghostwriter.execute({
+          chapterNumber,
+          chapterData: rewriteData,
+          worldBible: worldBible || {},
+          guiaEstilo,
+          isRewrite: true,
+        });
+
+        if ((result as any).result?.prose) {
+          const newContent = (result as any).result.prose;
+          
+          await storage.updateChapter(chapter.id, {
+            content: newContent,
+            status: "completed",
+            wordCount: newContent.split(/\s+/).length,
+          });
+
+          results.push({ 
+            chapterNumber, 
+            success: true,
+            wordCount: newContent.split(/\s+/).length,
+            tokensUsed: { 
+              input: (result as any).inputTokens || 0, 
+              output: (result as any).outputTokens || 0 
+            }
+          });
+          
+          console.log(`[StructuralRewrite] ${chapterLabel} rewritten successfully`);
+        } else {
+          results.push({ chapterNumber, success: false, error: "Ghostwriter failed to produce content" });
+        }
+      }
+
+      const successful = results.filter(r => r.success).length;
+      
+      res.json({ 
+        results, 
+        totalRewritten: successful,
+        message: `${successful} capítulos reescritos estructuralmente`
+      });
+    } catch (error) {
+      console.error("Error in structural rewrite:", error);
+      res.status(500).json({ error: "Failed to perform structural rewrite" });
+    }
+  });
+
   // Data Migration Endpoints
   app.get("/api/data-export", async (req: Request, res: Response) => {
     try {
