@@ -7,6 +7,7 @@ import { AgentCard } from "@/components/agent-card";
 import { ProcessFlow } from "@/components/process-flow";
 import { ConsoleOutput, type LogEntry } from "@/components/console-output";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DuplicateManager } from "@/components/duplicate-manager";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Play, FileText, Clock, CheckCircle, Download, Archive, Copy, Trash2, ClipboardCheck, RefreshCw, Ban, CheckCheck, Plus, Upload, Database, Info } from "lucide-react";
@@ -902,6 +903,8 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
+
+          <DuplicateManager />
         </div>
       </div>
 

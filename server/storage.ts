@@ -47,6 +47,7 @@ export interface IStorage {
   getChaptersByProject(projectId: number): Promise<Chapter[]>;
   getAllChapters(): Promise<Chapter[]>;
   updateChapter(id: number, data: Partial<Chapter>): Promise<Chapter | undefined>;
+  deleteChapter(id: number): Promise<void>;
 
   createWorldBible(data: InsertWorldBible): Promise<WorldBible>;
   getWorldBibleByProject(projectId: number): Promise<WorldBible | undefined>;
@@ -231,6 +232,10 @@ export class DatabaseStorage implements IStorage {
   async updateChapter(id: number, data: Partial<Chapter>): Promise<Chapter | undefined> {
     const [updated] = await db.update(chapters).set(data).where(eq(chapters.id, id)).returning();
     return updated;
+  }
+
+  async deleteChapter(id: number): Promise<void> {
+    await db.delete(chapters).where(eq(chapters.id, id));
   }
 
   async createWorldBible(data: InsertWorldBible): Promise<WorldBible> {

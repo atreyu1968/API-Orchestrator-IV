@@ -4056,6 +4056,195 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     }
   });
 
+  // ═══════════════════════════════════════════════════════════════════
+  // DUPLICATE CHAPTERS MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════════
+  
+  app.get("/api/projects/duplicate-chapters", async (_req: Request, res: Response) => {
+    try {
+      const allProjects = await storage.getAllProjects();
+      const projectsWithDuplicates: Array<{
+        projectId: number;
+        projectTitle: string;
+        projectStatus: string;
+        duplicateGroups: Array<{
+          chapterNumber: number;
+          generations: Array<{
+            generationKey: string;
+            chapterIds: number[];
+            titles: string[];
+            statuses: string[];
+            wordCounts: number[];
+            createdAt: Date;
+            totalChapters: number;
+            hasContent: boolean;
+          }>;
+        }>;
+      }> = [];
+
+      for (const project of allProjects) {
+        const chapters = await storage.getChaptersByProject(project.id);
+        
+        // Group chapters by chapterNumber
+        const byNumber = new Map<number, typeof chapters>();
+        for (const ch of chapters) {
+          if (!byNumber.has(ch.chapterNumber)) {
+            byNumber.set(ch.chapterNumber, []);
+          }
+          byNumber.get(ch.chapterNumber)!.push(ch);
+        }
+
+        // Find duplicates (more than 1 chapter with same number)
+        const duplicateGroups: typeof projectsWithDuplicates[0]["duplicateGroups"] = [];
+        
+        const chapterNumbers = Array.from(byNumber.keys());
+        for (const chapterNum of chapterNumbers) {
+          const chapterList = byNumber.get(chapterNum)!;
+          if (chapterList.length > 1) {
+            // Group by generation (using createdAt rounded to 5-second window)
+            const byGeneration: Record<string, typeof chapterList> = {};
+            
+            for (const ch of chapterList) {
+              const createdTime = new Date(ch.createdAt).getTime();
+              // Round to 5-second window to group chapters created together
+              const genKey = new Date(Math.floor(createdTime / 5000) * 5000).toISOString();
+              
+              if (!byGeneration[genKey]) {
+                byGeneration[genKey] = [];
+              }
+              byGeneration[genKey].push(ch);
+            }
+
+            const generations = Object.entries(byGeneration)
+              .map(([genKey, chs]) => ({
+                generationKey: genKey,
+                chapterIds: chs.map((c: typeof chapters[0]) => c.id),
+                titles: chs.map((c: typeof chapters[0]) => c.title || `Sin título`),
+                statuses: chs.map((c: typeof chapters[0]) => c.status),
+                wordCounts: chs.map((c: typeof chapters[0]) => c.wordCount || 0),
+                createdAt: new Date(genKey),
+                totalChapters: chs.length,
+                hasContent: chs.some((c: typeof chapters[0]) => c.content && c.content.length > 0),
+              }))
+              .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+            duplicateGroups.push({
+              chapterNumber: chapterNum,
+              generations,
+            });
+          }
+        }
+
+        if (duplicateGroups.length > 0) {
+          projectsWithDuplicates.push({
+            projectId: project.id,
+            projectTitle: project.title,
+            projectStatus: project.status,
+            duplicateGroups: duplicateGroups.sort((a, b) => a.chapterNumber - b.chapterNumber),
+          });
+        }
+      }
+
+      res.json(projectsWithDuplicates);
+    } catch (error) {
+      console.error("Error detecting duplicate chapters:", error);
+      res.status(500).json({ error: "Failed to detect duplicate chapters" });
+    }
+  });
+
+  app.post("/api/projects/:id/duplicate-chapters/purge", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const { chapterNumber, generationKey, keepGeneration } = req.body as {
+        chapterNumber: number;
+        generationKey: string;
+        keepGeneration: boolean;
+      };
+
+      if (isNaN(projectId) || chapterNumber === undefined || !generationKey) {
+        return res.status(400).json({ error: "Missing required parameters: projectId, chapterNumber, generationKey" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Prevent purge during active generation
+      if (project.status === "generating") {
+        return res.status(409).json({ error: "Cannot purge chapters while project is generating" });
+      }
+
+      const chapters = await storage.getChaptersByProject(projectId);
+      const chaptersWithNumber = chapters.filter(c => c.chapterNumber === chapterNumber);
+
+      if (chaptersWithNumber.length < 2) {
+        return res.status(400).json({ error: "No duplicates found for this chapter number" });
+      }
+
+      // Group by generation key
+      const byGeneration: Record<string, typeof chapters> = {};
+      for (const ch of chaptersWithNumber) {
+        const createdTime = new Date(ch.createdAt).getTime();
+        const genKey = new Date(Math.floor(createdTime / 5000) * 5000).toISOString();
+        
+        if (!byGeneration[genKey]) {
+          byGeneration[genKey] = [];
+        }
+        byGeneration[genKey].push(ch);
+      }
+
+      let chaptersToDelete: number[] = [];
+      
+      if (keepGeneration) {
+        // Delete all EXCEPT this generation
+        for (const [genKey, chs] of Object.entries(byGeneration)) {
+          if (genKey !== generationKey) {
+            chaptersToDelete.push(...chs.map((c: typeof chapters[0]) => c.id));
+          }
+        }
+      } else {
+        // Delete only this generation
+        const toDelete = byGeneration[generationKey];
+        if (toDelete) {
+          chaptersToDelete = toDelete.map((c: typeof chapters[0]) => c.id);
+        }
+      }
+
+      // Safety check: don't delete all chapters for this number
+      const remainingCount = chaptersWithNumber.length - chaptersToDelete.length;
+      if (remainingCount < 1) {
+        return res.status(400).json({ error: "Cannot delete all chapters. At least one must remain." });
+      }
+
+      // Delete the chapters
+      let deletedCount = 0;
+      for (const chapterId of chaptersToDelete) {
+        await storage.deleteChapter(chapterId);
+        deletedCount++;
+      }
+
+      await storage.createActivityLog({
+        projectId,
+        level: "info",
+        message: `Eliminados ${deletedCount} capítulos duplicados del capítulo ${chapterNumber} (generación: ${generationKey})`,
+        agentRole: "user",
+      });
+
+      console.log(`[DuplicatePurge] Deleted ${deletedCount} duplicate chapters for project ${projectId}, chapter ${chapterNumber}`);
+
+      res.json({
+        success: true,
+        deletedCount,
+        remainingCount,
+        message: `Eliminados ${deletedCount} capítulos duplicados`,
+      });
+    } catch (error) {
+      console.error("Error purging duplicate chapters:", error);
+      res.status(500).json({ error: "Failed to purge duplicate chapters" });
+    }
+  });
+
   return httpServer;
 }
 
