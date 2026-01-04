@@ -28,6 +28,7 @@ export class QueueManager {
   private autoRecoveryCount = 0;
   private processingLock = false; // Prevent parallel processing
   private autoStartDisabled = true; // Disable auto-start by default
+  private pendingRetryProjectId: number | null = null; // Force retry THIS project on next processQueue
 
   constructor() {}
   
@@ -102,22 +103,24 @@ export class QueueManager {
       });
     }
     
-    // Clear current state
+    // Clear current state BUT remember which project to retry
+    this.pendingRetryProjectId = projectId; // CRITICAL: Force retry THIS project
     await storage.updateQueueState({ currentProjectId: null });
     this.currentOrchestrator = null;
     this.currentProjectId = null;
     this.stopHeartbeatMonitor();
     
-    // AUTO-RESTART the queue after recovery
-    console.log(`[QueueManager] Project ${projectId} reset. AUTO-RESTARTING in 3 seconds...`);
+    // AUTO-RESTART the queue after recovery - will retry the SAME project
+    console.log(`[QueueManager] Project ${projectId} reset. Will RETRY this project in 3 seconds...`);
     
     setTimeout(async () => {
       try {
-        console.log(`[QueueManager] Auto-starting queue after heartbeat recovery`);
+        console.log(`[QueueManager] Auto-restarting to RETRY frozen project ${projectId}`);
         this.isRunning = false; // Reset to allow start()
         await this.start();
       } catch (e) {
         console.error("[QueueManager] Failed to auto-restart after heartbeat recovery:", e);
+        this.pendingRetryProjectId = null; // Clear on failure
       }
     }, 3000);
   }
@@ -266,13 +269,16 @@ export class QueueManager {
               });
             }
             
-            // AUTO-RESTART the queue after recovery
-            console.log(`[QueueManager] Frozen project "${project.title}" reset. AUTO-RESTARTING queue...`);
+            // CRITICAL: Set pending retry to THIS project so it gets retried, not skipped
+            this.pendingRetryProjectId = project.id;
+            
+            // AUTO-RESTART the queue after recovery - will retry the SAME frozen project
+            console.log(`[QueueManager] Frozen project "${project.title}" (ID: ${project.id}) reset. Will RETRY this project...`);
             
             await storage.createActivityLog({
               projectId: project.id,
               level: "info",
-              message: `Auto-recovery completado. Reiniciando generación automáticamente...`,
+              message: `Auto-recovery completado. Reintentando este proyecto automáticamente...`,
               agentRole: "system",
             });
             
@@ -280,11 +286,12 @@ export class QueueManager {
             setTimeout(async () => {
               try {
                 if (!this.isRunning) {
-                  console.log(`[QueueManager] Auto-starting queue after frozen project recovery`);
+                  console.log(`[QueueManager] Auto-starting queue to RETRY frozen project ${project.id}`);
                   await this.start();
                 }
               } catch (e) {
                 console.error("[QueueManager] Failed to auto-restart after recovery:", e);
+                this.pendingRetryProjectId = null;
               }
             }, 3000);
             
@@ -459,7 +466,28 @@ export class QueueManager {
         return;
       }
 
-      const nextItem = await storage.getNextInQueue();
+      // PRIORITY: If there's a pending retry project, process THAT one first
+      let nextItem = null;
+      if (this.pendingRetryProjectId) {
+        const retryProjectId = this.pendingRetryProjectId;
+        console.log(`[QueueManager] PRIORITY: Retrying frozen project ${retryProjectId}`);
+        
+        const retryQueueItem = await storage.getQueueItemByProject(retryProjectId);
+        if (retryQueueItem && retryQueueItem.status === "waiting") {
+          nextItem = retryQueueItem;
+          console.log(`[QueueManager] Found queue item for retry project ${retryProjectId}`);
+        } else {
+          console.log(`[QueueManager] Retry project ${retryProjectId} not found or not in waiting status. Clearing pending retry.`);
+        }
+        
+        // Clear the pending retry flag regardless (we tried)
+        this.pendingRetryProjectId = null;
+      }
+      
+      // If no pending retry or retry failed, get next in queue normally
+      if (!nextItem) {
+        nextItem = await storage.getNextInQueue();
+      }
       
       if (!nextItem) {
         this.emit({ type: "queue_empty", message: "No projects in queue" });
