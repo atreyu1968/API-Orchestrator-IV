@@ -3990,29 +3990,9 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     try {
       const allTranslations = await storage.getAllTranslations();
       
-      const now = new Date();
-      const translations = await Promise.all(allTranslations.map(async t => {
-        // Migration: If status is missing, assume it was completed successfully (old records)
-        if (!t.status) {
-          const updated = await storage.updateTranslation(t.id, { status: "completed" });
-          return updated || t;
-        }
-
-        // Only mark as error if it's REALLY stale (more than 30 minutes)
-        if (t.status === "translating" || t.status === "pending") {
-          const createdAt = new Date(t.createdAt);
-          const diffMinutes = (now.getTime() - createdAt.getTime()) / 1000 / 60;
-          
-          if (diffMinutes > 30) {
-            console.log(`[Cleanup] Marking stale translation ID ${t.id} as error`);
-            const updated = await storage.updateTranslation(t.id, { status: "error" });
-            return updated || t;
-          }
-        }
-        return t;
-      }));
-
-      const translationsWithoutMarkdown = translations.map(t => ({
+      // No automatic cleanup - just return the translations as-is
+      // Status should only be set by the actual translation process
+      const translationsWithoutMarkdown = allTranslations.map(t => ({
         id: t.id,
         projectId: t.projectId,
         projectTitle: t.projectTitle,
@@ -4022,7 +4002,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         totalWords: t.totalWords,
         inputTokens: t.inputTokens,
         outputTokens: t.outputTokens,
-        status: t.status,
+        status: t.status || "completed",
         createdAt: t.createdAt,
       }));
       res.json(translationsWithoutMarkdown);
