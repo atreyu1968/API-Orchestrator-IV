@@ -297,9 +297,17 @@ export default function SeriesPage() {
       setAnalyzingManuscriptId(null);
       let details = "No se pudo analizar el manuscrito";
       try {
-        if (error?.response) {
-          const data = await error.response.json();
-          details = data.error || details;
+        const errorStr = String(error?.message || error || "");
+        if (errorStr.includes(":")) {
+          const jsonPart = errorStr.substring(errorStr.indexOf(":") + 1).trim();
+          try {
+            const parsed = JSON.parse(jsonPart);
+            details = parsed.error || details;
+          } catch {
+            if (jsonPart.length > 10) {
+              details = jsonPart.substring(0, 200);
+            }
+          }
         }
       } catch { /* ignore */ }
       if (!details.includes("cancelled")) {
