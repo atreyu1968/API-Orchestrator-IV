@@ -282,15 +282,33 @@ export class QueueManager {
               agentRole: "system",
             });
             
-            // Force reset the running state so we can restart
+            // Force reset ALL internal states to allow restart
             this.isRunning = false;
+            this.isPaused = false;
             this.processingLock = false;
+            this.currentProjectId = null;
+            this.currentOrchestrator = null;
+            
+            // Also ensure DB state is fully cleared
+            await storage.updateQueueState({ 
+              currentProjectId: null, 
+              status: "running" 
+            });
             
             // Small delay then restart
             setTimeout(async () => {
               try {
                 console.log(`[QueueManager] Auto-starting queue to RETRY frozen project ${project.id}`);
+                
+                // Double-check flags before start
+                this.isRunning = false;
+                this.isPaused = false;
+                this.processingLock = false;
+                
                 await this.start();
+                
+                // Log if start actually began processing
+                console.log(`[QueueManager] start() completed. isRunning=${this.isRunning}, currentProjectId=${this.currentProjectId}`);
               } catch (e) {
                 console.error("[QueueManager] Failed to auto-restart after recovery:", e);
                 this.pendingRetryProjectId = null;
