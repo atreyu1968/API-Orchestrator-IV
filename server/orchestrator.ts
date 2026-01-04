@@ -859,8 +859,10 @@ ${chapterSummaries || "Sin capítulos disponibles"}
       }
 
       // QA: Semantic Repetition Detector - SKIP if already in final review phase to prevent cost inflation
+      // MAX 2 attempts to fix semantic issues, then accept with warnings
       const currentProjectState = await storage.getProject(project.id);
       const skipSemanticDetector = (currentProjectState?.revisionCycle || 0) > 0;
+      const MAX_SEMANTIC_ATTEMPTS = 2;
       
       if (skipSemanticDetector) {
         this.callbacks.onAgentStatus("semantic-detector", "skipped", 
@@ -868,15 +870,42 @@ ${chapterSummaries || "Sin capítulos disponibles"}
         );
         console.log(`[Orchestrator] Skipping semantic detector for project ${project.id} - already completed`);
       } else {
-        const refreshedChaptersForSemantic = await storage.getChaptersByProject(project.id);
-        const completedForSemanticAnalysis = refreshedChaptersForSemantic.filter(c => c.status === "completed" && c.content);
+        let semanticAttempt = 0;
+        let semanticPassed = false;
+        
+        while (semanticAttempt < MAX_SEMANTIC_ATTEMPTS && !semanticPassed) {
+          semanticAttempt++;
+          
+          const refreshedChaptersForSemantic = await storage.getChaptersByProject(project.id);
+          const completedForSemanticAnalysis = refreshedChaptersForSemantic.filter(c => c.status === "completed" && c.content);
 
-        if (completedForSemanticAnalysis.length > 0) {
+          if (completedForSemanticAnalysis.length === 0) break;
+          
+          this.callbacks.onAgentStatus("semantic-detector", "analyzing", 
+            `Análisis semántico (intento ${semanticAttempt}/${MAX_SEMANTIC_ATTEMPTS})...`
+          );
+          
           const semanticResult = await this.runSemanticRepetitionAnalysis(project, completedForSemanticAnalysis, worldBibleData);
           
-          if (!semanticResult.passed && semanticResult.chaptersToRevise.length > 0) {
+          if (semanticResult.passed) {
+            semanticPassed = true;
+            this.callbacks.onAgentStatus("semantic-detector", "complete", 
+              `Análisis semántico aprobado`
+            );
+            break;
+          }
+          
+          if (semanticAttempt >= MAX_SEMANTIC_ATTEMPTS) {
+            this.callbacks.onAgentStatus("semantic-detector", "warning", 
+              `Máximo de intentos alcanzado. Continuando con observaciones menores.`
+            );
+            console.log(`[Orchestrator] Semantic detector: max attempts reached, accepting with warnings`);
+            break;
+          }
+          
+          if (semanticResult.chaptersToRevise.length > 0) {
             this.callbacks.onAgentStatus("semantic-detector", "editing", 
-              `Corrigiendo ${semanticResult.chaptersToRevise.length} capítulos con repeticiones semánticas`
+              `Corrigiendo ${semanticResult.chaptersToRevise.length} capítulos (intento ${semanticAttempt})`
             );
             
             for (const chapterNum of semanticResult.chaptersToRevise) {
@@ -890,12 +919,12 @@ ${chapterSummaries || "Sin capítulos disponibles"}
                 
                 const clusterIssues = semanticResult.clusters
                   .filter(c => c.capitulos_afectados?.includes(chapterNum))
-                  .map(c => `Repetición de idea: "${c.idea_repetida}" aparece ${c.frecuencia || "múltiples"} veces`)
+                  .map(c => `Repetición de idea: "${c.descripcion}" - ${c.fix_sugerido}`)
                   .join("\n");
                 
                 const foreshadowingIssues = semanticResult.foreshadowingStatus
                   .filter(f => f.estado === "sin_payoff")
-                  .map(f => `Foreshadowing sin resolver: "${f.descripcion}" (plantado en cap ${f.capitulo_sembrado})`)
+                  .map(f => `Foreshadowing sin resolver: "${f.setup}" (plantado en cap ${f.capitulo_setup}) - DEBES resolverlo en este capítulo o eliminarlo`)
                   .join("\n");
                 
                 const allIssues = [clusterIssues, foreshadowingIssues].filter(Boolean).join("\n\n");
@@ -1289,9 +1318,10 @@ ${chapterSummaries || "Sin capítulos disponibles"}
       }
 
       // QA: Semantic Repetition Detector - SKIP if already in final review phase (revisionCycle > 0)
-      // This prevents re-running the detector when resuming after a freeze, which causes cost inflation
+      // MAX 2 attempts to fix semantic issues, then accept with warnings
       const updatedProject = await storage.getProject(project.id);
       const alreadyInFinalReview = (updatedProject?.revisionCycle || 0) > 0;
+      const MAX_SEMANTIC_ATTEMPTS_RESUME = 2;
       
       if (alreadyInFinalReview) {
         this.callbacks.onAgentStatus("semantic-detector", "skipped", 
@@ -1299,15 +1329,42 @@ ${chapterSummaries || "Sin capítulos disponibles"}
         );
         console.log(`[Orchestrator] Skipping semantic detector for project ${project.id} - already in final review phase`);
       } else {
-        const refreshedChaptersForSemantic = await storage.getChaptersByProject(project.id);
-        const completedForSemanticAnalysis = refreshedChaptersForSemantic.filter(c => c.status === "completed" && c.content);
+        let semanticAttemptResume = 0;
+        let semanticPassedResume = false;
+        
+        while (semanticAttemptResume < MAX_SEMANTIC_ATTEMPTS_RESUME && !semanticPassedResume) {
+          semanticAttemptResume++;
+          
+          const refreshedChaptersForSemantic = await storage.getChaptersByProject(project.id);
+          const completedForSemanticAnalysis = refreshedChaptersForSemantic.filter(c => c.status === "completed" && c.content);
 
-        if (completedForSemanticAnalysis.length > 0) {
+          if (completedForSemanticAnalysis.length === 0) break;
+          
+          this.callbacks.onAgentStatus("semantic-detector", "analyzing", 
+            `Análisis semántico (intento ${semanticAttemptResume}/${MAX_SEMANTIC_ATTEMPTS_RESUME})...`
+          );
+          
           const semanticResult = await this.runSemanticRepetitionAnalysis(project, completedForSemanticAnalysis, worldBibleData);
           
-          if (!semanticResult.passed && semanticResult.chaptersToRevise.length > 0) {
+          if (semanticResult.passed) {
+            semanticPassedResume = true;
+            this.callbacks.onAgentStatus("semantic-detector", "complete", 
+              `Análisis semántico aprobado`
+            );
+            break;
+          }
+          
+          if (semanticAttemptResume >= MAX_SEMANTIC_ATTEMPTS_RESUME) {
+            this.callbacks.onAgentStatus("semantic-detector", "warning", 
+              `Máximo de intentos alcanzado. Continuando con observaciones menores.`
+            );
+            console.log(`[Orchestrator] Semantic detector: max attempts reached, accepting with warnings`);
+            break;
+          }
+          
+          if (semanticResult.chaptersToRevise.length > 0) {
             this.callbacks.onAgentStatus("semantic-detector", "editing", 
-              `Corrigiendo ${semanticResult.chaptersToRevise.length} capítulos con repeticiones semánticas`
+              `Corrigiendo ${semanticResult.chaptersToRevise.length} capítulos (intento ${semanticAttemptResume})`
             );
             
             for (const chapterNum of semanticResult.chaptersToRevise) {
@@ -1321,19 +1378,19 @@ ${chapterSummaries || "Sin capítulos disponibles"}
                 
                 const clusterIssues = semanticResult.clusters
                   .filter(c => c.capitulos_afectados?.includes(chapterNum))
-                  .map(c => `Repetición de idea: "${c.idea_repetida}" aparece ${c.frecuencia || "múltiples"} veces`)
+                  .map(c => `Repetición de idea: "${c.descripcion}" - ${c.fix_sugerido}`)
                   .join("\n");
                 
                 const foreshadowingIssues = semanticResult.foreshadowingStatus
                   .filter(f => f.estado === "sin_payoff")
-                  .map(f => `Foreshadowing sin resolver: "${f.descripcion}" (plantado en cap ${f.capitulo_sembrado})`)
+                  .map(f => `Foreshadowing sin resolver: "${f.setup}" (plantado en cap ${f.capitulo_setup}) - DEBES resolverlo o eliminarlo`)
                   .join("\n");
                 
                 const allIssues = [clusterIssues, foreshadowingIssues].filter(Boolean).join("\n\n");
                 
                 if (allIssues) {
                   const baseStyleGuide = `Género: ${project.genre}, Tono: ${project.tone}`;
-                  const fullStyleGuide = styleGuideContent 
+                  const fullStyleGuideResume = styleGuideContent 
                     ? `${baseStyleGuide}\n\n--- GUÍA DE ESTILO DEL AUTOR ---\n${styleGuideContent}`
                     : baseStyleGuide;
                   
@@ -1342,7 +1399,7 @@ ${chapterSummaries || "Sin capítulos disponibles"}
                     freshChapter,
                     sectionForFix,
                     worldBibleData,
-                    fullStyleGuide,
+                    fullStyleGuideResume,
                     "semantic",
                     allIssues
                   );
