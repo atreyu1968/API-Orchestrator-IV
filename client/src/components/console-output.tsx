@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Brain, Pencil, Eye, FileText, AlertCircle, CheckCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Brain, Pencil, Eye, FileText, AlertCircle, CheckCircle, Download } from "lucide-react";
 
 type LogType = "thinking" | "writing" | "editing" | "polishing" | "error" | "success" | "info";
 
@@ -14,6 +15,7 @@ interface LogEntry {
 
 interface ConsoleOutputProps {
   logs: LogEntry[];
+  projectId?: number;
 }
 
 const logIcons: Record<LogType, React.ReactNode> = {
@@ -82,7 +84,7 @@ function getChapterColor(chapterNum: number): string {
   return chapterColors[chapterNum];
 }
 
-export function ConsoleOutput({ logs }: ConsoleOutputProps) {
+export function ConsoleOutput({ logs, projectId }: ConsoleOutputProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,6 +96,12 @@ export function ConsoleOutput({ logs }: ConsoleOutputProps) {
     }
   }, [logs]);
 
+  const handleExportLogs = () => {
+    if (projectId) {
+      window.open(`/api/projects/${projectId}/export-logs-pdf`, "_blank");
+    }
+  };
+
   return (
     <div 
       className="bg-card border border-card-border rounded-md font-mono text-sm"
@@ -103,10 +111,24 @@ export function ConsoleOutput({ logs }: ConsoleOutputProps) {
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Consola de Agentes
         </span>
-        <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
-          <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
-          <div className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
+        <div className="flex items-center gap-3">
+          {projectId && logs.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleExportLogs}
+              className="h-6 px-2 text-xs"
+              data-testid="button-export-logs"
+            >
+              <Download className="h-3 w-3 mr-1" />
+              PDF
+            </Button>
+          )}
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
+            <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
+            <div className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
+          </div>
         </div>
       </div>
       <ScrollArea className="h-64" ref={scrollAreaRef}>

@@ -500,7 +500,7 @@ export default function Dashboard() {
               <CardTitle className="text-lg">Consola de Actividad</CardTitle>
             </CardHeader>
             <CardContent>
-              <ConsoleOutput logs={logs} />
+              <ConsoleOutput logs={logs} projectId={currentProject?.id} />
             </CardContent>
           </Card>
 

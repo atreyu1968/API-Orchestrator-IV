@@ -405,6 +405,109 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/projects/:id/export-logs-pdf", async (req: Request, res: Response) => {
+    try {
+      const PDFDocument = (await import("pdfkit")).default;
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Proyecto no encontrado" });
+      }
+
+      const logs = await storage.getActivityLogsByProject(id, 5000);
+      
+      const doc = new PDFDocument({ 
+        size: "A4", 
+        margin: 50,
+        bufferPages: true 
+      });
+      
+      const chunks: Buffer[] = [];
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+      
+      const pdfPromise = new Promise<Buffer>((resolve, reject) => {
+        doc.on("end", () => resolve(Buffer.concat(chunks)));
+        doc.on("error", reject);
+      });
+
+      doc.fontSize(18).font("Helvetica-Bold").text(`Registro de Actividad`, { align: "center" });
+      doc.fontSize(14).font("Helvetica").text(`Proyecto: ${project.title}`, { align: "center" });
+      doc.fontSize(10).text(`Exportado: ${new Date().toLocaleString("es-ES")}`, { align: "center" });
+      doc.moveDown(2);
+
+      const agentNames: Record<string, string> = {
+        architect: "Arquitecto",
+        ghostwriter: "Escritor",
+        editor: "Editor",
+        copyeditor: "Corrector de Estilo",
+        "continuity-sentinel": "Centinela de Continuidad",
+        "voice-rhythm-auditor": "Auditor de Voz y Ritmo",
+        "semantic-repetition-detector": "Detector de Repeticiones",
+        "final-reviewer": "Revisor Final",
+        orchestrator: "Orquestador",
+        system: "Sistema",
+      };
+
+      const levelLabels: Record<string, string> = {
+        info: "INFO",
+        success: "EXITO",
+        warn: "AVISO",
+        warning: "AVISO",
+        error: "ERROR",
+      };
+
+      doc.fontSize(9);
+      
+      for (const log of logs.reverse()) {
+        const timestamp = new Date(log.createdAt).toLocaleString("es-ES", {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit"
+        });
+        
+        const agentLabel = agentNames[log.agentRole || "system"] || log.agentRole || "Sistema";
+        const levelLabel = levelLabels[log.level] || log.level.toUpperCase();
+        
+        const line = `[${timestamp}] [${levelLabel}] [${agentLabel}] ${log.message}`;
+        
+        if (doc.y > 750) {
+          doc.addPage();
+        }
+        
+        if (log.level === "error") {
+          doc.fillColor("red");
+        } else if (log.level === "success") {
+          doc.fillColor("green");
+        } else if (log.level === "warn" || log.level === "warning") {
+          doc.fillColor("orange");
+        } else {
+          doc.fillColor("black");
+        }
+        
+        doc.text(line, { width: 495, lineGap: 2 });
+        doc.fillColor("black");
+      }
+
+      doc.end();
+      const buffer = await pdfPromise;
+
+      const safeTitle = project.title.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ\s]/g, "").replace(/\s+/g, "_");
+      const filename = `${safeTitle}_logs.pdf`;
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Length", buffer.length);
+      res.send(buffer);
+
+    } catch (error) {
+      console.error("Error exporting logs to PDF:", error);
+      res.status(500).json({ error: "Error al exportar logs" });
+    }
+  });
+
   app.post("/api/projects/:id/generate", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
