@@ -295,24 +295,41 @@ export class QueueManager {
               status: "running" 
             });
             
-            // Small delay then restart
-            setTimeout(async () => {
-              try {
-                console.log(`[QueueManager] Auto-starting queue to RETRY frozen project ${project.id}`);
-                
-                // Double-check flags before start
-                this.isRunning = false;
-                this.isPaused = false;
-                this.processingLock = false;
-                
-                await this.start();
-                
-                // Log if start actually began processing
-                console.log(`[QueueManager] start() completed. isRunning=${this.isRunning}, currentProjectId=${this.currentProjectId}`);
-              } catch (e) {
-                console.error("[QueueManager] Failed to auto-restart after recovery:", e);
-                this.pendingRetryProjectId = null;
-              }
+            // Small delay then restart - use setImmediate pattern to avoid blocking
+            setTimeout(() => {
+              (async () => {
+                try {
+                  console.log(`[QueueManager] Auto-starting queue to RETRY frozen project ${project.id}`);
+                  
+                  // Double-check flags before start
+                  this.isRunning = false;
+                  this.isPaused = false;
+                  this.processingLock = false;
+                  
+                  // Ensure the project is still in paused state before starting
+                  const checkProject = await storage.getProject(project.id);
+                  if (!checkProject || checkProject.status !== "paused") {
+                    console.log(`[QueueManager] Project ${project.id} status changed to ${checkProject?.status}, skipping auto-restart`);
+                    this.pendingRetryProjectId = null;
+                    return;
+                  }
+                  
+                  await this.start();
+                  
+                  // Log if start actually began processing
+                  console.log(`[QueueManager] start() completed. isRunning=${this.isRunning}, currentProjectId=${this.currentProjectId}`);
+                  
+                  // If start() didn't pick up the project, force processQueue
+                  if (this.currentProjectId === null && this.pendingRetryProjectId === null) {
+                    console.log(`[QueueManager] Project not picked up, forcing processQueue for ${project.id}`);
+                    this.pendingRetryProjectId = project.id;
+                    await this.processQueue();
+                  }
+                } catch (e) {
+                  console.error("[QueueManager] Failed to auto-restart after recovery:", e);
+                  this.pendingRetryProjectId = null;
+                }
+              })();
             }, 3000);
             
             break; // Handle one frozen project at a time
