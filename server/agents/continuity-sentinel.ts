@@ -19,6 +19,7 @@ export interface ContinuityIssue {
   descripcion: string;
   evidencia_textual: string;
   severidad: "critica" | "mayor" | "menor";
+  elementos_a_preservar: string;
   fix_sugerido: string;
 }
 
@@ -97,7 +98,8 @@ SALIDA OBLIGATORIA (JSON)
       "descripcion": "Elena termina en el aeropuerto (cap 5) pero aparece en su oficina sin transición (cap 6)",
       "evidencia_textual": "Cap 5: 'Elena atravesó las puertas del aeropuerto...' / Cap 6: 'Desde su escritorio, Elena observaba...'",
       "severidad": "mayor",
-      "fix_sugerido": "Añadir transición o escena de viaje al inicio del cap 6"
+      "elementos_a_preservar": "El resto del capítulo 6 está perfecto. Solo modificar las primeras 2-3 líneas para añadir la transición.",
+      "fix_sugerido": "SOLO añadir 1-2 oraciones al inicio del cap 6 mencionando el viaje de regreso. Ej: 'Tras el vuelo de regreso, Elena se dejó caer en su silla de oficina.' El resto del capítulo permanece INTACTO."
     }
   ],
   "capitulos_para_revision": [6],

@@ -17,6 +17,7 @@ export interface RepetitionCluster {
   descripcion: string;
   ejemplos: string[];
   severidad: "mayor" | "menor";
+  elementos_a_preservar: string;
   fix_sugerido: string;
 }
 
@@ -116,7 +117,8 @@ SALIDA OBLIGATORIA (JSON)
         "Cap 12: 'un frío súbito la envolvió'"
       ],
       "severidad": "mayor",
-      "fix_sugerido": "Variar las reacciones físicas al peligro: tensión muscular, respiración agitada, sequedad en la boca, etc."
+      "elementos_a_preservar": "Mantener la instancia del Cap 2 (es la primera, establece el patrón). El resto del contenido de cada capítulo está perfecto.",
+      "fix_sugerido": "SOLO cambiar las oraciones citadas en caps 5, 8 y 12. Sugerencias: Cap 5 → 'tensó los músculos', Cap 8 → 'se le secó la boca', Cap 12 → 'el corazón le latió con fuerza'. El resto de cada capítulo permanece INTACTO."
     }
   ],
   "capitulos_para_revision": [5, 8, 12],

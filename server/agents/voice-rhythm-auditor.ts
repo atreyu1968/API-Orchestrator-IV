@@ -20,6 +20,7 @@ export interface VoiceRhythmIssue {
   descripcion: string;
   evidencia_textual: string;
   severidad: "mayor" | "menor";
+  elementos_a_preservar: string;
   fix_sugerido: string;
 }
 
@@ -105,7 +106,8 @@ SALIDA OBLIGATORIA (JSON)
       "descripcion": "El capítulo 7 adopta un tono humorístico que contrasta con el thriller oscuro del resto",
       "evidencia_textual": "'—Vaya, qué oportuno —rio Pedro, ajustándose la corbata con gesto teatral.'",
       "severidad": "mayor",
-      "fix_sugerido": "Ajustar el tono del diálogo para mantener la tensión del thriller"
+      "elementos_a_preservar": "La estructura del diálogo está bien. La información que se revela es correcta. Solo cambiar el TONO de las líneas marcadas.",
+      "fix_sugerido": "SOLO modificar la línea citada. Cambiar '—rio Pedro, ajustándose la corbata con gesto teatral' a algo más tenso como '—murmuró Pedro, sin apartar la mirada de la puerta'. El resto del capítulo permanece INTACTO."
     }
   ],
   "capitulos_para_revision": [7],

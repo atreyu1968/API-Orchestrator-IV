@@ -1015,8 +1015,8 @@ ${chapterSummaries || "Sin capítulos disponibles"}
                 
                 const clusterIssues = semanticResult.clusters
                   .filter(c => c.capitulos_afectados?.includes(chapterNum))
-                  .map(c => `Repetición de idea: "${c.descripcion}" - ${c.fix_sugerido}`)
-                  .join("\n");
+                  .map(c => `Repetición de idea: "${c.descripcion}"\n⚠️ PRESERVAR: ${c.elementos_a_preservar || "El resto del capítulo"}\n✏️ CORRECCIÓN: ${c.fix_sugerido}`)
+                  .join("\n\n");
                 
                 const foreshadowingIssues = semanticResult.foreshadowingStatus
                   .filter(f => f.estado === "sin_payoff")
@@ -1474,8 +1474,8 @@ ${chapterSummaries || "Sin capítulos disponibles"}
                 
                 const clusterIssues = semanticResult.clusters
                   .filter(c => c.capitulos_afectados?.includes(chapterNum))
-                  .map(c => `Repetición de idea: "${c.descripcion}" - ${c.fix_sugerido}`)
-                  .join("\n");
+                  .map(c => `Repetición de idea: "${c.descripcion}"\n⚠️ PRESERVAR: ${c.elementos_a_preservar || "El resto del capítulo"}\n✏️ CORRECCIÓN: ${c.fix_sugerido}`)
+                  .join("\n\n");
                 
                 const foreshadowingIssues = semanticResult.foreshadowingStatus
                   .filter(f => f.estado === "sin_payoff")
@@ -2840,7 +2840,7 @@ ${chapterSummaries || "Sin capítulos disponibles"}
       return { passed: true, issues: [], chaptersToRevise: [] };
     } else {
       const issueDescriptions = (sentinelResult?.issues || []).map(i => 
-        `[${i.severidad.toUpperCase()}] ${i.tipo}: ${i.descripcion}`
+        `[${i.severidad.toUpperCase()}] ${i.tipo}: ${i.descripcion}\n⚠️ PRESERVAR: ${i.elementos_a_preservar || "El resto del capítulo"}\n✏️ CORRECCIÓN: ${i.fix_sugerido}`
       );
       
       this.callbacks.onAgentStatus("continuity-sentinel", "warning", 
@@ -2900,7 +2900,7 @@ ${chapterSummaries || "Sin capítulos disponibles"}
       return { passed: true, issues: [], chaptersToRevise: [] };
     } else {
       const issueDescriptions = (auditResult?.issues || []).map(i => 
-        `[${i.severidad.toUpperCase()}] ${i.tipo}: ${i.descripcion}`
+        `[${i.severidad.toUpperCase()}] ${i.tipo}: ${i.descripcion}\n⚠️ PRESERVAR: ${i.elementos_a_preservar || "El resto del capítulo"}\n✏️ CORRECCIÓN: ${i.fix_sugerido}`
       );
       
       this.callbacks.onAgentStatus("voice-auditor", "warning", 
