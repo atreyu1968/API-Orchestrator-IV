@@ -76,8 +76,43 @@ function sortChaptersForDisplay<T extends { chapterNumber: number }>(chapters: T
   });
 }
 
+function removeStyleGuideContamination(content: string): string {
+  let cleaned = content;
+  
+  const styleGuidePatterns = [
+    // English patterns
+    /^#+ *Literary Style Guide[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|Prologue|Epilogue|Author['']?s? Note)\b|\n---\n|$)/gm,
+    /^#+ *Writing Guide[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|Prologue|Epilogue|Author['']?s? Note)\b|\n---\n|$)/gm,
+    /^#+ *The Master of[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|Prologue|Epilogue|Author['']?s? Note)\b|\n---\n|$)/gm,
+    // Spanish patterns
+    /^#+ *Guía de Estilo[^\n]*\n[\s\S]*?(?=^#+ *(?:CAPÍTULO|Capítulo|Prólogo|Epílogo|Nota del Autor)\b|\n---\n|$)/gmi,
+    /^#+ *Guía de Escritura[^\n]*\n[\s\S]*?(?=^#+ *(?:CAPÍTULO|Capítulo|Prólogo|Epílogo|Nota del Autor)\b|\n---\n|$)/gmi,
+    // Checklist patterns
+    /^###+ *Checklist[^\n]*\n[\s\S]*?(?=^#{1,2} *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo|Epilogue|Epílogo)\b|\n---\n|$)/gmi,
+    // Generic style guide block between --- separators
+    /\n---\n[\s\S]*?(?:Style Guide|Guía de Estilo|Writing Guide|Guía de Escritura)[\s\S]*?\n---\n/gi,
+  ];
+  
+  for (const pattern of styleGuidePatterns) {
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  // Remove meta-sections that shouldn't be in narrative
+  const metaSectionPatterns = [
+    /^#+ *\d+\. *(?:Narrative Architecture|Character Construction|Central Themes|Language and Stylistic|Tone and Atmosphere)[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo)\b|$)/gmi,
+  ];
+  
+  for (const pattern of metaSectionPatterns) {
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  return cleaned.trim();
+}
+
 function stripChapterHeaders(content: string): string {
   let cleaned = content.trim();
+  // First remove any style guide contamination
+  cleaned = removeStyleGuideContamination(cleaned);
   // Remove markdown headers at the start that contain chapter/prólogo/epílogo info
   cleaned = cleaned.replace(/^#+ *(CHAPTER|CAPÍTULO|CAP\.?|Capítulo|Chapter|Prólogo|Prologue|Epílogo|Epilogue|Nota del Autor|Author'?s? Note)[^\n]*\n+/i, '');
   return cleaned.trim();
