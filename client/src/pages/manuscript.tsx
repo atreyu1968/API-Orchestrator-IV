@@ -29,6 +29,34 @@ export default function ManuscriptPage() {
   const handleDownload = () => {
     if (!currentProject || chapters.length === 0) return;
 
+    const removeStyleGuideContamination = (content: string): string => {
+      let cleaned = content;
+      
+      const styleGuidePatterns = [
+        /^#+ *Literary Style Guide[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|Prologue|Epilogue|Author['']?s? Note)\b|\n---\n|$)/gm,
+        /^#+ *Writing Guide[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|Prologue|Epilogue|Author['']?s? Note)\b|\n---\n|$)/gm,
+        /^#+ *The Master of[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|Prologue|Epilogue|Author['']?s? Note)\b|\n---\n|$)/gm,
+        /^#+ *Guía de Estilo[^\n]*\n[\s\S]*?(?=^#+ *(?:CAPÍTULO|Capítulo|Prólogo|Epílogo|Nota del Autor)\b|\n---\n|$)/gmi,
+        /^#+ *Guía de Escritura[^\n]*\n[\s\S]*?(?=^#+ *(?:CAPÍTULO|Capítulo|Prólogo|Epílogo|Nota del Autor)\b|\n---\n|$)/gmi,
+        /^###+ *Checklist[^\n]*\n[\s\S]*?(?=^#{1,2} *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo|Epilogue|Epílogo)\b|\n---\n|$)/gmi,
+        /\n---\n[\s\S]*?(?:Style Guide|Guía de Estilo|Writing Guide|Guía de Escritura)[\s\S]*?\n---\n/gi,
+      ];
+      
+      for (const pattern of styleGuidePatterns) {
+        cleaned = cleaned.replace(pattern, '');
+      }
+      
+      const metaSectionPatterns = [
+        /^#+ *\d+\. *(?:Narrative Architecture|Character Construction|Central Themes|Language and Stylistic|Tone and Atmosphere)[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo)\b|$)/gmi,
+      ];
+      
+      for (const pattern of metaSectionPatterns) {
+        cleaned = cleaned.replace(pattern, '');
+      }
+      
+      return cleaned.trim();
+    };
+
     const cleanContent = (rawContent: string): string => {
       let content = rawContent.trim();
       const continuityMarker = "---CONTINUITY_STATE---";
@@ -36,6 +64,7 @@ export default function ManuscriptPage() {
       if (markerIndex !== -1) {
         content = content.substring(0, markerIndex).trim();
       }
+      content = removeStyleGuideContamination(content);
       return content;
     };
 
