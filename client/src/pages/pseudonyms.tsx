@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { User, Plus, Trash2, FileText, Edit2, Check, X, Upload, Loader2 } from "lucide-react";
+import { User, Plus, Trash2, FileText, Edit2, Check, X, Upload, Loader2, Download } from "lucide-react";
 import type { Pseudonym, StyleGuide } from "@shared/schema";
 
 export default function PseudonymsPage() {
@@ -148,6 +148,60 @@ export default function PseudonymsPage() {
   };
 
   const selectedPseudonymData = pseudonyms.find(p => p.id === selectedPseudonym);
+
+  const downloadStyleGuideTemplate = () => {
+    const template = `# PLANTILLA DE GUÍA DE ESTILO
+# Completa las secciones según tu preferencia de escritura
+
+## 1. VOZ NARRATIVA
+- Persona: [Primera persona / Tercera persona limitada / Tercera persona omnisciente]
+- Tono predominante: [Íntimo / Distante / Irónico / Dramático / etc.]
+- Nivel de formalidad: [Coloquial / Neutro / Formal / Literario]
+
+## 2. ESTILO DE PROSA
+- Longitud de oraciones: [Cortas y directas / Variadas / Largas y elaboradas]
+- Uso de metáforas: [Mínimo / Moderado / Abundante]
+- Descripciones: [Esenciales / Detalladas / Sensoriales]
+- Diálogos: [Realistas / Estilizados / Dialectales]
+
+## 3. RITMO Y ESTRUCTURA
+- Velocidad de escenas de acción: [Frenética / Moderada / Pausada]
+- Capítulos: [Cortos 2000-3000 palabras / Medios 4000-5000 / Largos 6000+]
+- Cliffhangers: [Al final de cada capítulo / Ocasionales / Mínimos]
+
+## 4. CONTENIDO SENSIBLE
+- Violencia: [Explícita / Sugerida / Mínima]
+- Romance/Escenas íntimas: [Explícitas / Fade to black / Sin escenas]
+- Lenguaje fuerte: [Permitido / Moderado / Evitar]
+
+## 5. VOCABULARIO
+- Palabras a EVITAR: [Lista de palabras que no quieres usar]
+- Palabras PREFERIDAS: [Términos o expresiones características de tu estilo]
+- Muletillas a evitar: [Frases repetitivas que no deseas]
+
+## 6. REFERENCIAS DE ESTILO
+- Autores de referencia: [Nombres de autores cuyo estilo admiras]
+- Libros de referencia: [Títulos específicos que ejemplifican el tono deseado]
+
+## 7. NOTAS ADICIONALES
+[Cualquier otra instrucción específica para los agentes de escritura]
+`;
+
+    const blob = new Blob([template], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "plantilla-guia-estilo.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast({ 
+      title: "Plantilla descargada", 
+      description: "Edita el archivo y súbelo para crear tu guía de estilo" 
+    });
+  };
 
   return (
     <div className="p-6 space-y-6" data-testid="pseudonyms-page">
@@ -316,21 +370,33 @@ export default function PseudonymsPage() {
                           disabled={isUploadingFile}
                           data-testid="input-upload-word"
                         />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={isUploadingFile}
-                          onClick={() => fileInputRef.current?.click()}
-                          data-testid="button-upload-word"
-                        >
-                          {isUploadingFile ? (
-                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                          ) : (
-                            <Upload className="h-3 w-3 mr-1" />
-                          )}
-                          Subir Word
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={downloadStyleGuideTemplate}
+                            data-testid="button-download-template"
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            Descargar Plantilla
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={isUploadingFile}
+                            onClick={() => fileInputRef.current?.click()}
+                            data-testid="button-upload-word"
+                          >
+                            {isUploadingFile ? (
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            ) : (
+                              <Upload className="h-3 w-3 mr-1" />
+                            )}
+                            Subir Word
+                          </Button>
+                        </div>
                       </div>
                       <Textarea
                         placeholder="Describe el estilo de escritura, vocabulario preferido, estructura de oraciones, nivel de descripción, manejo de diálogos, ritmo narrativo, etc."
@@ -372,6 +438,25 @@ export default function PseudonymsPage() {
                     <p className="text-muted-foreground/60 text-xs mt-1">
                       Crea una guía para definir la voz de este autor
                     </p>
+                    <div className="flex justify-center gap-2 mt-4">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={downloadStyleGuideTemplate}
+                        data-testid="button-download-template-empty"
+                      >
+                        <Download className="h-4 w-4 mr-1" />
+                        Descargar Plantilla
+                      </Button>
+                      <Button 
+                        size="sm"
+                        onClick={() => setIsCreatingGuide(true)}
+                        data-testid="button-create-guide-empty"
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Crear Guía
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   styleGuides.map((guide) => (
