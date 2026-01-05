@@ -1705,6 +1705,13 @@ ${chapterSummaries || "Sin capítulos disponibles"}
           
           if (needsUpdate) {
             await storage.updateWorldBible(worldBible.id, updates);
+            console.log(`[FinalReviewer] World Bible actualizado con: plotDecisions=${updates.plotDecisions?.length || 0}, persistentInjuries=${updates.persistentInjuries?.length || 0}`);
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: "info",
+              message: `World Bible actualizado: ${updates.plotDecisions?.length || 0} decisiones de trama, ${updates.persistentInjuries?.length || 0} lesiones persistentes guardadas`,
+              agentRole: "final-reviewer",
+            });
           }
         }
         
