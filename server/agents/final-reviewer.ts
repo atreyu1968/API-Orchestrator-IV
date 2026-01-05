@@ -15,7 +15,7 @@ interface FinalReviewerInput {
 
 export interface FinalReviewIssue {
   capitulos_afectados: number[];
-  categoria: "enganche" | "personajes" | "trama" | "atmosfera" | "ritmo" | "continuidad_fisica" | "timeline" | "ubicacion" | "repeticion_lexica" | "arco_incompleto" | "tension_insuficiente" | "giro_predecible" | "hook_debil" | "otro";
+  categoria: "enganche" | "personajes" | "trama" | "atmosfera" | "ritmo" | "continuidad_fisica" | "timeline" | "ubicacion" | "repeticion_lexica" | "arco_incompleto" | "tension_insuficiente" | "giro_predecible" | "hook_debil" | "identidad_confusa" | "capitulo_huerfano" | "otro";
   descripcion: string;
   severidad: "critica" | "mayor" | "menor";
   elementos_a_preservar: string;
@@ -46,6 +46,30 @@ export interface ScoreJustification {
   recomendaciones_proceso: string[];
 }
 
+export interface PlotDecision {
+  decision: string;
+  capitulo_establecido: number;
+  capitulos_afectados: number[];
+  consistencia_actual: "consistente" | "inconsistente";
+  problema?: string;
+}
+
+export interface PersistentInjury {
+  personaje: string;
+  tipo_lesion: string;
+  capitulo_ocurre: number;
+  efecto_esperado: string;
+  capitulos_verificados: number[];
+  consistencia: "correcta" | "ignorada";
+  problema?: string;
+}
+
+export interface OrphanChapter {
+  capitulo: number;
+  razon: string;
+  recomendacion: "eliminar" | "reubicar_como_flashback" | "integrar_en_otro";
+}
+
 export interface FinalReviewerResult {
   veredicto: "APROBADO" | "APROBADO_CON_RESERVAS" | "REQUIERE_REVISION";
   resumen_general: string;
@@ -54,6 +78,9 @@ export interface FinalReviewerResult {
   analisis_bestseller?: BestsellerAnalysis;
   issues: FinalReviewIssue[];
   capitulos_para_reescribir: number[];
+  plot_decisions?: PlotDecision[];
+  persistent_injuries?: PersistentInjury[];
+  orphan_chapters?: OrphanChapter[];
 }
 
 const SYSTEM_PROMPT = `
@@ -180,6 +207,30 @@ MENORES (El lector ni nota):
 - Variaciones estilísticas sutiles
 
 ═══════════════════════════════════════════════════════════════════
+🔴 ANÁLISIS CRÍTICO MANUSCRITO-COMPLETO (OBLIGATORIO)
+═══════════════════════════════════════════════════════════════════
+
+Debes detectar y reportar estos problemas que SOLO se ven leyendo toda la novela:
+
+1. **DECISIONES DE TRAMA CRÍTICAS (plot_decisions)**:
+   - ¿Quién es realmente el villano/antagonista? ¿Hay confusión?
+   - ¿Las revelaciones son coherentes con lo establecido antes?
+   - Ejemplo: Si Cap 32 muestra a X como el asesino pero Cap 39 dice que es Y → INCONSISTENTE
+   - Para cada decisión crítica, indica si es CONSISTENTE o INCONSISTENTE a lo largo del manuscrito
+
+2. **LESIONES PERSISTENTES (persistent_injuries)**:
+   - Si un personaje sufre una lesión grave (disparo, quemadura, hueso roto), ¿aparece esa lesión en capítulos posteriores?
+   - Ejemplo: Personaje recibe ácido en el brazo (Cap 25) → debe mostrar discapacidad en Caps 26-50
+   - Si la lesión es IGNORADA después, reportar como inconsistencia CRÍTICA
+   - Opciones de corrección: (a) hacer la lesión superficial, (b) añadir referencias a la discapacidad
+
+3. **CAPÍTULOS HUÉRFANOS (orphan_chapters)**:
+   - ¿Hay capítulos que no aportan nada a la trama principal?
+   - ¿Hay objetos/llaves/pistas introducidos que NUNCA se usan después?
+   - Ejemplo: Cap 44 introduce una llave que nunca se usa → capítulo huérfano
+   - Recomendar: eliminar, reubicar como flashback, o integrar en otro capítulo
+
+═══════════════════════════════════════════════════════════════════
 PROTOCOLO DE PASADAS - OBJETIVO: PUNTUACIÓN 9+
 ═══════════════════════════════════════════════════════════════════
 
@@ -224,14 +275,41 @@ SALIDA OBLIGATORIA (JSON):
   "issues": [
     {
       "capitulos_afectados": [1, 5],
-      "categoria": "enganche" | "personajes" | "trama" | "atmosfera" | "ritmo" | "continuidad_fisica" | "timeline" | "repeticion_lexica" | "arco_incompleto" | "tension_insuficiente" | "giro_predecible" | "otro",
+      "categoria": "enganche" | "personajes" | "trama" | "atmosfera" | "ritmo" | "continuidad_fisica" | "timeline" | "repeticion_lexica" | "arco_incompleto" | "tension_insuficiente" | "giro_predecible" | "identidad_confusa" | "capitulo_huerfano" | "otro",
       "descripcion": "Lo que me sacó de la historia como lector",
       "severidad": "critica" | "mayor" | "menor",
       "elementos_a_preservar": "Lista ESPECÍFICA de escenas, diálogos y elementos del capítulo que funcionan bien y NO deben modificarse",
       "instrucciones_correccion": "Cambio QUIRÚRGICO: qué párrafos/líneas específicas modificar y cómo. El resto del capítulo permanece INTACTO"
     }
   ],
-  "capitulos_para_reescribir": [2, 5]
+  "capitulos_para_reescribir": [2, 5],
+  "plot_decisions": [
+    {
+      "decision": "El Escultor es Arnald (no el hombre de la cueva)",
+      "capitulo_establecido": 32,
+      "capitulos_afectados": [32, 33, 34, 39, 45],
+      "consistencia_actual": "inconsistente",
+      "problema": "Cap 32-34 implican que el hombre de la cueva es el Escultor, pero Cap 39 revela que es Arnald. No hay clarificación de la relación entre ambos."
+    }
+  ],
+  "persistent_injuries": [
+    {
+      "personaje": "Arnald",
+      "tipo_lesion": "Quemadura por ácido en el brazo",
+      "capitulo_ocurre": 25,
+      "efecto_esperado": "Brazo inutilizado o con movilidad reducida permanente",
+      "capitulos_verificados": [39, 40, 41, 45, 50],
+      "consistencia": "ignorada",
+      "problema": "Arnald usa ambos brazos normalmente en el clímax sin mención de la lesión"
+    }
+  ],
+  "orphan_chapters": [
+    {
+      "capitulo": 44,
+      "razon": "Introduce una llave de enfermería que nunca se usa. El capítulo no avanza la trama principal.",
+      "recomendacion": "eliminar"
+    }
+  ]
 }
 `;
 

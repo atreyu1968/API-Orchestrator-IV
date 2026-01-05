@@ -1672,6 +1672,110 @@ ${chapterSummaries || "Sin capítulos disponibles"}
         finalReviewResult: result as any,
         finalScore: scoreForDb
       });
+      
+      // === NUEVO: Procesar decisiones de trama, lesiones persistentes y capítulos huérfanos ===
+      if (result) {
+        // Guardar plot_decisions y persistent_injuries en World Bible
+        const worldBible = await storage.getWorldBibleByProject(project.id);
+        if (worldBible) {
+          let needsUpdate = false;
+          const updates: any = {};
+          
+          if (result.plot_decisions && result.plot_decisions.length > 0) {
+            updates.plotDecisions = result.plot_decisions;
+            needsUpdate = true;
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: "info",
+              message: `Final Reviewer detectó ${result.plot_decisions.length} decisiones de trama críticas`,
+              agentRole: "final-reviewer",
+            });
+          }
+          
+          if (result.persistent_injuries && result.persistent_injuries.length > 0) {
+            updates.persistentInjuries = result.persistent_injuries;
+            needsUpdate = true;
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: "info", 
+              message: `Final Reviewer detectó ${result.persistent_injuries.length} lesiones persistentes que verificar`,
+              agentRole: "final-reviewer",
+            });
+          }
+          
+          if (needsUpdate) {
+            await storage.updateWorldBible(worldBible.id, updates);
+          }
+        }
+        
+        // Crear issues adicionales para plot_decisions inconsistentes
+        if (result.plot_decisions) {
+          const inconsistentDecisions = result.plot_decisions.filter(d => d.consistencia_actual === "inconsistente");
+          for (const decision of inconsistentDecisions) {
+            const newIssue = {
+              capitulos_afectados: decision.capitulos_afectados,
+              categoria: "identidad_confusa" as const,
+              descripcion: `DECISIÓN DE TRAMA INCONSISTENTE: ${decision.decision}. ${decision.problema || ""}`,
+              severidad: "critica" as const,
+              elementos_a_preservar: "Preservar toda la trama excepto las líneas que crean la confusión de identidad",
+              instrucciones_correccion: `CLARIFICAR: En el capítulo ${decision.capitulo_establecido} establecer claramente que ${decision.decision}. En capítulos posteriores, asegurar que esta decisión sea coherente.`
+            };
+            result.issues = result.issues || [];
+            result.issues.push(newIssue);
+            if (!result.capitulos_para_reescribir?.includes(decision.capitulo_establecido)) {
+              result.capitulos_para_reescribir = result.capitulos_para_reescribir || [];
+              result.capitulos_para_reescribir.push(decision.capitulo_establecido);
+            }
+          }
+        }
+        
+        // Crear issues para lesiones persistentes ignoradas
+        if (result.persistent_injuries) {
+          const ignoredInjuries = result.persistent_injuries.filter(i => i.consistencia === "ignorada");
+          for (const injury of ignoredInjuries) {
+            const newIssue = {
+              capitulos_afectados: injury.capitulos_verificados,
+              categoria: "continuidad_fisica" as const,
+              descripcion: `LESIÓN IGNORADA: ${injury.personaje} sufrió ${injury.tipo_lesion} en Cap ${injury.capitulo_ocurre} pero no se refleja después. ${injury.problema || ""}`,
+              severidad: "critica" as const,
+              elementos_a_preservar: "Preservar la trama y diálogos. Solo añadir referencias a la lesión.",
+              instrucciones_correccion: `OPCIÓN A: Modificar Cap ${injury.capitulo_ocurre} para que la lesión sea superficial (roce, sin daño real). OPCIÓN B: En caps ${injury.capitulos_verificados.join(", ")}, añadir 1-2 referencias sutiles a ${injury.efecto_esperado}. Elegir la opción que requiera menos cambios.`
+            };
+            result.issues = result.issues || [];
+            result.issues.push(newIssue);
+            // Añadir el capítulo donde ocurre la lesión para posible corrección
+            if (!result.capitulos_para_reescribir?.includes(injury.capitulo_ocurre)) {
+              result.capitulos_para_reescribir = result.capitulos_para_reescribir || [];
+              result.capitulos_para_reescribir.push(injury.capitulo_ocurre);
+            }
+          }
+        }
+        
+        // Crear issues para capítulos huérfanos
+        if (result.orphan_chapters) {
+          for (const orphan of result.orphan_chapters) {
+            const newIssue = {
+              capitulos_afectados: [orphan.capitulo],
+              categoria: "capitulo_huerfano" as const,
+              descripcion: `CAPÍTULO HUÉRFANO: ${orphan.razon}`,
+              severidad: "mayor" as const,
+              elementos_a_preservar: orphan.recomendacion === "eliminar" ? "N/A - capítulo a eliminar" : "El contenido emocional si se reubica",
+              instrucciones_correccion: orphan.recomendacion === "eliminar" 
+                ? `ELIMINAR este capítulo completo. No aporta a la trama.`
+                : orphan.recomendacion === "reubicar_como_flashback"
+                  ? `Convertir en flashback breve (máx 500 palabras) e integrar en otro capítulo relevante.`
+                  : `Integrar el contenido esencial en el capítulo anterior o siguiente.`
+            };
+            result.issues = result.issues || [];
+            result.issues.push(newIssue);
+            if (!result.capitulos_para_reescribir?.includes(orphan.capitulo)) {
+              result.capitulos_para_reescribir = result.capitulos_para_reescribir || [];
+              result.capitulos_para_reescribir.push(orphan.capitulo);
+            }
+          }
+        }
+      }
+      // === FIN NUEVO ===
 
       const currentScore = result?.puntuacion_global || 0;
       previousScores.push(currentScore);
