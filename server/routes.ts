@@ -4863,6 +4863,50 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     }
   });
 
+  app.post("/api/reedit-projects/:id/apply-corrections", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getReeditProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (!project.finalReviewResult) {
+        return res.status(400).json({ error: "No final review result to apply corrections from" });
+      }
+
+      if (activeReeditOrchestrators.has(projectId)) {
+        return res.status(400).json({ error: "Project is already being processed" });
+      }
+
+      const orchestrator = new ReeditOrchestrator();
+      activeReeditOrchestrators.set(projectId, orchestrator);
+
+      res.json({
+        success: true,
+        message: "Applying corrections based on final reviewer feedback",
+        projectId,
+      });
+
+      console.log(`[ApplyCorrections] Starting corrections for project ${projectId}`);
+      orchestrator.applyReviewerCorrections(projectId).then(() => {
+        console.log(`[ApplyCorrections] Completed for project ${projectId}`);
+      }).catch((err: any) => {
+        console.error(`[ApplyCorrections] Error:`, err);
+        storage.updateReeditProject(projectId, {
+          status: "error",
+          errorMessage: err instanceof Error ? err.message : "Unknown error",
+        });
+      }).finally(() => {
+        activeReeditOrchestrators.delete(projectId);
+      });
+    } catch (error) {
+      console.error("Error applying corrections:", error);
+      res.status(500).json({ error: "Failed to apply corrections" });
+    }
+  });
+
   app.post("/api/reedit-projects/:id/cancel", async (req: Request, res: Response) => {
     try {
       const projectId = parseInt(req.params.id);

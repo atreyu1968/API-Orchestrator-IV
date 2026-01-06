@@ -2509,7 +2509,7 @@ export class ReeditOrchestrator {
           ];
 
           // Get worldBible for context
-          const worldBible = await storage.getReeditWorldBible(projectId);
+          const worldBible = await storage.getReeditWorldBibleByProject(projectId);
           
           // Get chapters that need improvement - limit to 5 per cycle for efficiency
           const chaptersToFix = await storage.getReeditChaptersByProject(projectId);
@@ -2761,7 +2761,7 @@ export class ReeditOrchestrator {
         ];
 
         // Get worldBible for context
-        const worldBible = await storage.getReeditWorldBible(projectId);
+        const worldBible = await storage.getReeditWorldBibleByProject(projectId);
         
         // Get chapters that need improvement - limit to 5 per cycle for efficiency
         const chaptersToFix = validChapters.slice(0, Math.min(5, validChapters.length));
@@ -2858,6 +2858,142 @@ export class ReeditOrchestrator {
     });
 
     console.log(`[ReeditOrchestrator] Final review only completed for project ${projectId}: ${bestsellerScore}/10`);
+  }
+
+  async applyReviewerCorrections(projectId: number): Promise<void> {
+    const project = await storage.getReeditProject(projectId);
+    if (!project) {
+      throw new Error(`Project ${projectId} not found`);
+    }
+
+    const finalReviewResult = project.finalReviewResult as any;
+    if (!finalReviewResult) {
+      throw new Error(`No final review result found for project ${projectId}`);
+    }
+
+    const weaknesses = finalReviewResult.weaknesses || finalReviewResult.debilidades_principales || [];
+    const recommendations = finalReviewResult.recommendations || finalReviewResult.recomendaciones_proceso || [];
+
+    if (weaknesses.length === 0 && recommendations.length === 0) {
+      console.log(`[ReeditOrchestrator] No weaknesses or recommendations to apply for project ${projectId}`);
+      return;
+    }
+
+    console.log(`[ReeditOrchestrator] Applying corrections for project ${projectId}:`);
+    console.log(`  - Weaknesses: ${weaknesses.length}`);
+    console.log(`  - Recommendations: ${recommendations.length}`);
+
+    // Convert to problem format
+    const problems = [
+      ...weaknesses.map((w: string, i: number) => ({
+        id: `weakness-${i}`,
+        tipo: "debilidad_detectada",
+        descripcion: typeof w === 'string' ? w : JSON.stringify(w),
+        severidad: "media",
+        accionSugerida: "Corregir según indicación del revisor"
+      })),
+      ...recommendations.map((r: string, i: number) => ({
+        id: `recommendation-${i}`,
+        tipo: "recomendacion",
+        descripcion: typeof r === 'string' ? r : JSON.stringify(r),
+        severidad: "menor",
+        accionSugerida: "Implementar recomendación"
+      }))
+    ];
+
+    // Get worldBible
+    const worldBible = await storage.getReeditWorldBibleByProject(projectId);
+
+    // Get all chapters
+    const allChapters = await storage.getReeditChaptersByProject(projectId);
+    const editableChapters = allChapters.filter(c => c.editedContent);
+
+    // Extract chapter numbers mentioned in feedback
+    const mentionedChapters = new Set<number>();
+    const feedbackText = [...weaknesses, ...recommendations].join(' ');
+    const chapterMatches = feedbackText.match(/cap[íi]tulo\s*(\d+)/gi) || [];
+    chapterMatches.forEach(match => {
+      const num = parseInt(match.replace(/\D/g, ''));
+      if (!isNaN(num)) mentionedChapters.add(num);
+    });
+
+    // If specific chapters mentioned, prioritize those; otherwise fix first 5
+    let chaptersToFix: ReeditChapter[];
+    if (mentionedChapters.size > 0) {
+      chaptersToFix = editableChapters.filter(c => mentionedChapters.has(c.chapterNumber));
+      console.log(`[ReeditOrchestrator] Fixing ${chaptersToFix.length} specifically mentioned chapters: ${Array.from(mentionedChapters).join(', ')}`);
+    } else {
+      chaptersToFix = editableChapters.slice(0, Math.min(5, editableChapters.length));
+      console.log(`[ReeditOrchestrator] No specific chapters mentioned, fixing first ${chaptersToFix.length} chapters`);
+    }
+
+    this.emitProgress({
+      projectId,
+      stage: "fixing",
+      currentChapter: 0,
+      totalChapters: chaptersToFix.length,
+      message: `Aplicando correcciones del revisor a ${chaptersToFix.length} capítulos...`,
+    });
+
+    for (let i = 0; i < chaptersToFix.length; i++) {
+      const chapter = chaptersToFix[i];
+
+      this.emitProgress({
+        projectId,
+        stage: "fixing",
+        currentChapter: i + 1,
+        totalChapters: chaptersToFix.length,
+        message: `Corrigiendo capítulo ${chapter.chapterNumber} (${i + 1}/${chaptersToFix.length})...`,
+      });
+
+      try {
+        // Build adjacent context
+        const prevChapter = editableChapters.find(c => c.chapterNumber === chapter.chapterNumber - 1);
+        const nextChapter = editableChapters.find(c => c.chapterNumber === chapter.chapterNumber + 1);
+        const adjacentContext = {
+          previousChapter: prevChapter?.editedContent?.substring(0, 2000),
+          nextChapter: nextChapter?.editedContent?.substring(0, 2000),
+        };
+
+        const rewriteResult = await this.narrativeRewriter.rewriteChapter(
+          chapter.editedContent || chapter.originalContent,
+          chapter.chapterNumber,
+          problems,
+          worldBible || {},
+          adjacentContext,
+          "español"
+        );
+        this.trackTokens(rewriteResult);
+
+        if (rewriteResult.rewrittenContent) {
+          const wordCount = rewriteResult.rewrittenContent.split(/\s+/).filter((w: string) => w.length > 0).length;
+          await storage.updateReeditChapter(chapter.id, {
+            editedContent: rewriteResult.rewrittenContent,
+            wordCount,
+          });
+          console.log(`[ReeditOrchestrator] Fixed chapter ${chapter.chapterNumber}: ${wordCount} words`);
+        }
+      } catch (err) {
+        console.error(`[ReeditOrchestrator] Error fixing chapter ${chapter.chapterNumber}:`, err);
+      }
+    }
+
+    // Update project tokens
+    await storage.updateReeditProject(projectId, {
+      totalInputTokens: (project.totalInputTokens || 0) + this.totalInputTokens,
+      totalOutputTokens: (project.totalOutputTokens || 0) + this.totalOutputTokens,
+      totalThinkingTokens: (project.totalThinkingTokens || 0) + this.totalThinkingTokens,
+    });
+
+    this.emitProgress({
+      projectId,
+      stage: "fixing",
+      currentChapter: chaptersToFix.length,
+      totalChapters: chaptersToFix.length,
+      message: `Correcciones aplicadas a ${chaptersToFix.length} capítulos. Listo para re-evaluación.`,
+    });
+
+    console.log(`[ReeditOrchestrator] Applied corrections to ${chaptersToFix.length} chapters for project ${projectId}`);
   }
 }
 
