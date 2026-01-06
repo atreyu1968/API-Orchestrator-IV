@@ -25,7 +25,10 @@ import {
   StopCircle,
   Star,
   Download,
-  ChevronRight
+  ChevronRight,
+  Cpu,
+  TrendingUp,
+  Zap
 } from "lucide-react";
 import type { ReeditProject, ReeditChapter, ReeditAuditReport } from "@shared/schema";
 
@@ -102,6 +105,77 @@ function ScoreDisplay({ score }: { score: number | null }) {
       <Star className={`h-5 w-5 ${color}`} />
       <span className={`text-2xl font-bold ${color}`}>{score}/10</span>
     </div>
+  );
+}
+
+function formatTokenCount(num: number): string {
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
+  return num.toString();
+}
+
+function RealTimeCostWidget({ projectId, isProcessing }: { projectId: number; isProcessing: boolean }) {
+  const { data: project } = useQuery<ReeditProject>({
+    queryKey: ['/api/reedit-projects', projectId],
+    refetchInterval: isProcessing ? 5000 : false,
+  });
+
+  if (!project) return null;
+
+  const inputTokens = project.totalInputTokens || 0;
+  const outputTokens = project.totalOutputTokens || 0;
+  const thinkingTokens = project.totalThinkingTokens || 0;
+  const totalCost = calculateCost(inputTokens, outputTokens, thinkingTokens);
+
+  const hasData = inputTokens > 0 || outputTokens > 0;
+
+  if (!hasData && !isProcessing) return null;
+
+  return (
+    <Card className="border-2 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent" data-testid="widget-realtime-cost">
+      <CardContent className="pt-4 pb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <DollarSign className="h-5 w-5 text-primary" />
+          <span className="font-semibold">Costos en Tiempo Real</span>
+          {isProcessing && (
+            <Badge variant="secondary" className="ml-auto animate-pulse">
+              <Zap className="h-3 w-3 mr-1" />
+              Actualizando
+            </Badge>
+          )}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center p-2 bg-muted/50 rounded-md">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <TrendingUp className="h-3 w-3" />
+              <span className="text-xs">Entrada</span>
+            </div>
+            <p className="font-mono font-semibold">{formatTokenCount(inputTokens)}</p>
+          </div>
+          <div className="text-center p-2 bg-muted/50 rounded-md">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <Cpu className="h-3 w-3" />
+              <span className="text-xs">Salida</span>
+            </div>
+            <p className="font-mono font-semibold">{formatTokenCount(outputTokens)}</p>
+          </div>
+          <div className="text-center p-2 bg-muted/50 rounded-md">
+            <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+              <Zap className="h-3 w-3" />
+              <span className="text-xs">Thinking</span>
+            </div>
+            <p className="font-mono font-semibold">{formatTokenCount(thinkingTokens)}</p>
+          </div>
+          <div className="text-center p-2 bg-primary/10 rounded-md">
+            <div className="flex items-center justify-center gap-1 text-primary mb-1">
+              <DollarSign className="h-3 w-3" />
+              <span className="text-xs font-medium">Costo Total</span>
+            </div>
+            <p className="font-mono font-bold text-lg text-primary">${totalCost.toFixed(2)}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -981,29 +1055,19 @@ export default function ReeditPage() {
                       </div>
                     )}
 
-                    {(selectedProjectData.totalInputTokens || selectedProjectData.totalOutputTokens || selectedProjectData.bestsellerScore) && (
+                    <RealTimeCostWidget 
+                      projectId={selectedProjectData.id} 
+                      isProcessing={selectedProjectData.status === "processing"} 
+                    />
+
+                    {selectedProjectData.bestsellerScore && (
                       <Card className="bg-muted/50">
                         <CardContent className="pt-6">
                           <div className="flex items-center justify-between gap-4 flex-wrap">
-                            {selectedProjectData.bestsellerScore && (
-                              <div>
-                                <p className="text-sm text-muted-foreground">Puntuación Bestseller</p>
-                                <ScoreDisplay score={selectedProjectData.bestsellerScore} />
-                              </div>
-                            )}
-                            {(selectedProjectData.totalInputTokens || selectedProjectData.totalOutputTokens) ? (
-                              <div className="text-right">
-                                <p className="text-sm text-muted-foreground">Coste Estimado</p>
-                                <p className="text-lg font-semibold flex items-center gap-1">
-                                  <DollarSign className="h-4 w-4" />
-                                  {calculateCost(
-                                    selectedProjectData.totalInputTokens || 0,
-                                    selectedProjectData.totalOutputTokens || 0,
-                                    selectedProjectData.totalThinkingTokens || 0
-                                  ).toFixed(2)}
-                                </p>
-                              </div>
-                            ) : null}
+                            <div>
+                              <p className="text-sm text-muted-foreground">Puntuación Bestseller</p>
+                              <ScoreDisplay score={selectedProjectData.bestsellerScore} />
+                            </div>
                           </div>
                         </CardContent>
                       </Card>
