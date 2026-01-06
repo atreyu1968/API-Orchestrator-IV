@@ -1225,6 +1225,120 @@ export class ReeditOrchestrator {
     return false;
   }
 
+  private async collectQaFindings(projectId: number): Promise<Map<number, any[]>> {
+    const problemsByChapter = new Map<number, any[]>();
+    
+    const auditReports = await storage.getReeditAuditReportsByProject(projectId);
+    
+    // Collect from continuity reports
+    const continuityReports = auditReports.filter(r => r.auditType === "continuity");
+    for (const report of continuityReports) {
+      const findings = report.findings as any;
+      if (findings?.erroresContinuidad) {
+        for (const error of findings.erroresContinuidad) {
+          const chapNum = error.capitulo;
+          if (typeof chapNum === 'number' && (error.severidad === 'critica' || error.severidad === 'crítica' || error.severidad === 'mayor')) {
+            if (!problemsByChapter.has(chapNum)) {
+              problemsByChapter.set(chapNum, []);
+            }
+            problemsByChapter.get(chapNum)!.push({
+              source: "continuity_sentinel",
+              type: error.tipo,
+              severity: error.severidad,
+              summary: error.descripcion,
+              correctionHint: error.correccion,
+              evidence: error.contexto,
+            });
+          }
+        }
+      }
+    }
+    
+    // Collect from voice_rhythm reports
+    const voiceReports = auditReports.filter(r => r.auditType === "voice_rhythm");
+    for (const report of voiceReports) {
+      const findings = report.findings as any;
+      if (findings?.problemasTono) {
+        for (const problem of findings.problemasTono) {
+          if (problem.severidad === 'mayor') {
+            const chapters = problem.capitulos || [];
+            for (const chapNum of chapters) {
+              if (typeof chapNum === 'number') {
+                if (!problemsByChapter.has(chapNum)) {
+                  problemsByChapter.set(chapNum, []);
+                }
+                problemsByChapter.get(chapNum)!.push({
+                  source: "voice_rhythm_auditor",
+                  type: problem.tipo,
+                  severity: problem.severidad,
+                  summary: problem.descripcion,
+                  correctionHint: problem.correccion,
+                  evidence: problem.ejemplo,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Collect from semantic_repetition reports
+    const semanticReports = auditReports.filter(r => r.auditType === "semantic_repetition");
+    for (const report of semanticReports) {
+      const findings = report.findings as any;
+      if (findings?.repeticionesSemanticas) {
+        for (const repetition of findings.repeticionesSemanticas) {
+          if (repetition.severidad === 'mayor') {
+            const chapters = repetition.ocurrencias || [];
+            for (const chapNum of chapters) {
+              if (typeof chapNum === 'number') {
+                if (!problemsByChapter.has(chapNum)) {
+                  problemsByChapter.set(chapNum, []);
+                }
+                problemsByChapter.get(chapNum)!.push({
+                  source: "semantic_repetition_detector",
+                  type: repetition.tipo,
+                  severity: repetition.severidad,
+                  summary: repetition.descripcion,
+                  correctionHint: `${repetition.accion}: ${repetition.ejemplo || ''}`,
+                  evidence: repetition.ejemplo,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Collect from anachronism reports
+    const anachronismReports = auditReports.filter(r => r.auditType === "anachronism");
+    for (const report of anachronismReports) {
+      const findings = report.findings as any;
+      if (findings?.anacronismos) {
+        for (const anachronism of findings.anacronismos) {
+          if (anachronism.severidad === 'critica' || anachronism.severidad === 'crítica' || anachronism.severidad === 'mayor') {
+            const chapNum = anachronism.capitulo;
+            if (typeof chapNum === 'number') {
+              if (!problemsByChapter.has(chapNum)) {
+                problemsByChapter.set(chapNum, []);
+              }
+              problemsByChapter.get(chapNum)!.push({
+                source: "anachronism_detector",
+                type: anachronism.tipo,
+                severity: anachronism.severidad,
+                summary: `${anachronism.problema}: ${anachronism.fragmento}`,
+                correctionHint: anachronism.correccion,
+                evidence: anachronism.fragmento,
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    return problemsByChapter;
+  }
+
   private collectArchitectProblems(architectResult: any): any[] {
     const problems: any[] = [];
     
@@ -1664,7 +1778,7 @@ export class ReeditOrchestrator {
           projectId,
           auditType: "architect",
           chapterRange: "all",
-          score: architectResult.puntuacionArquitectura || 7,
+          score: Math.round(architectResult.puntuacionArquitectura || 7),
           findings: architectResult,
           recommendations: architectResult.recomendaciones || [],
         });
@@ -1950,7 +2064,7 @@ export class ReeditOrchestrator {
           projectId,
           auditType: "continuity",
           chapterRange: `${startChap}-${endChap}`,
-          score: continuityResult.puntuacion || 8,
+          score: Math.round(continuityResult.puntuacion || 8),
           findings: continuityResult,
           recommendations: continuityResult.erroresContinuidad?.map((e: any) => e.correccion) || [],
         });
@@ -1986,7 +2100,7 @@ export class ReeditOrchestrator {
           projectId,
           auditType: "voice_rhythm",
           chapterRange: `${startChap}-${endChap}`,
-          score: voiceResult.puntuacion || 8,
+          score: Math.round(voiceResult.puntuacion || 8),
           findings: voiceResult,
           recommendations: voiceResult.problemasTono?.map((p: any) => p.correccion) || [],
         });
@@ -2011,7 +2125,7 @@ export class ReeditOrchestrator {
         projectId,
         auditType: "semantic_repetition",
         chapterRange: "all",
-        score: semanticResult.puntuacion || 8,
+        score: Math.round(semanticResult.puntuacion || 8),
         findings: semanticResult,
         recommendations: semanticResult.repeticionesSemanticas?.map((r: any) => `${r.accion}: ${r.descripcion}`) || [],
       });
@@ -2036,10 +2150,160 @@ export class ReeditOrchestrator {
         projectId,
         auditType: "anachronism",
         chapterRange: "all",
-        score: anachronismResult.puntuacionHistorica || 10,
+        score: Math.round(anachronismResult.puntuacionHistorica || 10),
         findings: anachronismResult,
         recommendations: anachronismResult.anacronismos?.map((a: any) => a.correccion) || [],
       });
+
+      // === STAGE 6.5: QA CORRECTIONS (automatic fix of QA-detected issues) ===
+      // Check if QA corrections already completed (resume support)
+      const existingQaCorrectionReport = await storage.getReeditAuditReportByType(projectId, "qa_corrections");
+      const qaCorrectionsCompleted = !!existingQaCorrectionReport; // If report exists, corrections phase completed
+
+      if (!qaCorrectionsCompleted) {
+        const qaFindings = await this.collectQaFindings(projectId);
+        
+        if (qaFindings.size > 0) {
+          console.log(`[ReeditOrchestrator] Found QA issues in ${qaFindings.size} chapters, starting automatic corrections...`);
+          
+          await storage.updateReeditProject(projectId, { currentStage: "qa_corrections" });
+          
+          this.emitProgress({
+            projectId,
+            stage: "qa_corrections",
+            currentChapter: 0,
+            totalChapters: qaFindings.size,
+            message: `Corrigiendo automáticamente problemas de QA en ${qaFindings.size} capítulos...`,
+          });
+          
+          // Get World Bible for context
+          const worldBible = await storage.getReeditWorldBibleByProject(projectId);
+          const worldBibleData = worldBible ? {
+            personajes: worldBible.characters,
+            ubicaciones: worldBible.locations,
+            timeline: worldBible.timeline,
+            reglasDelMundo: worldBible.loreRules,
+            epocaHistorica: {
+              periodo: worldBible.historicalPeriod,
+              detalles: worldBible.historicalDetails,
+            },
+          } : {};
+          
+          let fixedCount = 0;
+          const correctionResults: any[] = [];
+          const chapterEntries = Array.from(qaFindings.entries()).sort((a, b) => a[0] - b[0]);
+          
+          for (const [chapNum, chapterProblems] of chapterEntries) {
+            if (await this.checkCancellation(projectId)) {
+              console.log(`[ReeditOrchestrator] Processing cancelled during QA corrections`);
+              return;
+            }
+            
+            const chapter = validChapters.find(c => c.chapterNumber === chapNum);
+            if (!chapter) {
+              console.log(`[ReeditOrchestrator] Chapter ${chapNum} not found for QA corrections`);
+              continue;
+            }
+            
+            this.emitProgress({
+              projectId,
+              stage: "qa_corrections",
+              currentChapter: fixedCount + 1,
+              totalChapters: qaFindings.size,
+              message: `Corrigiendo capítulo ${chapNum}: ${chapterProblems.length} problema(s) de QA...`,
+            });
+            
+            // Build adjacent chapter context for narrative continuity
+            const adjacentContext = this.buildAdjacentChapterContext(validChapters, chapNum);
+            
+            // Use NarrativeRewriter to fix QA issues
+            const contentToFix = chapter.editedContent || chapter.originalContent;
+            
+            // Format problems for the rewriter
+            const formattedProblems = chapterProblems.map(p => ({
+              tipo: `qa_${p.source}`,
+              severidad: p.severity,
+              descripcion: p.summary,
+              accionSugerida: p.correctionHint,
+              evidencia: p.evidence,
+            }));
+            
+            try {
+              const rewriteResult = await this.narrativeRewriter.rewriteChapter(
+                contentToFix,
+                chapNum,
+                formattedProblems,
+                worldBibleData,
+                adjacentContext,
+                detectedLang
+              );
+              this.trackTokens(rewriteResult);
+              
+              if (rewriteResult.capituloCorregido) {
+                // Update chapter with corrected content
+                await storage.updateReeditChapter(chapter.id, {
+                  editedContent: rewriteResult.capituloCorregido,
+                  processingStage: "qa_corrected",
+                });
+                
+                correctionResults.push({
+                  chapter: chapNum,
+                  problemsFixed: chapterProblems.length,
+                  corrections: rewriteResult.correccionesRealizadas || [],
+                  confidence: rewriteResult.confianzaCorreccion || 7,
+                });
+                
+                console.log(`[ReeditOrchestrator] Fixed ${chapterProblems.length} QA issue(s) in chapter ${chapNum}`);
+              }
+            } catch (error) {
+              console.error(`[ReeditOrchestrator] Failed to fix QA issues in chapter ${chapNum}:`, error);
+              correctionResults.push({
+                chapter: chapNum,
+                problemsFixed: 0,
+                error: error instanceof Error ? error.message : "Unknown error",
+              });
+            }
+            
+            fixedCount++;
+            await this.updateHeartbeat(projectId, chapNum);
+          }
+          
+          // Store QA corrections report
+          const totalProblemsFixed = correctionResults.reduce((sum, r) => sum + (r.problemsFixed || 0), 0);
+          await storage.createReeditAuditReport({
+            projectId,
+            auditType: "qa_corrections",
+            chapterRange: "all",
+            score: totalProblemsFixed > 0 ? 8 : 10,
+            findings: {
+              chaptersFixed: fixedCount,
+              totalProblemsFixed,
+              corrections: correctionResults,
+            },
+            recommendations: [],
+          });
+          
+          console.log(`[ReeditOrchestrator] QA corrections complete: fixed ${totalProblemsFixed} problems in ${fixedCount} chapters`);
+        } else {
+          console.log(`[ReeditOrchestrator] No critical/major QA issues found, skipping corrections`);
+          
+          // Create empty report to mark completion
+          await storage.createReeditAuditReport({
+            projectId,
+            auditType: "qa_corrections",
+            chapterRange: "all",
+            score: 10,
+            findings: {
+              chaptersFixed: 0,
+              totalProblemsFixed: 0,
+              message: "No se encontraron problemas de QA críticos o mayores",
+            },
+            recommendations: [],
+          });
+        }
+      } else {
+        console.log(`[ReeditOrchestrator] Skipping QA corrections (already completed)`);
+      }
 
       // === STAGE 7: FINAL REVIEW ===
       await storage.updateReeditProject(projectId, { currentStage: "reviewing" });
@@ -2077,7 +2341,7 @@ export class ReeditOrchestrator {
         projectId,
         auditType: "final_review",
         chapterRange: "all",
-        score: bestsellerScore,
+        score: Math.round(bestsellerScore),
         findings: finalResult,
         recommendations: finalResult.recommendations || [],
       });
