@@ -1007,8 +1007,9 @@ export class ReeditOrchestrator {
       const existingWorldBible = await storage.getReeditWorldBibleByProject(projectId);
       let worldBibleResult: any;
 
-      if (existingWorldBible && existingWorldBible.characters && existingWorldBible.characters.length > 0) {
-        console.log(`[ReeditOrchestrator] Skipping World Bible extraction (already exists with ${existingWorldBible.characters.length} characters)`);
+      const existingCharacters = existingWorldBible?.characters as any[] | null;
+      if (existingWorldBible && existingCharacters && existingCharacters.length > 0) {
+        console.log(`[ReeditOrchestrator] Skipping World Bible extraction (already exists with ${existingCharacters.length} characters)`);
         worldBibleResult = {
           personajes: existingWorldBible.characters,
           ubicaciones: existingWorldBible.locations,
@@ -1253,7 +1254,7 @@ export class ReeditOrchestrator {
 
       const anachronismResult = await this.anachronismDetector.detectAnachronisms(
         validChapters.map(c => ({ num: c.chapterNumber, content: c.originalContent })),
-        project.genre || "",
+        "", // genre not available in reedit projects
         project.title || ""
       );
 
