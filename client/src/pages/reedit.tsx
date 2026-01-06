@@ -720,25 +720,29 @@ export default function ReeditPage() {
                       </div>
                     )}
 
-                    {selectedProjectData.bestsellerScore && (
+                    {(selectedProjectData.totalInputTokens || selectedProjectData.totalOutputTokens || selectedProjectData.bestsellerScore) && (
                       <Card className="bg-muted/50">
                         <CardContent className="pt-6">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm text-muted-foreground">Puntuación Bestseller</p>
-                              <ScoreDisplay score={selectedProjectData.bestsellerScore} />
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm text-muted-foreground">Coste Estimado</p>
-                              <p className="text-lg font-semibold flex items-center gap-1">
-                                <DollarSign className="h-4 w-4" />
-                                {calculateCost(
-                                  selectedProjectData.totalInputTokens || 0,
-                                  selectedProjectData.totalOutputTokens || 0,
-                                  selectedProjectData.totalThinkingTokens || 0
-                                ).toFixed(2)}
-                              </p>
-                            </div>
+                          <div className="flex items-center justify-between gap-4 flex-wrap">
+                            {selectedProjectData.bestsellerScore && (
+                              <div>
+                                <p className="text-sm text-muted-foreground">Puntuación Bestseller</p>
+                                <ScoreDisplay score={selectedProjectData.bestsellerScore} />
+                              </div>
+                            )}
+                            {(selectedProjectData.totalInputTokens || selectedProjectData.totalOutputTokens) ? (
+                              <div className="text-right">
+                                <p className="text-sm text-muted-foreground">Coste Estimado</p>
+                                <p className="text-lg font-semibold flex items-center gap-1">
+                                  <DollarSign className="h-4 w-4" />
+                                  {calculateCost(
+                                    selectedProjectData.totalInputTokens || 0,
+                                    selectedProjectData.totalOutputTokens || 0,
+                                    selectedProjectData.totalThinkingTokens || 0
+                                  ).toFixed(2)}
+                                </p>
+                              </div>
+                            ) : null}
                           </div>
                         </CardContent>
                       </Card>
