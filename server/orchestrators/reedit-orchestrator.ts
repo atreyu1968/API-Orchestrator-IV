@@ -1430,6 +1430,55 @@ export class ReeditOrchestrator {
     return problems;
   }
 
+  private async consolidateAllProblems(
+    architectProblems: any[],
+    qaFindings: Map<number, any[]>
+  ): Promise<Map<number, any[]>> {
+    const consolidatedByChapter = new Map<number, any[]>();
+    
+    // Add architect problems (convert to unified format)
+    for (const problem of architectProblems) {
+      const chapters = problem.capitulosAfectados || problem.capitulos || [];
+      for (const chapNum of chapters) {
+        if (typeof chapNum === 'number') {
+          if (!consolidatedByChapter.has(chapNum)) {
+            consolidatedByChapter.set(chapNum, []);
+          }
+          consolidatedByChapter.get(chapNum)!.push({
+            source: "architect",
+            tipo: problem.tipo,
+            descripcion: problem.descripcion,
+            severidad: problem.severidad,
+            accionSugerida: problem.accionSugerida,
+          });
+        }
+      }
+    }
+    
+    // Add QA findings (already in unified format by chapter)
+    for (const [chapNum, problems] of qaFindings) {
+      if (!consolidatedByChapter.has(chapNum)) {
+        consolidatedByChapter.set(chapNum, []);
+      }
+      for (const problem of problems) {
+        consolidatedByChapter.get(chapNum)!.push({
+          source: problem.source,
+          tipo: problem.type,
+          descripcion: problem.summary,
+          severidad: problem.severity,
+          accionSugerida: problem.correctionHint,
+        });
+      }
+    }
+    
+    console.log(`[ReeditOrchestrator] Consolidated problems: ${consolidatedByChapter.size} chapters with issues`);
+    for (const [chapNum, problems] of consolidatedByChapter) {
+      console.log(`  - Chapter ${chapNum}: ${problems.length} problems (${problems.map(p => p.source).join(', ')})`);
+    }
+    
+    return consolidatedByChapter;
+  }
+
   setProgressCallback(callback: ProgressCallback) {
     this.progressCallback = callback;
   }
@@ -1993,8 +2042,11 @@ export class ReeditOrchestrator {
           processingStage: "copyeditor",
         });
 
+        // Use the most recent content (originalContent may have been updated by NarrativeRewriter)
+        const contentToEdit = chapter.originalContent;
+        
         const copyEditorResult = await this.copyEditorAgent.editChapter(
-          chapter.originalContent,
+          contentToEdit,
           chapter.chapterNumber,
           detectedLang
         );

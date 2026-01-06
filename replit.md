@@ -87,3 +87,24 @@ Preferred communication style: Simple, everyday language.
 - `@tanstack/react-query`: Async state management
 - `wouter`: Client-side routing
 - Radix UI primitives: Accessible component foundations
+
+## Recent Changes (2026-01-06)
+
+### Bug Fixes Applied
+- **Integer score validation**: Added `Math.round()` to all audit report scores (architectResult.puntuacionArquitectura, continuityResult.puntuacion, voiceResult.puntuacion, semanticResult.puntuacion, anachronismResult.puntuacion, bestsellerScore) to prevent "integer 9.5" database errors
+- **Spanish accent support in severities**: Extended severity matching to include both "critica" and "crítica" for proper detection of critical anachronisms
+- **consolidateAllProblems() function**: Created helper function to merge Architect + QA findings by chapter (not yet integrated into pipeline flow)
+
+### Pipeline Optimization (PENDING for future projects)
+
+**Current Flow (in-use for project 4 "La superficie rota")**:
+1. Editor Review → 2. World Bible → 3. Architect → 4. NarrativeRewriter (Architect fixes) → 5. CopyEditor (all chapters) → 6. QA Agents → 7. QA Corrections → 8. Final Review
+
+**Optimized Flow (to be implemented after project 4 completes)**:
+1. Editor Review → 2. World Bible → 3. Architect → 4. QA Agents (MOVED HERE) → 5. consolidateAllProblems() → 6. SINGLE NarrativeRewriter pass → 7. CopyEditor (only non-rewritten chapters) → 8. Final Review
+
+**Expected savings**: 40-60% token reduction by eliminating redundant rewriting passes
+
+### Project Status
+- Project 4 "La superficie rota": Processing QA stage (65 chapters, 95,922 words)
+- Pipeline optimization deferred to avoid breaking resume state mid-processing
