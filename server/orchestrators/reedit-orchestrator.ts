@@ -2482,8 +2482,91 @@ export class ReeditOrchestrator {
           stage: "reviewing",
           currentChapter: validChapters.length,
           totalChapters: validChapters.length,
-          message: `Puntuación ${bestsellerScore}/10 insuficiente. Objetivo: ${this.minAcceptableScore}+ (${this.requiredConsecutiveHighScores}x consecutivas). Re-evaluando...`,
+          message: `Puntuación ${bestsellerScore}/10 insuficiente. Aplicando correcciones basadas en feedback...`,
         });
+
+        // Apply corrections based on final reviewer feedback
+        const weaknesses = finalResult.weaknesses || [];
+        const recommendations = finalResult.recommendations || [];
+        
+        if (weaknesses.length > 0 || recommendations.length > 0) {
+          // Convert weaknesses/recommendations to problem format
+          const problems = [
+            ...weaknesses.map((w: string, i: number) => ({
+              id: `weakness-${i}`,
+              tipo: "debilidad_detectada",
+              descripcion: w,
+              severidad: "media",
+              accionSugerida: "Corregir según indicación del revisor"
+            })),
+            ...recommendations.map((r: string, i: number) => ({
+              id: `recommendation-${i}`,
+              tipo: "recomendacion",
+              descripcion: r,
+              severidad: "menor",
+              accionSugerida: "Implementar recomendación"
+            }))
+          ];
+
+          // Get worldBible for context
+          const worldBible = await storage.getReeditWorldBible(projectId);
+          
+          // Get chapters that need improvement - limit to 5 per cycle for efficiency
+          const chaptersToFix = await storage.getReeditChaptersByProject(projectId);
+          const editableChapters = chaptersToFix.filter(c => c.editedContent);
+          const chaptersNeedingFix = editableChapters.slice(0, Math.min(5, editableChapters.length));
+          
+          for (let i = 0; i < chaptersNeedingFix.length; i++) {
+            const chapter = chaptersNeedingFix[i];
+            
+            this.emitProgress({
+              projectId,
+              stage: "fixing",
+              currentChapter: i + 1,
+              totalChapters: chaptersNeedingFix.length,
+              message: `Corrigiendo capítulo ${chapter.chapterNumber} basándose en feedback del revisor (${i + 1}/${chaptersNeedingFix.length})...`,
+            });
+
+            try {
+              // Build adjacent context
+              const prevChapter = editableChapters.find(c => c.chapterNumber === chapter.chapterNumber - 1);
+              const nextChapter = editableChapters.find(c => c.chapterNumber === chapter.chapterNumber + 1);
+              const adjacentContext = {
+                previousChapter: prevChapter?.editedContent?.substring(0, 2000),
+                nextChapter: nextChapter?.editedContent?.substring(0, 2000),
+              };
+
+              const rewriteResult = await this.narrativeRewriter.rewriteChapter(
+                chapter.editedContent || chapter.originalContent,
+                chapter.chapterNumber,
+                problems,
+                worldBible || {},
+                adjacentContext,
+                "español"
+              );
+              this.trackTokens(rewriteResult);
+              await this.updateHeartbeat(projectId);
+
+              if (rewriteResult.rewrittenContent) {
+                const wordCount = rewriteResult.rewrittenContent.split(/\s+/).filter((w: string) => w.length > 0).length;
+                await storage.updateReeditChapter(chapter.id, {
+                  editedContent: rewriteResult.rewrittenContent,
+                  wordCount,
+                });
+              }
+            } catch (err) {
+              console.error(`[ReeditOrchestrator] Error fixing chapter ${chapter.chapterNumber}:`, err);
+            }
+          }
+
+          // Update chapter summaries for next review
+          const refreshedChapters = await storage.getReeditChaptersByProject(projectId);
+          chapterSummaries.length = 0;
+          for (const c of refreshedChapters.filter(ch => ch.editedContent)) {
+            const wc = c.wordCount || 0;
+            chapterSummaries.push(`Capítulo ${c.chapterNumber}: ${c.title || "Sin título"} (${wc} palabras)`);
+          }
+        }
 
         revisionCycle++;
       }
@@ -2651,8 +2734,91 @@ export class ReeditOrchestrator {
         stage: "reviewing",
         currentChapter: validChapters.length,
         totalChapters: validChapters.length,
-        message: `Puntuación ${bestsellerScore}/10 insuficiente. Objetivo: ${this.minAcceptableScore}+ (${this.requiredConsecutiveHighScores}x consecutivas). Re-evaluando...`,
+        message: `Puntuación ${bestsellerScore}/10 insuficiente. Aplicando correcciones basadas en feedback...`,
       });
+
+      // Apply corrections based on final reviewer feedback
+      const weaknesses = finalResult.weaknesses || [];
+      const recommendations = finalResult.recommendations || [];
+      
+      if (weaknesses.length > 0 || recommendations.length > 0) {
+        // Convert weaknesses/recommendations to problem format
+        const problems = [
+          ...weaknesses.map((w: string, i: number) => ({
+            id: `weakness-${i}`,
+            tipo: "debilidad_detectada",
+            descripcion: w,
+            severidad: "media",
+            accionSugerida: "Corregir según indicación del revisor"
+          })),
+          ...recommendations.map((r: string, i: number) => ({
+            id: `recommendation-${i}`,
+            tipo: "recomendacion",
+            descripcion: r,
+            severidad: "menor",
+            accionSugerida: "Implementar recomendación"
+          }))
+        ];
+
+        // Get worldBible for context
+        const worldBible = await storage.getReeditWorldBible(projectId);
+        
+        // Get chapters that need improvement - limit to 5 per cycle for efficiency
+        const chaptersToFix = validChapters.slice(0, Math.min(5, validChapters.length));
+        
+        for (let i = 0; i < chaptersToFix.length; i++) {
+          const chapter = chaptersToFix[i];
+          
+          this.emitProgress({
+            projectId,
+            stage: "fixing",
+            currentChapter: i + 1,
+            totalChapters: chaptersToFix.length,
+            message: `Corrigiendo capítulo ${chapter.chapterNumber} basándose en feedback del revisor (${i + 1}/${chaptersToFix.length})...`,
+          });
+
+          try {
+            // Build adjacent context
+            const prevChapter = validChapters.find(c => c.chapterNumber === chapter.chapterNumber - 1);
+            const nextChapter = validChapters.find(c => c.chapterNumber === chapter.chapterNumber + 1);
+            const adjacentContext = {
+              previousChapter: prevChapter?.editedContent?.substring(0, 2000),
+              nextChapter: nextChapter?.editedContent?.substring(0, 2000),
+            };
+
+            const rewriteResult = await this.narrativeRewriter.rewriteChapter(
+              chapter.editedContent || chapter.originalContent,
+              chapter.chapterNumber,
+              problems,
+              worldBible || {},
+              adjacentContext,
+              "español"
+            );
+            this.trackTokens(rewriteResult);
+            await this.updateHeartbeat(projectId);
+
+            if (rewriteResult.rewrittenContent) {
+              const wordCount = rewriteResult.rewrittenContent.split(/\s+/).filter((w: string) => w.length > 0).length;
+              await storage.updateReeditChapter(chapter.id, {
+                editedContent: rewriteResult.rewrittenContent,
+                wordCount,
+              });
+            }
+          } catch (err) {
+            console.error(`[ReeditOrchestrator] Error fixing chapter ${chapter.chapterNumber}:`, err);
+          }
+        }
+
+        // Refresh validChapters and summaries for next review
+        const refreshedChapters = await storage.getReeditChaptersByProject(projectId);
+        validChapters.length = 0;
+        chapterSummaries.length = 0;
+        for (const c of refreshedChapters.filter(ch => ch.editedContent)) {
+          validChapters.push(c);
+          const wc = c.wordCount || 0;
+          chapterSummaries.push(`Capítulo ${c.chapterNumber}: ${c.title || "Sin título"} (${wc} palabras)`);
+        }
+      }
 
       revisionCycle++;
     }
