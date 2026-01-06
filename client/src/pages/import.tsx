@@ -186,8 +186,8 @@ function downloadMarkdown(filename: string, content: string) {
 
 function parseChaptersFromText(text: string): { chapterNumber: number; title: string | null; content: string }[] {
   const chapterPatterns = [
-    /(?:^|\n)(Capítulo|Chapter|Chapitre|Kapitel|Capitolo|Capítol)\s+(\d+)[:\.\s]*([^\n]*)/gi,
-    /(?:^|\n)(Cap\.?)\s+(\d+)[:\.\s]*([^\n]*)/gi,
+    /(?:^|\n)(Capítulo|Chapter|Chapitre|Kapitel|Capitolo|Capítol)[ \t]+(\d+)(?:[:\.\—–-][ \t]*)?([^\n]*)/gi,
+    /(?:^|\n)(Cap\.?)[ \t]+(\d+)(?:[:\.\—–-][ \t]*)?([^\n]*)/gi,
   ];
 
   const prologuePatterns = [

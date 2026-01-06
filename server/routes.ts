@@ -1321,7 +1321,7 @@ export async function registerRoutes(
         ...existingManuscripts.map(m => m.seriesOrder || 0)
       ) + 1;
 
-      const chapterPattern = /(?:^|\n)(?:(?:CAPÍTULO|CAPITULO|CAP[ÍI]TULO|Capítulo|Capitulo|Capìtulo|Chapter|CHAPTER|CHAPITRE|Chapitre|CAPITOLO|Capitolo|KAPITEL|Kapitel|CAPÍTOL|Capítol)[.\s:]*(\d+|[IVXLCDM]+)[\s.:—–-]*([^\n]*))/gi;
+      const chapterPattern = /(?:^|\n)(?:(?:CAPÍTULO|CAPITULO|CAP[ÍI]TULO|Capítulo|Capitulo|Capìtulo|Chapter|CHAPTER|CHAPITRE|Chapitre|CAPITOLO|Capitolo|KAPITEL|Kapitel|CAPÍTOL|Capítol)[ \t.:]*(\d+|[IVXLCDM]+)(?:[ \t.:—–-]+)?([^\n]*))/gi;
       
       let lastIndex = 0;
       const chapters: { number: number; title: string; content: string }[] = [];
