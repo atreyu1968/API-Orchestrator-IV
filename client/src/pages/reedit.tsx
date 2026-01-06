@@ -102,6 +102,81 @@ function ScoreDisplay({ score }: { score: number | null }) {
   );
 }
 
+function StructureAnalysisDisplay({ analysis }: { analysis: any }) {
+  if (!analysis) return null;
+
+  const hasIssues = analysis.hasIssues;
+  const duplicates = analysis.duplicateChapters || [];
+  const outOfOrder = analysis.outOfOrderChapters || [];
+  const recommendations = analysis.recommendations || [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        {hasIssues ? (
+          <Badge variant="destructive">Con Problemas</Badge>
+        ) : (
+          <Badge className="bg-green-600">Sin Problemas</Badge>
+        )}
+      </div>
+
+      {analysis.hasPrologue !== undefined && (
+        <div className="flex flex-wrap gap-2">
+          {analysis.hasPrologue && <Badge variant="outline">Tiene Prólogo</Badge>}
+          {analysis.hasEpilogue && <Badge variant="outline">Tiene Epílogo</Badge>}
+          {analysis.hasAuthorNote && <Badge variant="outline">Tiene Nota del Autor</Badge>}
+        </div>
+      )}
+
+      {duplicates.length > 0 && (
+        <div>
+          <p className="text-sm font-medium text-orange-600 dark:text-orange-400 mb-1">
+            Capítulos Duplicados
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {duplicates.map((dup: any, i: number) => (
+              <Badge key={i} variant="secondary">
+                Cap. {dup.chapter || dup}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {outOfOrder.length > 0 && (
+        <div>
+          <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400 mb-1">
+            Capítulos Fuera de Orden
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {outOfOrder.map((ch: any, i: number) => (
+              <Badge key={i} variant="secondary">
+                Cap. {ch.chapter || ch}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {recommendations.length > 0 && (
+        <div>
+          <p className="text-sm font-medium mb-2">Recomendaciones</p>
+          <ul className="text-sm space-y-1 list-disc list-inside">
+            {recommendations.slice(0, 5).map((rec: string, i: number) => (
+              <li key={i} className="text-muted-foreground">{rec}</li>
+            ))}
+            {recommendations.length > 5 && (
+              <li className="text-muted-foreground italic">
+                ...y {recommendations.length - 5} más
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FinalReviewDisplay({ result }: { result: any }) {
   if (!result) return null;
 
@@ -647,15 +722,7 @@ export default function ReeditPage() {
                           <CardTitle className="text-base">Análisis de Estructura</CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <pre className="text-sm bg-muted p-3 rounded-md overflow-auto max-h-[200px]">
-                            {(() => {
-                              try {
-                                return JSON.stringify(selectedProjectData.structureAnalysis, null, 2);
-                              } catch {
-                                return String(selectedProjectData.structureAnalysis);
-                              }
-                            })()}
-                          </pre>
+                          <StructureAnalysisDisplay analysis={selectedProjectData.structureAnalysis} />
                         </CardContent>
                       </Card>
                     )}
