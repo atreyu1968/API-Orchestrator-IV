@@ -665,6 +665,19 @@ export default function ReeditPage() {
     },
   });
 
+  const resumeMutation = useMutation({
+    mutationFn: async (projectId: number) => {
+      return apiRequest("POST", `/api/reedit-projects/${projectId}/resume`);
+    },
+    onSuccess: () => {
+      toast({ title: "Procesamiento Reanudado", description: "El manuscrito continúa siendo reeditado" });
+      queryClient.invalidateQueries({ queryKey: ["/api/reedit-projects"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (projectId: number) => {
       return apiRequest("DELETE", `/api/reedit-projects/${projectId}`);
@@ -894,6 +907,20 @@ export default function ReeditPage() {
                           <StopCircle className="h-4 w-4 mr-2" />
                         )}
                         Cancelar
+                      </Button>
+                    )}
+                    {selectedProjectData.status === "error" && (
+                      <Button
+                        onClick={() => resumeMutation.mutate(selectedProjectData.id)}
+                        disabled={resumeMutation.isPending}
+                        data-testid="button-resume-reedit"
+                      >
+                        {resumeMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Play className="h-4 w-4 mr-2" />
+                        )}
+                        Continuar
                       </Button>
                     )}
                     <Button

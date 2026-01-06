@@ -4788,6 +4788,37 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     });
   });
 
+  app.post("/api/reedit-projects/:id/resume", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getReeditProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (activeReeditOrchestrators.has(projectId)) {
+        return res.status(400).json({ error: "Project is already being processed" });
+      }
+
+      const orchestrator = new ReeditOrchestrator();
+      activeReeditOrchestrators.set(projectId, orchestrator);
+
+      res.json({
+        success: true,
+        message: "Reedit processing resumed",
+        projectId,
+      });
+
+      orchestrator.processProject(projectId).finally(() => {
+        activeReeditOrchestrators.delete(projectId);
+      });
+    } catch (error) {
+      console.error("Error resuming reedit:", error);
+      res.status(500).json({ error: "Failed to resume reedit processing" });
+    }
+  });
+
   app.post("/api/reedit-projects/:id/cancel", async (req: Request, res: Response) => {
     try {
       const projectId = parseInt(req.params.id);
