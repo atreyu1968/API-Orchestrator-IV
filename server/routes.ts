@@ -3,12 +3,13 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { Orchestrator } from "./orchestrator";
 import { queueManager } from "./queue-manager";
-import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema } from "@shared/schema";
+import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema } from "@shared/schema";
 import multer from "multer";
 import mammoth from "mammoth";
 import { generateManuscriptDocx } from "./services/docx-exporter";
 import { z } from "zod";
 import { CopyEditorAgent, cancelProject, ItalianReviewerAgent } from "./agents";
+import { ReeditOrchestrator } from "./orchestrators/reedit-orchestrator";
 
 const workTypeEnum = z.enum(["standalone", "series", "trilogy"]);
 
@@ -4534,6 +4535,187 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     } catch (error) {
       console.error("Error purging duplicate chapters:", error);
       res.status(500).json({ error: "Failed to purge duplicate chapters" });
+    }
+  });
+
+  // ===============================
+  // REEDIT PROJECT ENDPOINTS
+  // ===============================
+  const activeReeditStreams = new Map<number, Set<Response>>();
+  const activeReeditOrchestrators = new Map<number, ReeditOrchestrator>();
+
+  app.get("/api/reedit-projects", async (req: Request, res: Response) => {
+    try {
+      const projects = await storage.getAllReeditProjects();
+      res.json(projects);
+    } catch (error) {
+      console.error("Error fetching reedit projects:", error);
+      res.status(500).json({ error: "Failed to fetch reedit projects" });
+    }
+  });
+
+  app.get("/api/reedit-projects/:id", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getReeditProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Reedit project not found" });
+      }
+      res.json(project);
+    } catch (error) {
+      console.error("Error fetching reedit project:", error);
+      res.status(500).json({ error: "Failed to fetch reedit project" });
+    }
+  });
+
+  app.get("/api/reedit-projects/:id/chapters", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const chapters = await storage.getReeditChaptersByProject(projectId);
+      res.json(chapters);
+    } catch (error) {
+      console.error("Error fetching reedit chapters:", error);
+      res.status(500).json({ error: "Failed to fetch reedit chapters" });
+    }
+  });
+
+  app.get("/api/reedit-projects/:id/audit-report", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const reports = await storage.getReeditAuditReportsByProject(projectId);
+      if (!reports || reports.length === 0) {
+        return res.status(404).json({ error: "Audit report not found" });
+      }
+      res.json(reports[0]);
+    } catch (error) {
+      console.error("Error fetching audit report:", error);
+      res.status(500).json({ error: "Failed to fetch audit report" });
+    }
+  });
+
+  app.post("/api/reedit-projects", upload.single("manuscript"), async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const { title, language = "en" } = req.body;
+      if (!title) {
+        return res.status(400).json({ error: "Title is required" });
+      }
+
+      const result = await mammoth.extractRawText({ buffer: req.file.buffer });
+      const fullText = result.value;
+
+      if (!fullText || fullText.trim().length < 100) {
+        return res.status(400).json({ error: "Document is too short or empty" });
+      }
+
+      const wordCount = fullText.trim().split(/\s+/).length;
+      const project = await storage.createReeditProject({
+        title,
+        originalFileName: req.file.originalname || "manuscript.docx",
+        detectedLanguage: language,
+        totalWordCount: wordCount,
+      });
+
+      await storage.createReeditChapter({
+        projectId: project.id,
+        chapterNumber: 0,
+        title: "Full Manuscript",
+        originalContent: fullText,
+        status: "pending",
+      });
+
+      res.json({
+        success: true,
+        projectId: project.id,
+        title: project.title,
+        wordCount,
+        message: "Manuscript uploaded successfully. Ready for reedit processing.",
+      });
+    } catch (error) {
+      console.error("Error creating reedit project:", error);
+      res.status(500).json({ error: "Failed to create reedit project" });
+    }
+  });
+
+  app.post("/api/reedit-projects/:id/start", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getReeditProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (project.status === "processing") {
+        return res.status(400).json({ error: "Project is already being processed" });
+      }
+
+      const orchestrator = new ReeditOrchestrator();
+      activeReeditOrchestrators.set(projectId, orchestrator);
+
+      res.json({
+        success: true,
+        message: "Reedit processing started",
+        projectId,
+      });
+
+      orchestrator.processProject(projectId).finally(() => {
+        activeReeditOrchestrators.delete(projectId);
+      });
+    } catch (error) {
+      console.error("Error starting reedit:", error);
+      res.status(500).json({ error: "Failed to start reedit processing" });
+    }
+  });
+
+  app.get("/api/reedit-projects/:id/stream", (req: Request, res: Response) => {
+    const projectId = parseInt(req.params.id);
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    if (!activeReeditStreams.has(projectId)) {
+      activeReeditStreams.set(projectId, new Set());
+    }
+    activeReeditStreams.get(projectId)!.add(res);
+
+    res.write(`data: ${JSON.stringify({ type: "connected", projectId })}\n\n`);
+
+    req.on("close", () => {
+      activeReeditStreams.get(projectId)?.delete(res);
+      if (activeReeditStreams.get(projectId)?.size === 0) {
+        activeReeditStreams.delete(projectId);
+      }
+    });
+  });
+
+  app.post("/api/reedit-projects/:id/cancel", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      activeReeditOrchestrators.delete(projectId);
+
+      await storage.updateReeditProject(projectId, { status: "error", errorMessage: "Cancelled by user" });
+
+      res.json({ success: true, message: "Reedit cancelled" });
+    } catch (error) {
+      console.error("Error cancelling reedit:", error);
+      res.status(500).json({ error: "Failed to cancel reedit" });
+    }
+  });
+
+  app.delete("/api/reedit-projects/:id", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      await storage.deleteReeditProject(projectId);
+      res.json({ success: true, message: "Reedit project deleted" });
+    } catch (error) {
+      console.error("Error deleting reedit project:", error);
+      res.status(500).json({ error: "Failed to delete reedit project" });
     }
   });
 
