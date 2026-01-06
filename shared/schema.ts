@@ -530,4 +530,95 @@ export const insertAiUsageEventSchema = createInsertSchema(aiUsageEvents).omit({
 export type AiUsageEvent = typeof aiUsageEvents.$inferSelect;
 export type InsertAiUsageEvent = z.infer<typeof insertAiUsageEventSchema>;
 
+// Reedit Projects - Full agent pipeline for manuscript re-editing
+export const reeditProjects = pgTable("reedit_projects", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  originalFileName: text("original_file_name").notNull(),
+  detectedLanguage: text("detected_language"),
+  totalChapters: integer("total_chapters").default(0),
+  processedChapters: integer("processed_chapters").default(0),
+  currentStage: text("current_stage").notNull().default("uploaded"), // uploaded, analyzing, editing, auditing, reviewing, completed
+  currentChapter: integer("current_chapter").default(0),
+  bestsellerScore: integer("bestseller_score"), // 1-10 final score
+  finalReviewResult: jsonb("final_review_result"),
+  structureAnalysis: jsonb("structure_analysis"), // Chapter order issues, duplicates detected
+  styleGuideId: integer("style_guide_id").references(() => styleGuides.id, { onDelete: "set null" }),
+  pseudonymId: integer("pseudonym_id").references(() => pseudonyms.id, { onDelete: "set null" }),
+  totalInputTokens: integer("total_input_tokens").default(0),
+  totalOutputTokens: integer("total_output_tokens").default(0),
+  totalThinkingTokens: integer("total_thinking_tokens").default(0),
+  totalWordCount: integer("total_word_count").default(0),
+  status: text("status").notNull().default("pending"), // pending, processing, paused, completed, error
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const reeditChapters = pgTable("reedit_chapters", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => reeditProjects.id, { onDelete: "cascade" }),
+  chapterNumber: integer("chapter_number").notNull(),
+  originalChapterNumber: integer("original_chapter_number"), // For tracking reordering
+  title: text("title"),
+  originalContent: text("original_content").notNull(),
+  editedContent: text("edited_content"),
+  // Editor agent feedback
+  editorScore: integer("editor_score"), // 1-10
+  editorFeedback: jsonb("editor_feedback"), // {issues: [], suggestions: [], strengths: []}
+  narrativeIssues: jsonb("narrative_issues"), // {plotHoles: [], continuityErrors: [], pacing: []}
+  // CopyEditor changes
+  copyeditorChanges: text("copyeditor_changes"),
+  fluencyImprovements: jsonb("fluency_improvements"), // [{before, after, reason}]
+  // Flags for issues
+  isDuplicate: boolean("is_duplicate").default(false),
+  duplicateOfChapter: integer("duplicate_of_chapter"),
+  isOutOfOrder: boolean("is_out_of_order").default(false),
+  suggestedOrder: integer("suggested_order"),
+  // Status tracking
+  wordCount: integer("word_count").default(0),
+  status: text("status").notNull().default("pending"), // pending, analyzing, editing, reviewed, completed, skipped
+  processingStage: text("processing_stage").default("none"), // none, editor, copyeditor, auditor, completed
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const reeditAuditReports = pgTable("reedit_audit_reports", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => reeditProjects.id, { onDelete: "cascade" }),
+  auditType: text("audit_type").notNull(), // continuity, voice_rhythm, semantic_repetition, final_review
+  chapterRange: text("chapter_range"), // e.g., "1-5", "6-10", "all"
+  score: integer("score"), // 1-10
+  findings: jsonb("findings"), // Agent-specific findings
+  recommendations: jsonb("recommendations"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertReeditProjectSchema = createInsertSchema(reeditProjects).omit({
+  id: true,
+  createdAt: true,
+  status: true,
+  currentStage: true,
+  processedChapters: true,
+  currentChapter: true,
+  totalInputTokens: true,
+  totalOutputTokens: true,
+  totalThinkingTokens: true,
+});
+
+export const insertReeditChapterSchema = createInsertSchema(reeditChapters).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertReeditAuditReportSchema = createInsertSchema(reeditAuditReports).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type ReeditProject = typeof reeditProjects.$inferSelect;
+export type InsertReeditProject = z.infer<typeof insertReeditProjectSchema>;
+export type ReeditChapter = typeof reeditChapters.$inferSelect;
+export type InsertReeditChapter = z.infer<typeof insertReeditChapterSchema>;
+export type ReeditAuditReport = typeof reeditAuditReports.$inferSelect;
+export type InsertReeditAuditReport = z.infer<typeof insertReeditAuditReportSchema>;
+
 export * from "./models/chat";
