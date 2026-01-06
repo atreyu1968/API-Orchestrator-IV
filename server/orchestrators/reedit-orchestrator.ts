@@ -59,15 +59,17 @@ ${content.substring(0, 15000)}
 Provide your evaluation in JSON format.`;
     
     const response = await this.generateContent(prompt);
+    let result: any = { score: 7, issues: [], strengths: [], suggestions: [] };
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        result = JSON.parse(jsonMatch[0]);
       }
     } catch (e) {
       console.error("[ReeditEditor] Failed to parse response:", e);
     }
-    return { score: 7, issues: [], strengths: [], suggestions: [] };
+    result.tokenUsage = response.tokenUsage;
+    return result;
   }
 }
 
@@ -117,15 +119,17 @@ Improve the text following the fluency rules. Return the COMPLETE edited chapter
 RESPOND WITH JSON ONLY.`;
     
     const response = await this.generateContent(prompt);
+    let result: any = { editedContent: content, changesLog: "No changes", fluencyChanges: [] };
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        result = JSON.parse(jsonMatch[0]);
       }
     } catch (e) {
       console.error("[ReeditCopyEditor] Failed to parse response:", e);
     }
-    return { editedContent: content, changesLog: "No changes", fluencyChanges: [] };
+    result.tokenUsage = response.tokenUsage;
+    return result;
   }
 
   private getLanguageRules(lang: string): string {
@@ -216,13 +220,15 @@ ${combinedContent}
 Detecta errores de continuidad temporal, espacial, de estado y de conocimiento. RESPONDE EN JSON.`;
 
     const response = await this.generateContent(prompt);
+    let result: any = { erroresContinuidad: [], resumen: "Sin problemas detectados", puntuacion: 9 };
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      if (jsonMatch) result = JSON.parse(jsonMatch[0]);
     } catch (e) {
       console.error("[ContinuitySentinel] Failed to parse:", e);
     }
-    return { erroresContinuidad: [], resumen: "Sin problemas detectados", puntuacion: 9 };
+    result.tokenUsage = response.tokenUsage;
+    return result;
   }
 }
 
@@ -280,13 +286,15 @@ ${combinedContent}
 Evalúa consistencia de voz, ritmo y tensión narrativa. RESPONDE EN JSON.`;
 
     const response = await this.generateContent(prompt);
+    let result: any = { problemasTono: [], analisisRitmo: {}, puntuacion: 9 };
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      if (jsonMatch) result = JSON.parse(jsonMatch[0]);
     } catch (e) {
       console.error("[VoiceRhythmAuditor] Failed to parse:", e);
     }
-    return { problemasTono: [], analisisRitmo: {}, puntuacion: 9 };
+    result.tokenUsage = response.tokenUsage;
+    return result;
   }
 }
 
@@ -339,13 +347,15 @@ ${chapterSummaries.join("\n\n")}
 Detecta ideas repetidas, frases recurrentes, foreshadowing sin resolver y elementos sin usar. RESPONDE EN JSON.`;
 
     const response = await this.generateContent(prompt);
+    let result: any = { repeticionesSemanticas: [], foreshadowingTracking: [], puntuacion: 9 };
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      if (jsonMatch) result = JSON.parse(jsonMatch[0]);
     } catch (e) {
       console.error("[SemanticRepetitionDetector] Failed to parse:", e);
     }
-    return { repeticionesSemanticas: [], foreshadowingTracking: [], puntuacion: 9 };
+    result.tokenUsage = response.tokenUsage;
+    return result;
   }
 }
 
@@ -416,13 +426,15 @@ ${samples}
 Detecta anacronismos tecnológicos, lingüísticos, sociales, materiales y conceptuales. RESPONDE EN JSON.`;
 
     const response = await this.generateContent(prompt);
+    let result: any = { epocaDetectada: "No determinada", anacronismos: [], resumen: "Análisis completado", puntuacionHistorica: 8 };
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      if (jsonMatch) result = JSON.parse(jsonMatch[0]);
     } catch (e) {
       console.error("[AnachronismDetector] Failed to parse:", e);
     }
-    return { epocaDetectada: "No determinada", anacronismos: [], resumen: "Análisis completado", puntuacionHistorica: 8 };
+    result.tokenUsage = response.tokenUsage;
+    return result;
   }
 }
 
@@ -483,6 +495,7 @@ RESPONDE SOLO EN JSON:
     let epocaHistorica: any = null;
     let totalConfidence = 0;
     let batchCount = 0;
+    const totalTokens = { inputTokens: 0, outputTokens: 0, thinkingTokens: 0 };
     
     const totalBatches = Math.ceil(chapters.length / BATCH_SIZE);
 
@@ -523,6 +536,11 @@ RESPONDE SOLO EN JSON:
 
       try {
         const response = await this.generateContent(prompt);
+        if (response.tokenUsage) {
+          totalTokens.inputTokens += response.tokenUsage.inputTokens || 0;
+          totalTokens.outputTokens += response.tokenUsage.outputTokens || 0;
+          totalTokens.thinkingTokens += response.tokenUsage.thinkingTokens || 0;
+        }
         const jsonMatch = response.content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const result = JSON.parse(jsonMatch[0]);
@@ -553,6 +571,7 @@ RESPONDE SOLO EN JSON:
       reglasDelMundo: this.deduplicateByName(allReglas, "regla"),
       epocaHistorica: epocaHistorica || { periodo: "No determinada", detalles: {} },
       confianza: avgConfidence,
+      tokenUsage: totalTokens,
     };
   }
 
@@ -664,13 +683,7 @@ ${chapterSummaries}
 Evalúa estructura, coherencia de trama y coherencia del mundo. Identifica problemas y recomienda soluciones. RESPONDE EN JSON.`;
 
     const response = await this.generateContent(prompt);
-    try {
-      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) return JSON.parse(jsonMatch[0]);
-    } catch (e) {
-      console.error("[ArchitectAnalyzer] Failed to parse:", e);
-    }
-    return { 
+    let result: any = { 
       analisisEstructura: { ordenOptimo: true, problemaPacing: [], reordenamientoSugerido: [] },
       analisisTrama: { huecosArgumentales: [], subplotsSinResolver: [], arcosIncompletos: [] },
       coherenciaMundo: { contradicciones: [], reglasRotas: [] },
@@ -679,6 +692,14 @@ Evalúa estructura, coherencia de trama y coherencia del mundo. Identifica probl
       resumenEjecutivo: "Análisis completado sin hallazgos significativos",
       puntuacionArquitectura: 8
     };
+    try {
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) result = JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      console.error("[ArchitectAnalyzer] Failed to parse:", e);
+    }
+    result.tokenUsage = response.tokenUsage;
+    return result;
   }
 }
 
@@ -763,22 +784,23 @@ Reescribe el capítulo COMPLETO integrando las correcciones de forma natural. Ma
     console.log(`[StructuralFixer] Fixing chapter ${chapterNumber} with ${problems.length} problems`);
     
     const response = await this.generateContent(prompt);
-    try {
-      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const result = JSON.parse(jsonMatch[0]);
-        console.log(`[StructuralFixer] Chapter ${chapterNumber} fixed with ${result.correccionesRealizadas?.length || 0} corrections`);
-        return result;
-      }
-    } catch (e) {
-      console.error("[StructuralFixer] Failed to parse:", e);
-    }
-    return { 
+    let result: any = { 
       capituloCorregido: chapterContent, 
       correccionesRealizadas: [],
       resumenCambios: "No se pudieron aplicar correcciones",
       confianzaCorreccion: 0
     };
+    try {
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        result = JSON.parse(jsonMatch[0]);
+        console.log(`[StructuralFixer] Chapter ${chapterNumber} fixed with ${result.correccionesRealizadas?.length || 0} corrections`);
+      }
+    } catch (e) {
+      console.error("[StructuralFixer] Failed to parse:", e);
+    }
+    result.tokenUsage = response.tokenUsage;
+    return result;
   }
 }
 
@@ -826,15 +848,17 @@ ${summaries.join("\n\n")}
 Provide your evaluation in JSON format.`;
     
     const response = await this.generateContent(prompt);
+    let result: any = { bestsellerScore: 7, strengths: [], weaknesses: [], recommendations: [], marketPotential: "moderate" };
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        result = JSON.parse(jsonMatch[0]);
       }
     } catch (e) {
       console.error("[ReeditFinalReviewer] Failed to parse response:", e);
     }
-    return { bestsellerScore: 7, strengths: [], weaknesses: [], recommendations: [], marketPotential: "moderate" };
+    result.tokenUsage = response.tokenUsage;
+    return result;
   }
 }
 
@@ -1205,6 +1229,7 @@ export class ReeditOrchestrator {
           chapter.chapterNumber,
           detectedLang
         );
+        this.trackTokens(editorResult);
 
         await storage.updateReeditChapter(chapter.id, {
           editorScore: editorResult.score || 7,
@@ -1291,6 +1316,7 @@ export class ReeditOrchestrator {
             });
           }
         );
+        this.trackTokens(worldBibleResult);
 
         // Save world bible to database
         await storage.createReeditWorldBible({
@@ -1332,6 +1358,7 @@ export class ReeditOrchestrator {
           chaptersForBible,
           structureAnalysis
         );
+        this.trackTokens(architectResult);
 
         await storage.createReeditAuditReport({
           projectId,
@@ -1408,6 +1435,7 @@ export class ReeditOrchestrator {
               worldBibleResult,
               detectedLang
             );
+            this.trackTokens(fixResult);
             
             if (fixResult.capituloCorregido && fixResult.correccionesRealizadas?.length > 0) {
               await storage.updateReeditChapter(chapter.id, {
@@ -1502,6 +1530,7 @@ export class ReeditOrchestrator {
           chapter.chapterNumber,
           detectedLang
         );
+        this.trackTokens(copyEditorResult);
 
         const editedContent = copyEditorResult.editedContent || chapter.originalContent;
         const wordCount = editedContent.split(/\s+/).filter((w: string) => w.length > 0).length;
@@ -1555,6 +1584,7 @@ export class ReeditOrchestrator {
           startChap,
           endChap
         );
+        this.trackTokens(continuityResult);
 
         await storage.createReeditAuditReport({
           projectId,
@@ -1590,6 +1620,7 @@ export class ReeditOrchestrator {
           startChap,
           endChap
         );
+        this.trackTokens(voiceResult);
 
         await storage.createReeditAuditReport({
           projectId,
@@ -1614,6 +1645,7 @@ export class ReeditOrchestrator {
         chapterSummaries,
         validChapters.length
       );
+      this.trackTokens(semanticResult);
 
       await storage.createReeditAuditReport({
         projectId,
@@ -1638,6 +1670,7 @@ export class ReeditOrchestrator {
         "", // genre not available in reedit projects
         project.title || ""
       );
+      this.trackTokens(anachronismResult);
 
       await storage.createReeditAuditReport({
         projectId,
@@ -1676,6 +1709,7 @@ export class ReeditOrchestrator {
         completedChapters.length,
         totalWords
       );
+      this.trackTokens(finalResult);
 
       const bestsellerScore = finalResult.bestsellerScore || 7;
 
