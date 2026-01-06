@@ -1400,23 +1400,28 @@ export class ReeditOrchestrator {
             message: `Corrigiendo capítulo ${chapNum} (${chapterProblems.length} problemas)...`,
           });
           
-          const fixResult = await this.structuralFixer.fixChapter(
-            chapter.originalContent,
-            chapNum,
-            chapterProblems,
-            worldBibleResult,
-            detectedLang
-          );
-          
-          if (fixResult.capituloCorregido && fixResult.correccionesRealizadas?.length > 0) {
-            // Update the chapter with the fixed content
-            await storage.updateReeditChapter(chapter.id, {
-              originalContent: fixResult.capituloCorregido,
-              processingStage: "editing", // Reset to editing so CopyEditor processes it again
-            });
+          try {
+            const fixResult = await this.structuralFixer.fixChapter(
+              chapter.originalContent,
+              chapNum,
+              chapterProblems,
+              worldBibleResult,
+              detectedLang
+            );
             
-            chaptersToReprocess.push(chapNum);
-            console.log(`[ReeditOrchestrator] Chapter ${chapNum} fixed with ${fixResult.correccionesRealizadas.length} corrections`);
+            if (fixResult.capituloCorregido && fixResult.correccionesRealizadas?.length > 0) {
+              await storage.updateReeditChapter(chapter.id, {
+                originalContent: fixResult.capituloCorregido,
+                processingStage: "editing",
+              });
+              
+              chaptersToReprocess.push(chapNum);
+              console.log(`[ReeditOrchestrator] Chapter ${chapNum} fixed with ${fixResult.correccionesRealizadas.length} corrections`);
+            } else {
+              console.log(`[ReeditOrchestrator] Chapter ${chapNum}: No corrections applied by StructuralFixer`);
+            }
+          } catch (fixError) {
+            console.error(`[ReeditOrchestrator] Error fixing chapter ${chapNum}:`, fixError);
           }
           
           fixedCount++;
