@@ -2544,6 +2544,155 @@ export class ReeditOrchestrator {
       throw error;
     }
   }
+
+  async runFinalReviewOnly(projectId: number): Promise<void> {
+    console.log(`[ReeditOrchestrator] Running final review only for project ${projectId}`);
+    
+    const project = await storage.getReeditProject(projectId);
+    if (!project) {
+      throw new Error(`Project ${projectId} not found`);
+    }
+
+    this.totalInputTokens = project.totalInputTokens || 0;
+    this.totalOutputTokens = project.totalOutputTokens || 0;
+    this.totalThinkingTokens = project.totalThinkingTokens || 0;
+
+    await storage.updateReeditProject(projectId, { 
+      status: "processing",
+      currentStage: "reviewing",
+      errorMessage: null,
+    });
+
+    const chapters = await storage.getReeditChaptersByProject(projectId);
+    const validChapters = chapters.filter(c => c.editedContent);
+
+    const chapterSummaries = validChapters.map(c => {
+      const wordCount = c.wordCount || 0;
+      return `Capítulo ${c.chapterNumber}: ${c.title || "Sin título"} (${wordCount} palabras)`;
+    });
+
+    let revisionCycle = 0;
+    let consecutiveHighScores = 0;
+    const previousScores: number[] = [];
+    let finalResult: any = null;
+    let bestsellerScore = 0;
+
+    while (revisionCycle < this.maxFinalReviewCycles) {
+      const consecutiveInfo = consecutiveHighScores > 0 
+        ? ` [${consecutiveHighScores}/${this.requiredConsecutiveHighScores} puntuaciones 9+ consecutivas]`
+        : "";
+
+      this.emitProgress({
+        projectId,
+        stage: "reviewing",
+        currentChapter: validChapters.length,
+        totalChapters: validChapters.length,
+        message: `Re-ejecutando revisión final... (Ciclo ${revisionCycle + 1}/${this.maxFinalReviewCycles})${consecutiveInfo}`,
+      });
+
+      const totalWords = validChapters.reduce((sum, c) => sum + (c.wordCount || 0), 0);
+
+      finalResult = await this.finalReviewerAgent.reviewManuscript(
+        chapterSummaries,
+        validChapters.length,
+        totalWords
+      );
+      this.trackTokens(finalResult);
+      await this.updateHeartbeat(projectId);
+
+      bestsellerScore = finalResult.bestsellerScore || 7;
+      previousScores.push(bestsellerScore);
+
+      console.log(`[ReeditOrchestrator] Final review cycle ${revisionCycle + 1}: score ${bestsellerScore}/10`);
+
+      if (bestsellerScore >= this.minAcceptableScore) {
+        consecutiveHighScores++;
+      } else {
+        consecutiveHighScores = 0;
+      }
+
+      if (consecutiveHighScores >= this.requiredConsecutiveHighScores) {
+        const recentScores = previousScores.slice(-this.requiredConsecutiveHighScores).join(", ");
+        console.log(`[ReeditOrchestrator] APROBADO: Puntuaciones consecutivas ${recentScores}/10`);
+        
+        this.emitProgress({
+          projectId,
+          stage: "reviewing",
+          currentChapter: validChapters.length,
+          totalChapters: validChapters.length,
+          message: `Manuscrito APROBADO. Puntuaciones consecutivas: ${recentScores}/10. Calidad bestseller confirmada.`,
+        });
+        break;
+      }
+
+      if (bestsellerScore >= this.minAcceptableScore && consecutiveHighScores < this.requiredConsecutiveHighScores) {
+        this.emitProgress({
+          projectId,
+          stage: "reviewing",
+          currentChapter: validChapters.length,
+          totalChapters: validChapters.length,
+          message: `Puntuación ${bestsellerScore}/10. Necesita ${this.requiredConsecutiveHighScores - consecutiveHighScores} evaluación(es) más con 9+ para confirmar.`,
+        });
+        revisionCycle++;
+        continue;
+      }
+
+      if (revisionCycle === this.maxFinalReviewCycles - 1) {
+        const avgScore = previousScores.length > 0
+          ? (previousScores.reduce((a, b) => a + b, 0) / previousScores.length).toFixed(1)
+          : bestsellerScore;
+        
+        console.log(`[ReeditOrchestrator] Límite de ciclos alcanzado. Puntuación final: ${bestsellerScore}/10 (promedio: ${avgScore}).`);
+        break;
+      }
+
+      this.emitProgress({
+        projectId,
+        stage: "reviewing",
+        currentChapter: validChapters.length,
+        totalChapters: validChapters.length,
+        message: `Puntuación ${bestsellerScore}/10 insuficiente. Objetivo: ${this.minAcceptableScore}+ (${this.requiredConsecutiveHighScores}x consecutivas). Re-evaluando...`,
+      });
+
+      revisionCycle++;
+    }
+
+    await storage.createReeditAuditReport({
+      projectId,
+      auditType: "final_review",
+      chapterRange: "all",
+      score: Math.round(bestsellerScore),
+      findings: finalResult,
+      recommendations: finalResult?.recommendations || [],
+    });
+
+    const totalWords = validChapters.reduce((sum, c) => sum + (c.wordCount || 0), 0);
+
+    await storage.updateReeditProject(projectId, {
+      currentStage: "completed",
+      status: "completed",
+      bestsellerScore,
+      finalReviewResult: finalResult,
+      totalWordCount: totalWords,
+      totalInputTokens: this.totalInputTokens,
+      totalOutputTokens: this.totalOutputTokens,
+      totalThinkingTokens: this.totalThinkingTokens,
+    });
+
+    const finalMessage = consecutiveHighScores >= this.requiredConsecutiveHighScores
+      ? `Revisión final completa. Puntuación bestseller: ${bestsellerScore}/10 (confirmado ${this.requiredConsecutiveHighScores}x consecutivas)`
+      : `Revisión final completa. Puntuación bestseller: ${bestsellerScore}/10`;
+
+    this.emitProgress({
+      projectId,
+      stage: "completed",
+      currentChapter: validChapters.length,
+      totalChapters: validChapters.length,
+      message: finalMessage,
+    });
+
+    console.log(`[ReeditOrchestrator] Final review only completed for project ${projectId}: ${bestsellerScore}/10`);
+  }
 }
 
 export const reeditOrchestrator = new ReeditOrchestrator();

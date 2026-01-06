@@ -4823,6 +4823,46 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     }
   });
 
+  app.post("/api/reedit-projects/:id/rerun-final-review", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getReeditProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (activeReeditOrchestrators.has(projectId)) {
+        return res.status(400).json({ error: "Project is already being processed" });
+      }
+
+      const orchestrator = new ReeditOrchestrator();
+      activeReeditOrchestrators.set(projectId, orchestrator);
+
+      res.json({
+        success: true,
+        message: "Re-executing final review with 9+ twice consecutive logic",
+        projectId,
+      });
+
+      console.log(`[RerunFinalReview] Starting final review only for project ${projectId}`);
+      orchestrator.runFinalReviewOnly(projectId).then(() => {
+        console.log(`[RerunFinalReview] Completed for project ${projectId}`);
+      }).catch((err: any) => {
+        console.error(`[RerunFinalReview] Error:`, err);
+        storage.updateReeditProject(projectId, {
+          status: "error",
+          errorMessage: err instanceof Error ? err.message : "Unknown error",
+        });
+      }).finally(() => {
+        activeReeditOrchestrators.delete(projectId);
+      });
+    } catch (error) {
+      console.error("Error rerunning final review:", error);
+      res.status(500).json({ error: "Failed to rerun final review" });
+    }
+  });
+
   app.post("/api/reedit-projects/:id/cancel", async (req: Request, res: Response) => {
     try {
       const projectId = parseInt(req.params.id);
