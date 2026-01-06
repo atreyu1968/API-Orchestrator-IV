@@ -8,7 +8,7 @@ import multer from "multer";
 import mammoth from "mammoth";
 import { generateManuscriptDocx } from "./services/docx-exporter";
 import { z } from "zod";
-import { CopyEditorAgent, cancelProject } from "./agents";
+import { CopyEditorAgent, cancelProject, ItalianReviewerAgent } from "./agents";
 
 const workTypeEnum = z.enum(["standalone", "series", "trilogy"]);
 
@@ -2260,6 +2260,38 @@ ${series.seriesGuide.substring(0, 50000)}`;
     } catch (error) {
       console.error("Error editing chapter:", error);
       res.status(500).json({ error: "Failed to edit chapter" });
+    }
+  });
+
+  app.post("/api/imported-chapters/:id/review-italian", async (req: Request, res: Response) => {
+    try {
+      const chapterId = parseInt(req.params.id);
+      const chapter = await storage.getImportedChapter(chapterId);
+      if (!chapter) {
+        return res.status(404).json({ error: "Chapter not found" });
+      }
+
+      const contentToReview = chapter.editedContent || chapter.originalContent;
+      
+      const reviewer = new ItalianReviewerAgent();
+      const result = await reviewer.execute({
+        chapterContent: contentToReview,
+        chapterNumber: chapter.chapterNumber,
+      });
+
+      if (!result.result) {
+        return res.status(500).json({ error: "Failed to analyze text" });
+      }
+
+      res.json({
+        success: true,
+        chapterId,
+        review: result.result,
+        tokensUsed: result.tokenUsage,
+      });
+    } catch (error) {
+      console.error("Error reviewing Italian chapter:", error);
+      res.status(500).json({ error: "Failed to review chapter" });
     }
   });
 

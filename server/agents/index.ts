@@ -10,3 +10,4 @@ export { VoiceRhythmAuditorAgent, type VoiceRhythmAuditorResult, type VoiceRhyth
 export { SemanticRepetitionDetectorAgent, type SemanticRepetitionResult, type RepetitionCluster } from "./semantic-repetition-detector";
 export { ArcValidatorAgent, type ArcValidatorResult, type MilestoneVerification, type ThreadProgression } from "./arc-validator";
 export { SeriesThreadFixerAgent, type ThreadFixerResult, type ThreadFix } from "./series-thread-fixer";
+export { ItalianReviewerAgent, type ItalianReviewResult } from "./italian-reviewer";
