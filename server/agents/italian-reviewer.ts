@@ -43,10 +43,11 @@ AREE DI ANALISI:
    - Salti ingiustificati tra passato remoto, imperfetto e presente
    - Uso del congiuntivo dove necessario
 
-5. DIALOGHI E PUNTEGGIATURA
-   - Standard italiano: virgolette basse « » o caporali
-   - In alternativa: lineetta lunga (—) per introdurre battute
-   - Coerenza nell'uso scelto
+5. DIALOGHI E PUNTEGGIATURA (CRITICO)
+   - Standard per narrativa italiana: ESCLUSIVAMENTE trattino lungo (—) per introdurre i dialoghi
+   - MAI usare virgolette di nessun tipo ("", «», <<>>)
+   - Esempio corretto: —Ciao —disse Maria—. Come stai?
+   - Se trovi virgolette, segnalarlo come problema ALTA priorità
 
 6. REGISTRO STILISTICO
    - Miscele inappropriate di registro formale/informale

@@ -93,12 +93,17 @@ DEUTSCHE REDAKTIONS- UND STILSTANDARDS:
 - MODALPARTIKELN: Natürliche Verwendung von ja, doch, mal, eben in Dialogen.`,
 
   it: `
-NORME EDITORIALI E FLUIDITÀ - ITALIANO:
-[TIPOGRAFIA]
-- DIALOGHI: Usare le virgolette basse « » o le caporali. Trattino lungo (—) per incisi.
-- PUNTEGGIATURA: Virgola e punto dentro le virgolette solo se parte del discorso diretto.
+NORME EDITORIALI E FLUIDITÀ - ITALIANO (OBBLIGATORIO):
+[TIPOGRAFIA - CRITICO]
+- DIALOGHI: Usare ESCLUSIVAMENTE il trattino lungo (—) per introdurre i dialoghi. MAI usare virgolette di nessun tipo ("", «», <<>>).
+  Esempio corretto: —Ciao —disse Maria—. Come stai?
+  Esempio SBAGLIATO: «Ciao» disse Maria. / "Ciao" disse Maria.
+- INCISI: Il trattino lungo chiude l'inciso e ne apre un altro dopo l'attribuzione.
+  Esempio: —Non so —rispose lui—. Forse domani.
+- PUNTEGGIATURA: Il punto finale va DOPO il trattino di chiusura inciso.
 - NUMERI: Scrivere in lettere da uno a nove, cifre da 10 in poi.
 - ACCENTI: Attenzione agli accenti gravi (è, à) e acuti (é, perché).
+- CONSISTENZA: Se nel testo originale ci sono "«»", '""' o '<<>>', convertili TUTTI a trattini lunghi (—).
 
 [FLUIDITÀ E NATURALEZZA - CRITICO]
 - PRONOMI ARCAICI: MAI usare "Egli", "Ella", "Esso", "Essa", "Essi", "Esse". Usare SEMPRE il nome proprio o pronomi moderni (lui, lei, loro).

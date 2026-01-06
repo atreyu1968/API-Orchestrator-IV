@@ -47,11 +47,16 @@ DEUTSCHE REDAKTIONSSTANDARDS:
 - ZAHLEN: Eins bis neun ausschreiben, ab 10 Ziffern verwenden.`,
 
   it: `
-NORME EDITORIALI ITALIANO:
-- DIALOGHI: Usare le virgolette basse « » o le caporali. Trattino lungo (—) per incisi.
-- PUNTEGGIATURA: Virgola e punto dentro le virgolette solo se parte del discorso diretto.
+NORME EDITORIALI ITALIANO (OBBLIGATORIO):
+- DIALOGHI: Usare ESCLUSIVAMENTE il trattino lungo (—) per introdurre i dialoghi. MAI usare virgolette di nessun tipo ("", «», <<>>).
+  Esempio corretto: —Ciao —disse Maria—. Come stai?
+  Esempio SBAGLIATO: «Ciao» disse Maria. / "Ciao" disse Maria. / <<Ciao>> disse Maria.
+- INCISI NEL DIALOGO: Il trattino lungo chiude l'inciso e ne apre un altro dopo l'attribuzione.
+  Esempio: —Non so —rispose lui scrollando le spalle—. Forse domani.
+- PUNTEGGIATURA: Il punto finale va DOPO il trattino di chiusura inciso, non dentro il dialogo.
 - NUMERI: Scrivere in lettere da uno a nove, cifre da 10 in poi.
-- ACCENTI: Attenzione agli accenti gravi (è, à) e acuti (é, perché).`,
+- ACCENTI: Attenzione agli accenti gravi (è, à) e acuti (é, perché).
+- CONSISTENZA: Tutto il testo DEVE usare lo stesso sistema. Se trovi "«»", '""', o '<<>>', convertili TUTTI a trattini lunghi (—).`,
 
   pt: `
 NORMAS EDITORIAIS PORTUGUÊS:
