@@ -2830,7 +2830,7 @@ export class ReeditOrchestrator {
       
       console.log(`[ReeditOrchestrator] CopyEditor stage complete: ${chaptersNeedingCopyEdit.length} chapters processed, ${skippedCount} skipped (already rewritten)`)
 
-      // === STAGE 7: FINAL REVIEW (with 9+ twice consecutive logic using full content reviewer) ===
+      // === STAGE 7: FINAL REVIEW (with 10/10 twice consecutive logic using full content reviewer) ===
       await storage.updateReeditProject(projectId, { currentStage: "reviewing" });
 
       let revisionCycle = 0;
@@ -2846,7 +2846,7 @@ export class ReeditOrchestrator {
 
       while (revisionCycle < this.maxFinalReviewCycles) {
         const consecutiveInfo = consecutiveHighScores > 0 
-          ? ` [${consecutiveHighScores}/${this.requiredConsecutiveHighScores} puntuaciones 9+ consecutivas]`
+          ? ` [${consecutiveHighScores}/${this.requiredConsecutiveHighScores} puntuaciones 10/10 consecutivas]`
           : "";
 
         this.emitProgress({
@@ -2920,22 +2920,22 @@ export class ReeditOrchestrator {
             stage: "reviewing",
             currentChapter: validChapters.length,
             totalChapters: validChapters.length,
-            message: `Puntuación ${bestsellerScore}/10. Necesita ${this.requiredConsecutiveHighScores - consecutiveHighScores} evaluación(es) más con 9+ para confirmar.`,
+            message: `Puntuación ${bestsellerScore}/10. Necesita ${this.requiredConsecutiveHighScores - consecutiveHighScores} evaluación(es) más con 10/10 para confirmar.`,
           });
           revisionCycle++;
           continue;
         }
 
-        // NO hay "escape hatch" - el proyecto SOLO se aprueba con 2 puntuaciones 9+ consecutivas
-        // Si llegamos al límite de ciclos sin el doble 9+, seguimos intentando
+        // NO hay "escape hatch" - el proyecto SOLO se aprueba con 2 puntuaciones 10/10 consecutivas
+        // Si llegamos al límite de ciclos sin el doble 10/10, seguimos intentando
         if (revisionCycle === this.maxFinalReviewCycles - 1) {
           const avgScore = previousScores.length > 0
             ? (previousScores.reduce((a, b) => a + b, 0) / previousScores.length).toFixed(1)
             : bestsellerScore;
           
-          console.log(`[ReeditOrchestrator] Límite de ciclos alcanzado sin doble 9+ consecutivo. Puntuación: ${bestsellerScore}/10 (promedio: ${avgScore}). Continuando correcciones...`);
+          console.log(`[ReeditOrchestrator] Límite de ciclos alcanzado sin doble 10/10 consecutivo. Puntuación: ${bestsellerScore}/10 (promedio: ${avgScore}). Continuando correcciones...`);
           
-          // Si la puntuación es >= 9 pero no hay 2 consecutivos, continuamos intentando
+          // Si la puntuación es 10 pero no hay 2 consecutivos, continuamos intentando
           if (bestsellerScore >= this.minAcceptableScore) {
             this.emitProgress({
               projectId,
@@ -3146,7 +3146,7 @@ export class ReeditOrchestrator {
 
     while (revisionCycle < this.maxFinalReviewCycles) {
       const consecutiveInfo = consecutiveHighScores > 0 
-        ? ` [${consecutiveHighScores}/${this.requiredConsecutiveHighScores} puntuaciones 9+ consecutivas]`
+        ? ` [${consecutiveHighScores}/${this.requiredConsecutiveHighScores} puntuaciones 10/10 consecutivas]`
         : "";
 
       this.emitProgress({
@@ -3214,21 +3214,21 @@ export class ReeditOrchestrator {
           stage: "reviewing",
           currentChapter: validChapters.length,
           totalChapters: validChapters.length,
-          message: `Puntuación ${bestsellerScore}/10. Necesita ${this.requiredConsecutiveHighScores - consecutiveHighScores} evaluación(es) más con 9+ para confirmar.`,
+          message: `Puntuación ${bestsellerScore}/10. Necesita ${this.requiredConsecutiveHighScores - consecutiveHighScores} evaluación(es) más con 10/10 para confirmar.`,
         });
         revisionCycle++;
         continue;
       }
 
-      // NO hay "escape hatch" - el proyecto SOLO se aprueba con 2 puntuaciones 9+ consecutivas
+      // NO hay "escape hatch" - el proyecto SOLO se aprueba con 2 puntuaciones 10/10 consecutivas
       if (revisionCycle === this.maxFinalReviewCycles - 1) {
         const avgScore = previousScores.length > 0
           ? (previousScores.reduce((a, b) => a + b, 0) / previousScores.length).toFixed(1)
           : bestsellerScore;
         
-        console.log(`[ReeditOrchestrator] Límite de ciclos alcanzado sin doble 9+ consecutivo. Puntuación: ${bestsellerScore}/10 (promedio: ${avgScore}). Continuando correcciones...`);
+        console.log(`[ReeditOrchestrator] Límite de ciclos alcanzado sin doble 10/10 consecutivo. Puntuación: ${bestsellerScore}/10 (promedio: ${avgScore}). Continuando correcciones...`);
         
-        // Si la puntuación es >= 9 pero no hay 2 consecutivos, continuamos intentando
+        // Si la puntuación es 10 pero no hay 2 consecutivos, continuamos intentando
         if (bestsellerScore >= this.minAcceptableScore) {
           this.emitProgress({
             projectId,
