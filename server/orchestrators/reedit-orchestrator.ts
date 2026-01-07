@@ -1258,60 +1258,77 @@ export class ReeditOrchestrator {
       return validChapters;
     }
 
-    console.log(`[ReeditOrchestrator] Starting manuscript expansion analysis`);
+    console.log(`[ReeditOrchestrator] Starting manuscript expansion`);
     console.log(`  - Expand existing chapters: ${enableExpansion}`);
     console.log(`  - Insert new chapters: ${enableNewChapters}`);
     console.log(`  - Target min words/chapter: ${targetMinWords}`);
 
-    this.emitProgress({
-      projectId,
-      stage: "expansion",
-      currentChapter: 0,
-      totalChapters: validChapters.length,
-      message: "Analizando manuscrito para expansión...",
-    });
-
     const projectGenre = (project as any).genre || "thriller literario";
     
-    const chapterSummaries = validChapters.map(c => ({
-      chapterNumber: c.chapterNumber,
-      title: c.title || `Capítulo ${c.chapterNumber}`,
-      wordCount: c.wordCount || c.originalContent.split(/\s+/).length,
-      summary: c.originalContent.substring(0, 1500) + (c.originalContent.length > 1500 ? "..." : ""),
-    }));
+    let plan = project.expansionPlan as any;
+    
+    if (plan && plan.chaptersToExpand) {
+      console.log(`[ReeditOrchestrator] Reusing existing expansion plan from database`);
+      console.log(`  - Chapters to expand: ${plan.chaptersToExpand?.length || 0}`);
+      console.log(`  - New chapters to insert: ${plan.newChaptersToInsert?.length || 0}`);
+    } else {
+      this.emitProgress({
+        projectId,
+        stage: "expansion",
+        currentChapter: 0,
+        totalChapters: validChapters.length,
+        message: "Analizando manuscrito para expansión...",
+      });
 
-    const analysisResult = await this.expansionAnalyzer.execute({
-      chapters: chapterSummaries,
-      genre: projectGenre,
-      targetMinWordsPerChapter: targetMinWords,
-      enableNewChapters,
-      enableChapterExpansion: enableExpansion,
-    });
-    this.trackTokens(analysisResult);
+      const chapterSummaries = validChapters.map(c => ({
+        chapterNumber: c.chapterNumber,
+        title: c.title || `Capítulo ${c.chapterNumber}`,
+        wordCount: c.wordCount || c.originalContent.split(/\s+/).length,
+        summary: c.originalContent.substring(0, 1500) + (c.originalContent.length > 1500 ? "..." : ""),
+      }));
 
-    if (!analysisResult.result) {
-      console.log(`[ReeditOrchestrator] Expansion analysis failed, continuing without expansion`);
-      return validChapters;
+      const analysisResult = await this.expansionAnalyzer.execute({
+        chapters: chapterSummaries,
+        genre: projectGenre,
+        targetMinWordsPerChapter: targetMinWords,
+        enableNewChapters,
+        enableChapterExpansion: enableExpansion,
+      });
+      this.trackTokens(analysisResult);
+
+      if (!analysisResult.result) {
+        console.log(`[ReeditOrchestrator] Expansion analysis failed, continuing without expansion`);
+        return validChapters;
+      }
+
+      plan = analysisResult.result;
+      console.log(`[ReeditOrchestrator] Expansion plan created:`);
+      console.log(`  - Chapters to expand: ${plan.chaptersToExpand?.length || 0}`);
+      console.log(`  - New chapters to insert: ${plan.newChaptersToInsert?.length || 0}`);
+      console.log(`  - Estimated new words: ${plan.totalEstimatedNewWords || 0}`);
+
+      await storage.updateReeditProject(projectId, {
+        expansionPlan: plan as any,
+      });
     }
-
-    const plan = analysisResult.result;
-    console.log(`[ReeditOrchestrator] Expansion plan:`);
-    console.log(`  - Chapters to expand: ${plan.chaptersToExpand?.length || 0}`);
-    console.log(`  - New chapters to insert: ${plan.newChaptersToInsert?.length || 0}`);
-    console.log(`  - Estimated new words: ${plan.totalEstimatedNewWords || 0}`);
-
-    await storage.updateReeditProject(projectId, {
-      expansionPlan: plan as any,
-    });
 
     let updatedChapters = [...validChapters];
 
     if (enableExpansion && plan.chaptersToExpand?.length > 0) {
+      let skippedCount = 0;
       for (let i = 0; i < plan.chaptersToExpand.length; i++) {
         const expansion = plan.chaptersToExpand[i];
         const chapter = updatedChapters.find(c => c.chapterNumber === expansion.chapterNumber);
         
         if (!chapter) continue;
+
+        const currentWordCount = chapter.wordCount || chapter.originalContent.split(/\s+/).length;
+        const targetThreshold = expansion.targetWords * 0.9;
+        if (currentWordCount >= targetThreshold) {
+          console.log(`[ReeditOrchestrator] Skipping chapter ${chapter.chapterNumber} (already expanded: ${currentWordCount} >= ${Math.round(targetThreshold)} words)`);
+          skippedCount++;
+          continue;
+        }
 
         if (await this.checkCancellation(projectId)) return updatedChapters;
 
@@ -1374,6 +1391,16 @@ export class ReeditOrchestrator {
       for (let i = 0; i < sortedInsertions.length; i++) {
         const insertion = sortedInsertions[i];
         
+        const expectedNewChapterNum = insertion.insertAfterChapter + 0.5;
+        const existingNewChapter = updatedChapters.find(c => 
+          Math.abs(c.chapterNumber - expectedNewChapterNum) < 0.1 ||
+          (c.title === insertion.title && c.originalContent && c.originalContent.length > 500)
+        );
+        if (existingNewChapter) {
+          console.log(`[ReeditOrchestrator] Skipping new chapter insertion after ${insertion.insertAfterChapter} (already exists: "${insertion.title}")`);
+          continue;
+        }
+
         if (await this.checkCancellation(projectId)) return updatedChapters;
 
         this.emitProgress({
