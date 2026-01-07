@@ -1264,8 +1264,15 @@ export class ReeditOrchestrator {
       }
     }
     
-    // If no "Capítulo X" pattern found, don't modify (e.g., "Prólogo", "Epílogo", custom titles)
-    return title;
+    // Special titles that should NOT get "Capítulo X:" prefix
+    const specialTitles = /^(prólogo|epílogo|preludio|interludio|epilogue|prologue|prelude|interlude)/i;
+    if (specialTitles.test(title.trim())) {
+      return title;
+    }
+    
+    // For inserted chapters or chapters without prefix, ADD the "Capítulo X:" prefix
+    // This ensures all regular chapters have consistent naming
+    return `Capítulo ${newChapterNumber}: ${title}`;
   }
 
   private buildAdjacentChapterContext(
