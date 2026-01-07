@@ -697,11 +697,13 @@ export default function ReeditPage() {
   const { data: worldBible } = useQuery<any>({
     queryKey: ["/api/reedit-projects", selectedProject, "world-bible"],
     enabled: !!selectedProject,
+    refetchInterval: 10000,
   });
 
   const { data: auditReports = [] } = useQuery<any[]>({
     queryKey: ["/api/reedit-projects", selectedProject, "audit-reports"],
     enabled: !!selectedProject,
+    refetchInterval: 5000,
   });
 
   const selectedProjectData = projects.find(p => p.id === selectedProject);
