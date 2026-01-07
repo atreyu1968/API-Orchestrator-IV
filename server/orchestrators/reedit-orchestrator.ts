@@ -1230,6 +1230,26 @@ export class ReeditOrchestrator {
     await storage.updateReeditProject(projectId, updates);
   }
 
+  private updateChapterTitleNumber(title: string | null, newChapterNumber: number): string {
+    if (!title) return `Capítulo ${newChapterNumber}`;
+    
+    // Match patterns like "Capítulo X:", "Capítulo X -", "Capítulo X" at the start
+    const chapterPrefixPattern = /^Capítulo\s+\d+\s*[:|-]?\s*/i;
+    
+    if (chapterPrefixPattern.test(title)) {
+      // Extract the subtitle (everything after the prefix)
+      const subtitle = title.replace(chapterPrefixPattern, '').trim();
+      if (subtitle) {
+        return `Capítulo ${newChapterNumber}: ${subtitle}`;
+      } else {
+        return `Capítulo ${newChapterNumber}`;
+      }
+    }
+    
+    // If no "Capítulo X" pattern found, don't modify (e.g., "Prólogo", "Epílogo", custom titles)
+    return title;
+  }
+
   private buildAdjacentChapterContext(
     chapters: ReeditChapter[],
     currentChapterNumber: number
@@ -1486,13 +1506,28 @@ export class ReeditOrchestrator {
 
       let newChapterNum = 1;
       for (const chapter of updatedChapters) {
+        const updates: any = {};
+        
+        // Renumber if needed
         if (chapter.chapterNumber !== newChapterNum) {
-          await storage.updateReeditChapter(chapter.id, {
-            originalChapterNumber: chapter.chapterNumber,
-            chapterNumber: newChapterNum,
-          });
-          chapter.chapterNumber = newChapterNum;
+          updates.originalChapterNumber = chapter.chapterNumber;
+          updates.chapterNumber = newChapterNum;
         }
+        
+        // Update title prefix to match new chapter number
+        const updatedTitle = this.updateChapterTitleNumber(chapter.title, newChapterNum);
+        if (updatedTitle !== chapter.title) {
+          updates.title = updatedTitle;
+          console.log(`[ReeditOrchestrator] Renaming: "${chapter.title}" -> "${updatedTitle}"`);
+        }
+        
+        // Apply updates if any
+        if (Object.keys(updates).length > 0) {
+          await storage.updateReeditChapter(chapter.id, updates);
+          if (updates.chapterNumber) chapter.chapterNumber = newChapterNum;
+          if (updates.title) chapter.title = updatedTitle;
+        }
+        
         newChapterNum++;
       }
 
