@@ -138,7 +138,35 @@ New functionality to expand manuscripts by:
 
 **UI**: Upload form now includes toggle switches for expansion options
 
+### Chapter Reordering System (NEW - 2026-01-07)
+
+The Architect Analyzer can now recommend and automatically execute chapter reordering when beneficial for narrative pacing:
+
+**How it works**:
+1. Architect Analyzer detects suboptimal chapter order during analysis
+2. Generates `reordenamientoSugerido` array with moves: `{capituloActual, nuevaPosicion, razon}`
+3. `reorderChaptersFromAnalysis()` executes the reordering automatically
+4. All chapters are renumbered and titles updated to reflect new positions
+
+**Pipeline Integration**: Runs as STAGE 4.1 immediately after Architect Analysis, before QA Agents
+
+**Title Handling Fix**: 
+- Inserted chapters now automatically get "Capítulo X:" prefix (previously only preserved existing prefixes)
+- Special titles (Prólogo, Epílogo, Preludio, Interludio) are preserved without prefix
+
+### Perfection Mode (10/10 Scoring)
+
+All agents now target 10/10 perfection:
+- **Architect Analyzer**: 10/10 = zero structural/plot problems
+- **NarrativeRewriter**: Each correction must be DEFINITIVE, eliminating problems completely
+- **StructuralFixer**: Same perfection objective with complete problem elimination
+- **CopyEditor**: Zero editorial/stylistic/fluency errors
+- **Final Reviewer**: MUST give 10/10 when manuscript is perfect (no artificial criticism)
+- **Approval Logic**: Requires TWO consecutive 10/10 scores (no escape hatch)
+
 ### Project Status
 - Project 4 "La superficie rota": COMPLETED (65 chapters, 97,683 words, score 9/10, "muy alto potencial de mercado")
+- Project 5: 40 chapters with 5 inserted chapters, titles now correctly formatted
 - Pipeline optimization: IMPLEMENTED and ready for next project
 - Manuscript expansion system: IMPLEMENTED with 3 specialized agents
+- Chapter reordering: IMPLEMENTED with automatic title renumbering

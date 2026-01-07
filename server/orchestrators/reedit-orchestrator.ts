@@ -658,12 +658,22 @@ SISTEMA DE PUNTUACIÓN ESTRICTO (OBJETIVO 10/10):
 REGLA ABSOLUTA: Solo das 10/10 si NO hay ningún problema detectado.
 Si el manuscrito está bien estructurado y coherente, DEBES dar 10/10. No busques problemas donde no los hay.
 
+REORDENAMIENTO DE CAPÍTULOS:
+Si detectas que el orden de capítulos NO es óptimo para el pacing o la narrativa, especifica los movimientos necesarios en "reordenamientoSugerido". Cada movimiento indica:
+- capituloActual: número del capítulo a mover
+- nuevaPosicion: posición donde debe quedar (número de capítulo destino)
+- razon: por qué este movimiento mejora la narrativa
+
+Solo sugiere reordenamientos cuando sean CLARAMENTE beneficiosos para el pacing o la lógica narrativa.
+
 RESPONDE SOLO EN JSON:
 {
   "analisisEstructura": {
     "ordenOptimo": true,
     "problemaPacing": [],
-    "reordenamientoSugerido": []
+    "reordenamientoSugerido": [
+      {"capituloActual": 5, "nuevaPosicion": 3, "razon": "El flashback debe aparecer antes de la revelación"}
+    ]
   },
   "analisisTrama": {
     "huecosArgumentales": [],
@@ -1648,6 +1658,56 @@ export class ReeditOrchestrator {
     console.log(`[ReeditOrchestrator] Renumbered ${chapters.length} chapters in database`);
   }
 
+  /**
+   * Reorder chapters based on Architect Analyzer recommendations.
+   * Each reordering specifies which chapter should move to which position.
+   */
+  private async reorderChaptersFromAnalysis(
+    chapters: ReeditChapter[],
+    projectId: number,
+    reordenamientos: Array<{ capituloActual: number; nuevaPosicion: number; razon: string }>
+  ): Promise<ReeditChapter[]> {
+    if (!reordenamientos || reordenamientos.length === 0) {
+      return chapters;
+    }
+
+    console.log(`[ReeditOrchestrator] Reordering ${reordenamientos.length} chapters based on Architect analysis:`);
+    
+    // Sort chapters by current number
+    let sortedChapters = [...chapters].sort((a, b) => a.chapterNumber - b.chapterNumber);
+    
+    // Apply each reordering
+    for (const reorder of reordenamientos) {
+      const { capituloActual, nuevaPosicion, razon } = reorder;
+      
+      // Find the chapter to move
+      const chapterIndex = sortedChapters.findIndex(c => c.chapterNumber === capituloActual);
+      if (chapterIndex === -1) {
+        console.log(`  [SKIP] Capítulo ${capituloActual} no encontrado`);
+        continue;
+      }
+      
+      const chapter = sortedChapters[chapterIndex];
+      
+      // Remove from current position
+      sortedChapters.splice(chapterIndex, 1);
+      
+      // Insert at new position (adjusted for 0-based indexing)
+      const newIndex = Math.max(0, Math.min(nuevaPosicion - 1, sortedChapters.length));
+      sortedChapters.splice(newIndex, 0, chapter);
+      
+      console.log(`  ✓ Capítulo ${capituloActual} ("${chapter.title?.substring(0, 40)}...") -> posición ${nuevaPosicion}`);
+      console.log(`    Razón: ${razon}`);
+    }
+    
+    // Renumber all chapters in the database
+    await this.renumberChaptersInDatabase(sortedChapters, projectId);
+    
+    console.log(`[ReeditOrchestrator] Chapter reordering complete`);
+    
+    return sortedChapters;
+  }
+
   private async collectQaFindings(projectId: number): Promise<Map<number, any[]>> {
     const problemsByChapter = new Map<number, any[]>();
     
@@ -2070,7 +2130,7 @@ export class ReeditOrchestrator {
         }
       }
 
-      const validChapters = chapters.filter(c => {
+      let validChapters = chapters.filter(c => {
         const isDup = structureAnalysis.duplicateChapters.some(d => d.chapterId === c.id);
         return !isDup;
       }).sort((a, b) => a.chapterNumber - b.chapterNumber);
@@ -2318,6 +2378,30 @@ export class ReeditOrchestrator {
       // Check for critical blocks
       if (architectResult.bloqueoCritico) {
         console.log(`[ReeditOrchestrator] Critical block detected, continuing with warnings`);
+      }
+
+      // === STAGE 4.1: CHAPTER REORDERING (if recommended by Architect) ===
+      const reordenamientos = architectResult.analisisEstructura?.reordenamientoSugerido || [];
+      if (reordenamientos.length > 0) {
+        this.emitProgress({
+          projectId,
+          stage: "architect",
+          currentChapter: validChapters.length,
+          totalChapters: validChapters.length,
+          message: `Reordenando ${reordenamientos.length} capítulos según análisis arquitectónico...`,
+        });
+
+        validChapters = await this.reorderChaptersFromAnalysis(
+          validChapters,
+          projectId,
+          reordenamientos
+        );
+
+        // Rebuild chapter arrays after reordering
+        validChapters = validChapters.sort((a, b) => a.chapterNumber - b.chapterNumber);
+        console.log(`[ReeditOrchestrator] Chapters reordered. New order: ${validChapters.map(c => c.chapterNumber).join(', ')}`);
+        
+        await this.updateHeartbeat(projectId);
       }
 
       // === STAGE 4.5: QA AGENTS (OPTIMIZED - run BEFORE rewriting to consolidate all problems) ===
