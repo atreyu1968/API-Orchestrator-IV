@@ -1499,36 +1499,12 @@ export class ReeditOrchestrator {
           });
 
           console.log(`[ReeditOrchestrator] New chapter created after ${insertion.insertAfterChapter}: "${insertion.title}" (${wordCount} words)`);
+          
+          // Renumber ALL chapters immediately after each new insertion so they appear correctly in UI
+          await this.renumberChaptersInDatabase(updatedChapters, projectId);
         }
 
         await this.updateHeartbeat(projectId);
-      }
-
-      let newChapterNum = 1;
-      for (const chapter of updatedChapters) {
-        const updates: any = {};
-        
-        // Renumber if needed
-        if (chapter.chapterNumber !== newChapterNum) {
-          updates.originalChapterNumber = chapter.chapterNumber;
-          updates.chapterNumber = newChapterNum;
-        }
-        
-        // Update title prefix to match new chapter number
-        const updatedTitle = this.updateChapterTitleNumber(chapter.title, newChapterNum);
-        if (updatedTitle !== chapter.title) {
-          updates.title = updatedTitle;
-          console.log(`[ReeditOrchestrator] Renaming: "${chapter.title}" -> "${updatedTitle}"`);
-        }
-        
-        // Apply updates if any
-        if (Object.keys(updates).length > 0) {
-          await storage.updateReeditChapter(chapter.id, updates);
-          if (updates.chapterNumber) chapter.chapterNumber = newChapterNum;
-          if (updates.title) chapter.title = updatedTitle;
-        }
-        
-        newChapterNum++;
       }
 
       await storage.updateReeditProject(projectId, {
@@ -1540,6 +1516,49 @@ export class ReeditOrchestrator {
     console.log(`[ReeditOrchestrator] Expansion complete: ${updatedChapters.length} chapters, ${totalWords} words`);
 
     return updatedChapters;
+  }
+
+  /**
+   * Renumber all chapters in the database based on their _sortOrder (or chapterNumber).
+   * This ensures new chapters appear in the correct position in the UI immediately.
+   */
+  private async renumberChaptersInDatabase(
+    chapters: ReeditChapter[],
+    projectId: number
+  ): Promise<void> {
+    let newChapterNum = 1;
+    for (const chapter of chapters) {
+      const updates: any = {};
+      
+      // Renumber if needed
+      if (chapter.chapterNumber !== newChapterNum) {
+        updates.originalChapterNumber = chapter.chapterNumber;
+        updates.chapterNumber = newChapterNum;
+      }
+      
+      // Update title prefix to match new chapter number
+      const updatedTitle = this.updateChapterTitleNumber(chapter.title, newChapterNum);
+      if (updatedTitle !== chapter.title) {
+        updates.title = updatedTitle;
+        console.log(`[ReeditOrchestrator] Renaming: "${chapter.title}" -> "${updatedTitle}"`);
+      }
+      
+      // Apply updates if any
+      if (Object.keys(updates).length > 0) {
+        await storage.updateReeditChapter(chapter.id, updates);
+        if (updates.chapterNumber) chapter.chapterNumber = newChapterNum;
+        if (updates.title) chapter.title = updatedTitle;
+      }
+      
+      newChapterNum++;
+    }
+    
+    // Update project total chapters count
+    await storage.updateReeditProject(projectId, {
+      totalChapters: chapters.length,
+    });
+    
+    console.log(`[ReeditOrchestrator] Renumbered ${chapters.length} chapters in database`);
   }
 
   private async collectQaFindings(projectId: number): Promise<Map<number, any[]>> {
