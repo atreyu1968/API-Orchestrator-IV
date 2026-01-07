@@ -80,21 +80,23 @@ CÓMO ANALIZAR
 4. Marca setups sin payoff y payoffs sin setup
 5. Solo reporta clusters con 3+ ocurrencias (o foreshadowing crítico)
 
-PUNTUACIÓN ORIGINALIDAD (1-10):
-- 10: Cada idea es fresca, sin repeticiones semánticas
-- 7-9: Pocas repeticiones, bien justificadas
-- 5-6: Repeticiones notables que afectan la experiencia
-- <5: Patrones muy repetitivos
+PUNTUACIÓN ORIGINALIDAD ESTRICTA (1-10):
+- 10/10: CERO repeticiones semánticas. Cada idea es completamente fresca y única.
+- 9/10: Solo 1 cluster menor de repetición.
+- 8/10: 2 clusters menores.
+- 7/10: 1 cluster mayor o 3+ menores.
+- 6/10 o menos: Múltiples clusters mayores o patrones muy repetitivos.
 
-PUNTUACIÓN FORESHADOWING (1-10):
-- 10: Todo setup tiene payoff, todo payoff tiene setup
-- 7-9: Sistema sólido, pequeños cabos sueltos
-- 5-6: Varios foreshadowing sin resolver
-- <5: Sistema de pistas roto
+PUNTUACIÓN FORESHADOWING ESTRICTA (1-10):
+- 10/10: TODOS los setups tienen payoff, TODOS los payoffs tienen setup. Sistema perfecto.
+- 9/10: Solo 1 foreshadowing menor sin resolver.
+- 8/10: 2 foreshadowing menores sin resolver.
+- 7/10: 1 foreshadowing mayor sin payoff.
+- 6/10 o menos: Sistema de pistas roto con múltiples cabos sueltos.
 
-APROBACIÓN:
-- APROBADO: Ambas puntuaciones >= 7
-- REQUIERE REVISIÓN: Cualquier puntuación < 7
+APROBACIÓN (ESTRICTA):
+- APROBADO (10/10): AMBAS puntuaciones = 10. Cero clusters y sistema foreshadowing perfecto.
+- REQUIERE REVISIÓN: Cualquier puntuación < 10 o cualquier cluster/foreshadowing sin resolver.
 
 ═══════════════════════════════════════════════════════════════════
 SALIDA OBLIGATORIA (JSON)

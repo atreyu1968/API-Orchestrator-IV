@@ -73,21 +73,23 @@ QUÉ DEBES ANALIZAR
 MÉTRICAS DE EVALUACIÓN
 ═══════════════════════════════════════════════════════════════════
 
-PUNTUACIÓN VOZ (1-10):
-- 10: Voz perfectamente consistente, inmersiva, distintiva
-- 7-9: Voz sólida con pequeñas variaciones
-- 5-6: Voz inconsistente, algunos deslices notables
-- <5: Voz fragmentada, parece escrito por diferentes autores
+PUNTUACIÓN VOZ ESTRICTA (1-10):
+- 10/10: Voz PERFECTAMENTE consistente, inmersiva, distintiva. CERO issues de voz.
+- 9/10: Solo 1 issue menor de voz.
+- 8/10: 2 issues menores de voz.
+- 7/10: 1 issue mayor o 3+ menores.
+- 6/10 o menos: Voz fragmentada, múltiples problemas.
 
-PUNTUACIÓN RITMO (1-10):
-- 10: Ritmo perfecto, cada escena tiene el tempo adecuado
-- 7-9: Ritmo sólido, pequeños problemas de pacing
-- 5-6: Pacing irregular, algunas escenas desequilibradas
-- <5: Ritmo problemático, afecta la experiencia de lectura
+PUNTUACIÓN RITMO ESTRICTA (1-10):
+- 10/10: Ritmo PERFECTO. Cada escena tiene el tempo exacto. CERO issues de ritmo.
+- 9/10: Solo 1 issue menor de ritmo.
+- 8/10: 2 issues menores de ritmo.
+- 7/10: 1 issue mayor o 3+ menores.
+- 6/10 o menos: Pacing problemático, múltiples problemas.
 
-APROBACIÓN:
-- APROBADO: Ambas puntuaciones >= 7
-- REQUIERE REVISIÓN: Cualquier puntuación < 7
+APROBACIÓN (ESTRICTA):
+- APROBADO (10/10): AMBAS puntuaciones = 10. Cero issues de voz Y cero issues de ritmo.
+- REQUIERE REVISIÓN: Cualquier puntuación < 10 o cualquier issue detectado.
 
 ═══════════════════════════════════════════════════════════════════
 SALIDA OBLIGATORIA (JSON)
