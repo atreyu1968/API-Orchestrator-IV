@@ -1179,7 +1179,7 @@ export class ReeditOrchestrator {
   private totalThinkingTokens: number = 0;
   
   private maxFinalReviewCycles = 10;
-  private minAcceptableScore = 9;
+  private minAcceptableScore = 10;
   private requiredConsecutiveHighScores = 2;
 
   constructor() {
