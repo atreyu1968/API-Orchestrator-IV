@@ -1409,10 +1409,9 @@ export class ReeditOrchestrator {
       for (let i = 0; i < sortedInsertions.length; i++) {
         const insertion = sortedInsertions[i];
         
-        const expectedNewChapterNum = insertion.insertAfterChapter + 0.5;
+        // Check if chapter with this title already exists (inserted in previous run)
         const existingNewChapter = updatedChapters.find(c => 
-          Math.abs(c.chapterNumber - expectedNewChapterNum) < 0.1 ||
-          (c.title === insertion.title && c.originalContent && c.originalContent.length > 500)
+          c.title === insertion.title && c.originalContent && c.originalContent.length > 500
         );
         if (existingNewChapter) {
           console.log(`[ReeditOrchestrator] Skipping new chapter insertion after ${insertion.insertAfterChapter} (already exists: "${insertion.title}")`);
@@ -1446,12 +1445,14 @@ export class ReeditOrchestrator {
         this.trackTokens(newChapterResult);
 
         if (newChapterResult.result?.content) {
-          const newChapterNumber = insertion.insertAfterChapter + 0.5;
+          // Use a temporary high number to avoid conflicts (will be renumbered later)
+          // Calculate position: insert after the target chapter
+          const tempChapterNumber = 9000 + i;
           const wordCount = newChapterResult.result.wordCount || newChapterResult.result.content.split(/\s+/).length;
 
           const newChapter = await storage.createReeditChapter({
             projectId,
-            chapterNumber: newChapterNumber,
+            chapterNumber: tempChapterNumber,
             title: newChapterResult.result.title || insertion.title,
             originalContent: newChapterResult.result.content,
             wordCount,
@@ -1459,8 +1460,14 @@ export class ReeditOrchestrator {
             processingStage: "none",
           });
 
-          updatedChapters.push(newChapter);
-          updatedChapters.sort((a, b) => a.chapterNumber - b.chapterNumber);
+          // Store the intended position for sorting
+          const insertPosition = insertion.insertAfterChapter + 0.5;
+          updatedChapters.push({ ...newChapter, _sortOrder: insertPosition } as any);
+          updatedChapters.sort((a, b) => {
+            const orderA = (a as any)._sortOrder ?? a.chapterNumber;
+            const orderB = (b as any)._sortOrder ?? b.chapterNumber;
+            return orderA - orderB;
+          });
 
           console.log(`[ReeditOrchestrator] New chapter created after ${insertion.insertAfterChapter}: "${insertion.title}" (${wordCount} words)`);
         }
