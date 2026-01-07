@@ -2591,16 +2591,18 @@ export class ReeditOrchestrator {
         await this.updateHeartbeat(projectId);
 
         finalResult = fullReviewResult.result || null;
-        bestsellerScore = Math.round(finalResult?.puntuacion_global || 7);
-        previousScores.push(bestsellerScore);
+        // Use raw score for threshold checks - only round when persisting to DB
+        const rawScore = finalResult?.puntuacion_global || 7;
+        bestsellerScore = rawScore; // Keep as float for accurate threshold comparison
+        previousScores.push(rawScore);
 
         const veredicto = finalResult?.veredicto || "REQUIERE_REVISION";
         const issuesCount = finalResult?.issues?.length || 0;
         const chapsToRewrite = finalResult?.capitulos_para_reescribir?.length || 0;
 
-        console.log(`[ReeditOrchestrator] Final review cycle ${revisionCycle + 1}: score ${bestsellerScore}/10, veredicto: ${veredicto}, issues: ${issuesCount}, chapters to rewrite: ${chapsToRewrite}`);
+        console.log(`[ReeditOrchestrator] Final review cycle ${revisionCycle + 1}: score ${rawScore}/10, veredicto: ${veredicto}, issues: ${issuesCount}, chapters to rewrite: ${chapsToRewrite}`);
 
-        if (bestsellerScore >= this.minAcceptableScore) {
+        if (rawScore >= this.minAcceptableScore) {
           consecutiveHighScores++;
         } else {
           consecutiveHighScores = 0;
@@ -2766,10 +2768,12 @@ export class ReeditOrchestrator {
       const updatedChapters = await storage.getReeditChaptersByProject(projectId);
       const totalWords = updatedChapters.filter(c => c.editedContent).reduce((sum, c) => sum + (c.wordCount || 0), 0);
 
+      // Round score only when persisting to database (DB expects integer)
+      const roundedScore = Math.round(bestsellerScore);
       await storage.updateReeditProject(projectId, {
         currentStage: "completed",
         status: "completed",
-        bestsellerScore,
+        bestsellerScore: roundedScore,
         finalReviewResult: finalResult,
         totalWordCount: totalWords,
         totalInputTokens: this.totalInputTokens,
@@ -2780,8 +2784,8 @@ export class ReeditOrchestrator {
       console.log(`[ReeditOrchestrator] Token usage: ${this.totalInputTokens} input, ${this.totalOutputTokens} output, ${this.totalThinkingTokens} thinking`);
 
       const finalMessage = consecutiveHighScores >= this.requiredConsecutiveHighScores
-        ? `Reedición completa. Puntuación bestseller: ${bestsellerScore}/10 (confirmado ${this.requiredConsecutiveHighScores}x consecutivas)`
-        : `Reedición completa. Puntuación bestseller: ${bestsellerScore}/10`;
+        ? `Reedición completa. Puntuación bestseller: ${roundedScore}/10 (confirmado ${this.requiredConsecutiveHighScores}x consecutivas)`
+        : `Reedición completa. Puntuación bestseller: ${roundedScore}/10`;
 
       this.emitProgress({
         projectId,
@@ -2869,16 +2873,18 @@ export class ReeditOrchestrator {
       await this.updateHeartbeat(projectId);
 
       finalResult = fullReviewResult.result || null;
-      bestsellerScore = Math.round(finalResult?.puntuacion_global || 7);
-      previousScores.push(bestsellerScore);
+      // Use raw score for threshold checks - only round when persisting to DB
+      const rawScore = finalResult?.puntuacion_global || 7;
+      bestsellerScore = rawScore; // Keep as float for accurate threshold comparison
+      previousScores.push(rawScore);
 
       const veredicto = finalResult?.veredicto || "REQUIERE_REVISION";
       const issuesCount = finalResult?.issues?.length || 0;
       const chapsToRewrite = finalResult?.capitulos_para_reescribir?.length || 0;
 
-      console.log(`[ReeditOrchestrator] Final review cycle ${revisionCycle + 1}: score ${bestsellerScore}/10, veredicto: ${veredicto}, issues: ${issuesCount}, chapters to rewrite: ${chapsToRewrite}`);
+      console.log(`[ReeditOrchestrator] Final review cycle ${revisionCycle + 1}: score ${rawScore}/10, veredicto: ${veredicto}, issues: ${issuesCount}, chapters to rewrite: ${chapsToRewrite}`);
 
-      if (bestsellerScore >= this.minAcceptableScore) {
+      if (rawScore >= this.minAcceptableScore) {
         consecutiveHighScores++;
       } else {
         consecutiveHighScores = 0;

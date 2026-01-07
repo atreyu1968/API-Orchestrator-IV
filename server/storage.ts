@@ -154,9 +154,12 @@ export interface IStorage {
 
   // Reedit Chapters
   createReeditChapter(data: InsertReeditChapter): Promise<ReeditChapter>;
+  createReeditChapterIfNotExists(data: InsertReeditChapter): Promise<ReeditChapter>;
   getReeditChaptersByProject(projectId: number): Promise<ReeditChapter[]>;
   getReeditChapter(id: number): Promise<ReeditChapter | undefined>;
+  getReeditChapterByOriginalNumber(projectId: number, originalChapterNumber: number): Promise<ReeditChapter | undefined>;
   updateReeditChapter(id: number, data: Partial<ReeditChapter>): Promise<ReeditChapter | undefined>;
+  deleteReeditChaptersByProject(projectId: number): Promise<void>;
 
   // Reedit Audit Reports
   createReeditAuditReport(data: InsertReeditAuditReport): Promise<ReeditAuditReport>;
@@ -884,6 +887,28 @@ export class DatabaseStorage implements IStorage {
     return chapter;
   }
 
+  async createReeditChapterIfNotExists(data: InsertReeditChapter): Promise<ReeditChapter> {
+    // Check if chapter with same projectId + originalChapterNumber already exists
+    if (data.originalChapterNumber !== undefined && data.originalChapterNumber !== null) {
+      const existing = await this.getReeditChapterByOriginalNumber(data.projectId, data.originalChapterNumber);
+      if (existing) {
+        console.log(`[Storage] Chapter with originalChapterNumber ${data.originalChapterNumber} already exists for project ${data.projectId}, skipping creation`);
+        return existing;
+      }
+    }
+    // If no originalChapterNumber, check by chapterNumber as fallback
+    const existingByNumber = await db.select().from(reeditChapters)
+      .where(and(
+        eq(reeditChapters.projectId, data.projectId),
+        eq(reeditChapters.chapterNumber, data.chapterNumber)
+      ));
+    if (existingByNumber.length > 0) {
+      console.log(`[Storage] Chapter with chapterNumber ${data.chapterNumber} already exists for project ${data.projectId}, skipping creation`);
+      return existingByNumber[0];
+    }
+    return this.createReeditChapter(data);
+  }
+
   async getReeditChaptersByProject(projectId: number): Promise<ReeditChapter[]> {
     return db.select().from(reeditChapters)
       .where(eq(reeditChapters.projectId, projectId))
@@ -895,9 +920,22 @@ export class DatabaseStorage implements IStorage {
     return chapter;
   }
 
+  async getReeditChapterByOriginalNumber(projectId: number, originalChapterNumber: number): Promise<ReeditChapter | undefined> {
+    const [chapter] = await db.select().from(reeditChapters)
+      .where(and(
+        eq(reeditChapters.projectId, projectId),
+        eq(reeditChapters.originalChapterNumber, originalChapterNumber)
+      ));
+    return chapter;
+  }
+
   async updateReeditChapter(id: number, data: Partial<ReeditChapter>): Promise<ReeditChapter | undefined> {
     const [updated] = await db.update(reeditChapters).set(data).where(eq(reeditChapters.id, id)).returning();
     return updated;
+  }
+
+  async deleteReeditChaptersByProject(projectId: number): Promise<void> {
+    await db.delete(reeditChapters).where(eq(reeditChapters.projectId, projectId));
   }
 
   // Reedit Audit Reports
