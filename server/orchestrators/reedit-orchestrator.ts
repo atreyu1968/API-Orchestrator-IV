@@ -1312,10 +1312,41 @@ export class ReeditOrchestrator {
     
     let plan = project.expansionPlan as any;
     
+    // Constants for necessity filtering
+    const EXPANSION_THRESHOLD = 0.7;
+    const NEW_CHAPTER_THRESHOLD = 0.8;
+    
     if (plan && plan.chaptersToExpand) {
       console.log(`[ReeditOrchestrator] Reusing existing expansion plan from database`);
-      console.log(`  - Chapters to expand: ${plan.chaptersToExpand?.length || 0}`);
-      console.log(`  - New chapters to insert: ${plan.newChaptersToInsert?.length || 0}`);
+      
+      // Apply necessity filtering to reused plans as well (in case they're from before filtering was added)
+      const originalExpandCount = plan.chaptersToExpand?.length || 0;
+      const originalInsertCount = plan.newChaptersToInsert?.length || 0;
+      
+      if (plan.chaptersToExpand) {
+        plan.chaptersToExpand = plan.chaptersToExpand.filter((exp: any) => {
+          const score = exp.necessityScore ?? 1.0; // Legacy plans without score: assume they were needed
+          if (score < EXPANSION_THRESHOLD) {
+            console.log(`[ReeditOrchestrator] Filtering out expansion of chapter ${exp.chapterNumber} (necessityScore: ${score} < ${EXPANSION_THRESHOLD})`);
+            return false;
+          }
+          return true;
+        });
+      }
+      
+      if (plan.newChaptersToInsert) {
+        plan.newChaptersToInsert = plan.newChaptersToInsert.filter((ins: any) => {
+          const score = ins.necessityScore ?? 1.0; // Legacy plans without score: assume they were needed
+          if (score < NEW_CHAPTER_THRESHOLD) {
+            console.log(`[ReeditOrchestrator] Filtering out new chapter "${ins.title}" after ch ${ins.insertAfterChapter} (necessityScore: ${score} < ${NEW_CHAPTER_THRESHOLD})`);
+            return false;
+          }
+          return true;
+        });
+      }
+      
+      console.log(`  - Chapters to expand: ${plan.chaptersToExpand?.length || 0} (after filtering from ${originalExpandCount})`);
+      console.log(`  - New chapters to insert: ${plan.newChaptersToInsert?.length || 0} (after filtering from ${originalInsertCount})`);
     } else {
       this.emitProgress({
         projectId,
@@ -1347,9 +1378,40 @@ export class ReeditOrchestrator {
       }
 
       plan = analysisResult.result;
+      
+      // Filter by necessity score - only keep items that are truly necessary
+      const originalExpandCount = plan.chaptersToExpand?.length || 0;
+      const originalInsertCount = plan.newChaptersToInsert?.length || 0;
+      
+      // Filter expansions by necessity score
+      if (plan.chaptersToExpand) {
+        plan.chaptersToExpand = plan.chaptersToExpand.filter((exp: any) => {
+          const score = exp.necessityScore || 0;
+          if (score < EXPANSION_THRESHOLD) {
+            console.log(`[ReeditOrchestrator] Filtering out expansion of chapter ${exp.chapterNumber} (necessityScore: ${score} < ${EXPANSION_THRESHOLD})`);
+            return false;
+          }
+          return true;
+        });
+      }
+      
+      // Filter new chapter insertions by necessity score (stricter threshold)
+      if (plan.newChaptersToInsert) {
+        plan.newChaptersToInsert = plan.newChaptersToInsert.filter((ins: any) => {
+          const score = ins.necessityScore || 0;
+          if (score < NEW_CHAPTER_THRESHOLD) {
+            console.log(`[ReeditOrchestrator] Filtering out new chapter "${ins.title}" after ch ${ins.insertAfterChapter} (necessityScore: ${score} < ${NEW_CHAPTER_THRESHOLD})`);
+            return false;
+          }
+          console.log(`[ReeditOrchestrator] Keeping new chapter "${ins.title}" (necessityScore: ${score}, justification: ${ins.justification || 'N/A'})`);
+          return true;
+        });
+      }
+      
       console.log(`[ReeditOrchestrator] Expansion plan created:`);
-      console.log(`  - Chapters to expand: ${plan.chaptersToExpand?.length || 0}`);
-      console.log(`  - New chapters to insert: ${plan.newChaptersToInsert?.length || 0}`);
+      console.log(`  - Chapters to expand: ${plan.chaptersToExpand?.length || 0} (filtered from ${originalExpandCount})`);
+      console.log(`  - New chapters to insert: ${plan.newChaptersToInsert?.length || 0} (filtered from ${originalInsertCount})`);
+      console.log(`  - Overall necessity: ${plan.overallNecessityAssessment || 'unknown'}`);
       console.log(`  - Estimated new words: ${plan.totalEstimatedNewWords || 0}`);
 
       await storage.updateReeditProject(projectId, {

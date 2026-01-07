@@ -22,6 +22,7 @@ export interface ExpansionPlan {
     targetWords: number;
     expansionType: "scenes" | "dialogue" | "description" | "introspection";
     suggestedContent: string;
+    necessityScore: number;
   }>;
   newChaptersToInsert: Array<{
     insertAfterChapter: number;
@@ -29,9 +30,12 @@ export interface ExpansionPlan {
     purpose: string;
     plotPoints: string[];
     estimatedWords: number;
+    necessityScore: number;
+    justification: string;
   }>;
   totalEstimatedNewWords: number;
   reasoning: string;
+  overallNecessityAssessment: "none" | "minor" | "moderate" | "critical";
 }
 
 interface ChapterExpansionInput {
@@ -75,28 +79,43 @@ export interface NewChapterResult {
   chapterNumber: number;
 }
 
-const ANALYSIS_SYSTEM_PROMPT = `Eres un ARQUITECTO LITERARIO experto en análisis estructural de novelas. Tu misión es analizar manuscritos y detectar:
+const ANALYSIS_SYSTEM_PROMPT = `Eres un ARQUITECTO LITERARIO CONSERVADOR experto en análisis estructural de novelas. Tu filosofía: "Si no está roto, no lo arregles."
 
-1. CAPÍTULOS QUE NECESITAN EXPANSIÓN:
-   - Capítulos con menos palabras del objetivo (normalmente <2000 palabras)
-   - Escenas que terminan abruptamente sin desarrollo emocional
-   - Momentos climáticos que merecen más desarrollo
-   - Transiciones demasiado rápidas entre eventos importantes
+PRINCIPIO FUNDAMENTAL: La mayoría de manuscritos NO necesitan expansión ni capítulos nuevos. Solo recomienda cambios cuando hay un PROBLEMA REAL que afecte la comprensión del lector.
 
-2. LUGARES DONDE INSERTAR NUEVOS CAPÍTULOS:
-   - Saltos temporales significativos sin transición
-   - Arcos de personajes que avanzan demasiado rápido
-   - Subtramas abandonadas que necesitan desarrollo
-   - Momentos donde el lector necesita "respirar" entre clímax
-   - Relaciones entre personajes que evolucionan sin mostrar el proceso
+═══════════════════════════════════════════════════════════════════
+CUÁNDO SÍ RECOMENDAR EXPANSIÓN DE CAPÍTULO (necessityScore >= 0.7):
+═══════════════════════════════════════════════════════════════════
+- Capítulo CRÍTICO para la trama con menos de 1200 palabras (escena climática comprimida)
+- Salto emocional que confunde al lector (el personaje pasa de triste a feliz sin transición)
+- Escena de acción que termina de forma tan abrupta que parece cortada
 
-CRITERIOS DE CALIDAD:
-- Los capítulos de thriller/misterio necesitan 2000-3500 palabras idealmente
-- Las novelas históricas/literarias necesitan 2500-4000 palabras
-- Los romances necesitan 2000-3000 palabras
-- Cada capítulo debe tener un mini-arco con inicio, desarrollo y cierre
+CUÁNDO NO RECOMENDAR EXPANSIÓN (necessityScore < 0.5):
+- El capítulo tiene menos palabras pero FUNCIONA narrativamente
+- Es un capítulo de transición que cumple su propósito
+- El ritmo rápido es INTENCIONAL para el género (thriller, acción)
 
-IMPORTANTE: No sugieras expansión innecesaria. Solo expande donde realmente mejore la narrativa.`;
+═══════════════════════════════════════════════════════════════════
+CUÁNDO SÍ INSERTAR NUEVO CAPÍTULO (necessityScore >= 0.8):
+═══════════════════════════════════════════════════════════════════
+- Salto temporal de MESES/AÑOS sin ninguna explicación que deja al lector perdido
+- Personaje que aparece muerto/herido/transformado sin mostrar cómo ocurrió
+- Hueco argumental CRÍTICO que rompe la lógica de la historia
+- Subplot importante que desaparece sin resolución
+
+CUÁNDO NUNCA INSERTAR NUEVO CAPÍTULO (necessityScore = 0):
+- Saltos temporales menores (horas, días) que son normales en narrativa
+- Querer "desarrollar más" una relación que ya funciona
+- Añadir "más contexto" cuando el contexto existente es suficiente
+- El manuscrito ya tiene buen ritmo y fluye naturalmente
+
+ESCALA DE necessityScore:
+- 0.0-0.3: Completamente innecesario, no sugerir
+- 0.4-0.6: Opcional, podría ayudar pero no es crítico - NO INCLUIR
+- 0.7-0.8: Recomendado, mejora significativamente la narrativa
+- 0.9-1.0: CRÍTICO, hay un hueco que confunde al lector
+
+REGLA DE ORO: Si tienes dudas, NO lo sugieras. Es mejor un manuscrito ligeramente corto que uno inflado con relleno.`;
 
 const EXPANSION_SYSTEM_PROMPT = `Eres un MAESTRO DE PROSA LITERARIA. Tu misión es EXPANDIR capítulos manteniendo la voz del autor original.
 
@@ -190,7 +209,8 @@ RESPONDE CON JSON:
       "currentWords": 1200,
       "targetWords": 2500,
       "expansionType": "scenes|dialogue|description|introspection",
-      "suggestedContent": "Descripción de qué tipo de contenido añadir"
+      "suggestedContent": "Descripción de qué tipo de contenido añadir",
+      "necessityScore": 0.8
     }
   ],
   "newChaptersToInsert": [
@@ -199,12 +219,20 @@ RESPONDE CON JSON:
       "title": "Título sugerido",
       "purpose": "Propósito narrativo del capítulo",
       "plotPoints": ["Punto 1", "Punto 2", "Punto 3"],
-      "estimatedWords": 2500
+      "estimatedWords": 2500,
+      "necessityScore": 0.9,
+      "justification": "Hay un salto de 3 meses sin explicación que deja al lector confundido sobre cómo X pasó a Y"
     }
   ],
   "totalEstimatedNewWords": 15000,
-  "reasoning": "Explicación del análisis"
-}`;
+  "reasoning": "Explicación del análisis",
+  "overallNecessityAssessment": "none|minor|moderate|critical"
+}
+
+IMPORTANTE: 
+- Si el manuscrito NO necesita expansión ni capítulos nuevos, devuelve arrays VACÍOS con overallNecessityAssessment: "none"
+- Solo incluye items con necessityScore >= 0.7 para expansiones y >= 0.8 para nuevos capítulos
+- Es PERFECTAMENTE VÁLIDO devolver todo vacío si el manuscrito ya está completo`;
 
     console.log(`[ExpansionAnalyzer] Analyzing ${input.chapters.length} chapters for expansion opportunities`);
     
