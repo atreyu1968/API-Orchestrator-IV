@@ -88,23 +88,35 @@ Preferred communication style: Simple, everyday language.
 - `wouter`: Client-side routing
 - Radix UI primitives: Accessible component foundations
 
-## Recent Changes (2026-01-06)
+## Recent Changes (2026-01-07)
 
-### Bug Fixes Applied
-- **Integer score validation**: Added `Math.round()` to all audit report scores (architectResult.puntuacionArquitectura, continuityResult.puntuacion, voiceResult.puntuacion, semanticResult.puntuacion, anachronismResult.puntuacion, bestsellerScore) to prevent "integer 9.5" database errors
-- **Spanish accent support in severities**: Extended severity matching to include both "critica" and "crítica" for proper detection of critical anachronisms
-- **consolidateAllProblems() function**: Created helper function to merge Architect + QA findings by chapter (not yet integrated into pipeline flow)
+### Pipeline Optimization IMPLEMENTED
 
-### Pipeline Optimization (PENDING for future projects)
+The re-edit pipeline has been optimized to reduce token consumption by 40-60%:
 
-**Current Flow (in-use for project 4 "La superficie rota")**:
-1. Editor Review → 2. World Bible → 3. Architect → 4. NarrativeRewriter (Architect fixes) → 5. CopyEditor (all chapters) → 6. QA Agents → 7. QA Corrections → 8. Final Review
+**NEW Optimized Flow (ACTIVE)**:
+1. **Editor Review** → Initial quality assessment of all chapters
+2. **World Bible Extraction** → Extract characters, locations, timeline, lore
+3. **Architect Analysis** → Detect structural issues (plot holes, contradictions, incomplete arcs)
+4. **QA Agents** (MOVED BEFORE REWRITING) → Run all 4 QA agents: Continuity Sentinel, Voice & Rhythm, Semantic Repetition, Anachronism Detector
+5. **consolidateAllProblems()** → Merge Architect + QA findings by chapter into unified problem list
+6. **SINGLE NarrativeRewriter Pass** → One consolidated rewriting pass fixing ALL problems (structural + QA)
+7. **CopyEditor** (OPTIMIZED) → Only processes chapters NOT rewritten (rewritten chapters skip this stage)
+8. **Final Review** → Bestseller validation with 9+ consecutive score logic
 
-**Optimized Flow (to be implemented after project 4 completes)**:
-1. Editor Review → 2. World Bible → 3. Architect → 4. QA Agents (MOVED HERE) → 5. consolidateAllProblems() → 6. SINGLE NarrativeRewriter pass → 7. CopyEditor (only non-rewritten chapters) → 8. Final Review
+**Key Optimizations**:
+- Eliminated redundant `qa_corrections` stage (was a second NarrativeRewriter pass)
+- CopyEditor now skips chapters that were already rewritten by NarrativeRewriter
+- Single consolidated rewrite addresses both Architect structural issues AND QA problems
+- Rewritten chapters get `editedContent` set directly, bypassing CopyEditor entirely
 
-**Expected savings**: 40-60% token reduction by eliminating redundant rewriting passes
+**Expected Token Savings**: 40-60% reduction in token usage for manuscripts with significant issues
+
+### Previous Bug Fixes (2026-01-06)
+- **Integer score validation**: Added `Math.round()` to all audit report scores to prevent database errors
+- **Spanish accent support in severities**: Extended severity matching to include both "critica" and "crítica"
+- **consolidateAllProblems() function**: Helper function to merge Architect + QA findings by chapter
 
 ### Project Status
-- Project 4 "La superficie rota": Processing QA stage (65 chapters, 95,922 words)
-- Pipeline optimization deferred to avoid breaking resume state mid-processing
+- Project 4 "La superficie rota": COMPLETED (65 chapters, 97,683 words, score 9/10, "muy alto potencial de mercado")
+- Pipeline optimization: IMPLEMENTED and ready for next project

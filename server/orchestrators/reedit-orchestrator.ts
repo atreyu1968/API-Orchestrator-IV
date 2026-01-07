@@ -1844,246 +1844,13 @@ export class ReeditOrchestrator {
         console.log(`[ReeditOrchestrator] Critical block detected, continuing with warnings`);
       }
 
-      // === STAGE 4.5: NARRATIVE REWRITING (advanced correction of structural issues) ===
-      const allProblems = this.collectArchitectProblems(architectResult);
-      
-      // Check if NarrativeRewriter already completed (to avoid reprocesing on restarts)
-      const existingRewriteReport = await storage.getReeditAuditReportByType(projectId, "narrative_rewrite");
-      const narrativeRewriteCompleted = existingRewriteReport && 
-        (existingRewriteReport.findings as any)?.chaptersRewritten > 0;
-      
-      if (allProblems.length > 0 && !narrativeRewriteCompleted) {
-        console.log(`[ReeditOrchestrator] Found ${allProblems.length} structural problems to fix with NarrativeRewriter`);
-        
-        this.emitProgress({
-          projectId,
-          stage: "narrative_rewriting",
-          currentChapter: 0,
-          totalChapters: allProblems.length,
-          message: `Reescribiendo narrativa para corregir ${allProblems.length} problemas estructurales...`,
-        });
-        
-        await storage.updateReeditProject(projectId, { currentStage: "narrative_rewriting" });
-        
-        // Group problems by affected chapters
-        const problemsByChapter = new Map<number, any[]>();
-        for (const problem of allProblems) {
-          const chapters = problem.capitulosAfectados || problem.capitulos || [];
-          for (const chapNum of chapters) {
-            if (typeof chapNum === 'number') {
-              if (!problemsByChapter.has(chapNum)) {
-                problemsByChapter.set(chapNum, []);
-              }
-              problemsByChapter.get(chapNum)!.push(problem);
-            }
-          }
-        }
-        
-        let fixedCount = 0;
-        const chaptersToReprocess: number[] = [];
-        const rewriteResults: any[] = [];
-        const chapterEntries = Array.from(problemsByChapter.entries()).sort((a, b) => a[0] - b[0]);
-        
-        for (const [chapNum, chapterProblems] of chapterEntries) {
-          if (await this.checkCancellation(projectId)) {
-            console.log(`[ReeditOrchestrator] Processing cancelled during narrative rewriting`);
-            return;
-          }
-          
-          const chapter = validChapters.find(c => c.chapterNumber === chapNum);
-          if (!chapter) {
-            console.log(`[ReeditOrchestrator] Chapter ${chapNum} not found for narrative rewriting`);
-            continue;
-          }
-          
-          this.emitProgress({
-            projectId,
-            stage: "narrative_rewriting",
-            currentChapter: fixedCount + 1,
-            totalChapters: problemsByChapter.size,
-            message: `Reescribiendo capítulo ${chapNum} (${chapterProblems.length} problemas)...`,
-          });
-          
-          try {
-            // Build adjacent context for better narrative coherence
-            const adjacentContext = this.buildAdjacentChapterContext(validChapters, chapNum);
-            
-            // Use NarrativeRewriter for deep structural fixes
-            const rewriteResult = await this.narrativeRewriter.rewriteChapter(
-              chapter.originalContent,
-              chapNum,
-              chapterProblems.map((p: any) => ({
-                id: p.id || `P${chapterProblems.indexOf(p) + 1}`,
-                tipo: p.tipo || 'structural',
-                descripcion: p.descripcion,
-                severidad: p.severidad || 'mayor',
-                accionSugerida: p.accionSugerida
-              })),
-              worldBibleResult,
-              adjacentContext,
-              detectedLang
-            );
-            this.trackTokens(rewriteResult);
-            
-            // Check if rewrite was successful
-            const hasChanges = rewriteResult.cambiosRealizados?.length > 0 || 
-                              (rewriteResult.capituloReescrito && rewriteResult.capituloReescrito !== chapter.originalContent);
-            
-            if (rewriteResult.capituloReescrito && hasChanges) {
-              await storage.updateReeditChapter(chapter.id, {
-                originalContent: rewriteResult.capituloReescrito,
-                processingStage: "editing",
-              });
-              
-              chaptersToReprocess.push(chapNum);
-              rewriteResults.push({
-                chapter: chapNum,
-                problems: chapterProblems.length,
-                changes: rewriteResult.cambiosRealizados?.length || 0,
-                confidence: rewriteResult.verificacionInterna?.confianzaEnCorreccion || 0,
-                summary: rewriteResult.resumenEjecutivo
-              });
-              
-              console.log(`[ReeditOrchestrator] Chapter ${chapNum} rewritten: ${rewriteResult.cambiosRealizados?.length || 0} changes, confidence: ${rewriteResult.verificacionInterna?.confianzaEnCorreccion || 'N/A'}/10`);
-            } else {
-              console.log(`[ReeditOrchestrator] Chapter ${chapNum}: No effective changes from NarrativeRewriter`);
-            }
-          } catch (rewriteError) {
-            console.error(`[ReeditOrchestrator] Error rewriting chapter ${chapNum}:`, rewriteError);
-          }
-          
-          fixedCount++;
-          await this.updateHeartbeat(projectId);
-        }
-        
-        // Save narrative rewriting report
-        await storage.createReeditAuditReport({
-          projectId,
-          auditType: "narrative_rewrite",
-          chapterRange: "all",
-          score: rewriteResults.length > 0 ? Math.round(rewriteResults.reduce((sum, r) => sum + (r.confidence || 7), 0) / rewriteResults.length) : 7,
-          findings: {
-            totalProblems: allProblems.length,
-            chaptersRewritten: chaptersToReprocess.length,
-            problems: allProblems,
-            rewriteResults: rewriteResults
-          },
-          recommendations: [],
-        });
-        
-        console.log(`[ReeditOrchestrator] Narrative rewriting complete: ${chaptersToReprocess.length} chapters updated`);
-        
-        // === POST-REWRITE VALIDATION ===
-        if (rewriteResults.length > 0) {
-          const avgConfidence = rewriteResults.reduce((sum, r) => sum + (r.confidence || 0), 0) / rewriteResults.length;
-          const totalChanges = rewriteResults.reduce((sum, r) => sum + (r.changes || 0), 0);
-          const successfulRewrites = rewriteResults.filter(r => r.confidence >= 7).length;
-          
-          console.log(`[ReeditOrchestrator] === VALIDATION SUMMARY ===`);
-          console.log(`  Chapters rewritten: ${chaptersToReprocess.length}/${problemsByChapter.size}`);
-          console.log(`  Total changes applied: ${totalChanges}`);
-          console.log(`  Average confidence: ${avgConfidence.toFixed(1)}/10`);
-          console.log(`  Successful rewrites (confidence >= 7): ${successfulRewrites}/${rewriteResults.length}`);
-          
-          if (avgConfidence < 6) {
-            console.log(`[ReeditOrchestrator] WARNING: Low average confidence. Some structural issues may not be fully resolved.`);
-          } else {
-            console.log(`[ReeditOrchestrator] Structural issues addressed with acceptable confidence.`);
-          }
-        }
-        
-        // Reload chapters to get updated content
-        const updatedChapters = await storage.getReeditChaptersByProject(projectId);
-        validChapters.length = 0;
-        validChapters.push(...updatedChapters.filter(c => c.originalContent));
-      } else if (narrativeRewriteCompleted) {
-        const chaptersRewritten = (existingRewriteReport.findings as any)?.chaptersRewritten || 0;
-        console.log(`[ReeditOrchestrator] Skipping narrative rewriting (already completed: ${chaptersRewritten} chapters rewritten)`);
-      } else {
-        console.log(`[ReeditOrchestrator] No structural problems to fix`);
-      }
-
-      // Check cancellation before CopyEditor stage
-      if (await this.checkCancellation(projectId)) {
-        console.log(`[ReeditOrchestrator] Processing cancelled before CopyEditor stage`);
-        return;
-      }
-
-      // === STAGE 5: COPY EDITING (all chapters) ===
-      this.emitProgress({
-        projectId,
-        stage: "copyediting",
-        currentChapter: 0,
-        totalChapters: validChapters.length,
-        message: "Iniciando corrección de estilo...",
-      });
-
-      await storage.updateReeditProject(projectId, { currentStage: "copyediting" });
-      await this.updateHeartbeat(projectId);
-
-      for (let i = 0; i < validChapters.length; i++) {
-        // Check for cancellation before processing each chapter
-        if (await this.checkCancellation(projectId)) {
-          console.log(`[ReeditOrchestrator] Processing cancelled at copyediting stage, chapter ${i + 1}`);
-          return;
-        }
-
-        const chapter = validChapters[i];
-        
-        // Skip chapters that were already copy-edited (resume support)
-        if (chapter.editedContent && chapter.processingStage === "qa") {
-          console.log(`[ReeditOrchestrator] Skipping chapter ${chapter.chapterNumber} (already copy-edited)`);
-          continue;
-        }
-        
-        this.emitProgress({
-          projectId,
-          stage: "copyediting",
-          currentChapter: i + 1,
-          totalChapters: validChapters.length,
-          message: `Capítulo ${chapter.chapterNumber}: Corrección de estilo...`,
-        });
-
-        await storage.updateReeditChapter(chapter.id, {
-          processingStage: "copyeditor",
-        });
-
-        // Use the most recent content (originalContent may have been updated by NarrativeRewriter)
-        const contentToEdit = chapter.originalContent;
-        
-        const copyEditorResult = await this.copyEditorAgent.editChapter(
-          contentToEdit,
-          chapter.chapterNumber,
-          detectedLang
-        );
-        this.trackTokens(copyEditorResult);
-
-        const editedContent = copyEditorResult.editedContent || chapter.originalContent;
-        const wordCount = editedContent.split(/\s+/).filter((w: string) => w.length > 0).length;
-
-        await storage.updateReeditChapter(chapter.id, {
-          editedContent,
-          copyeditorChanges: copyEditorResult.changesLog || "",
-          fluencyImprovements: copyEditorResult.fluencyChanges || [],
-          wordCount,
-          processingStage: "qa",
-        });
-
-        await storage.updateReeditProject(projectId, {
-          processedChapters: i + 1,
-        });
-        
-        // Update heartbeat after each copyedited chapter
-        await this.updateHeartbeat(projectId, chapter.chapterNumber);
-      }
-
+      // === STAGE 4.5: QA AGENTS (OPTIMIZED - run BEFORE rewriting to consolidate all problems) ===
       // Check cancellation before QA stage
       if (await this.checkCancellation(projectId)) {
         console.log(`[ReeditOrchestrator] Processing cancelled before QA stage`);
         return;
       }
 
-      // === STAGE 6: QA AGENTS ===
       await storage.updateReeditProject(projectId, { currentStage: "qa" });
 
       // Clean up previous QA reports to avoid duplicates on restarts
@@ -2092,7 +1859,7 @@ export class ReeditOrchestrator {
       await storage.deleteReeditAuditReportsByType(projectId, "semantic_repetition");
       await storage.deleteReeditAuditReportsByType(projectId, "anachronism");
 
-      // 6a: Continuity Sentinel - every 5 chapters
+      // 4.5a: Continuity Sentinel - every 5 chapters
       const chapterBlocks5 = [];
       for (let i = 0; i < validChapters.length; i += 5) {
         chapterBlocks5.push(validChapters.slice(i, Math.min(i + 5, validChapters.length)));
@@ -2100,9 +1867,8 @@ export class ReeditOrchestrator {
 
       // Calculate total QA operations for progress tracking
       const chapterBlocks10Count = Math.ceil(validChapters.length / 10);
-      const totalQaOps = chapterBlocks5.length + chapterBlocks10Count + 2; // continuity blocks + voice blocks + semantic + anachronism
+      const totalQaOps = chapterBlocks5.length + chapterBlocks10Count + 2;
       let completedQaOps = 0;
-      const baseProgress = validChapters.length; // Start from 100% of chapters (copyeditor done)
 
       for (let blockIdx = 0; blockIdx < chapterBlocks5.length; blockIdx++) {
         const block = chapterBlocks5[blockIdx];
@@ -2133,16 +1899,11 @@ export class ReeditOrchestrator {
           recommendations: continuityResult.erroresContinuidad?.map((e: any) => e.correccion) || [],
         });
 
-        // Update progress and heartbeat after each QA block
         completedQaOps++;
-        await storage.updateReeditProject(projectId, {
-          processedChapters: baseProgress,
-          currentChapter: endChap,
-        });
         await this.updateHeartbeat(projectId, endChap);
       }
 
-      // 6b: Voice & Rhythm Auditor - every 10 chapters
+      // 4.5b: Voice & Rhythm Auditor - every 10 chapters
       const chapterBlocks10 = [];
       for (let i = 0; i < validChapters.length; i += 10) {
         chapterBlocks10.push(validChapters.slice(i, Math.min(i + 10, validChapters.length)));
@@ -2177,15 +1938,11 @@ export class ReeditOrchestrator {
           recommendations: voiceResult.problemasTono?.map((p: any) => p.correccion) || [],
         });
 
-        // Update progress and heartbeat after each Voice/Rhythm block
         completedQaOps++;
-        await storage.updateReeditProject(projectId, {
-          currentChapter: endChap,
-        });
         await this.updateHeartbeat(projectId, endChap);
       }
 
-      // 6c: Semantic Repetition Detector - full manuscript
+      // 4.5c: Semantic Repetition Detector - full manuscript
       this.emitProgress({
         projectId,
         stage: "qa",
@@ -2209,11 +1966,10 @@ export class ReeditOrchestrator {
         recommendations: semanticResult.repeticionesSemanticas?.map((r: any) => `${r.accion}: ${r.descripcion}`) || [],
       });
 
-      // Update heartbeat after Semantic Repetition
       completedQaOps++;
       await this.updateHeartbeat(projectId, validChapters.length);
 
-      // 6d: Anachronism Detector - for historical novels
+      // 4.5d: Anachronism Detector - for historical novels
       this.emitProgress({
         projectId,
         stage: "qa",
@@ -2224,7 +1980,7 @@ export class ReeditOrchestrator {
 
       const anachronismResult = await this.anachronismDetector.detectAnachronisms(
         validChapters.map(c => ({ num: c.chapterNumber, content: c.originalContent })),
-        "", // genre not available in reedit projects
+        "",
         project.title || ""
       );
       this.trackTokens(anachronismResult);
@@ -2238,160 +1994,242 @@ export class ReeditOrchestrator {
         recommendations: anachronismResult.anacronismos?.map((a: any) => a.correccion) || [],
       });
 
-      // Update heartbeat after Anachronism Detector
       completedQaOps++;
       await this.updateHeartbeat(projectId, validChapters.length);
       console.log(`[ReeditOrchestrator] QA stage completed: ${completedQaOps}/${totalQaOps} operations`);
 
-      // === STAGE 6.5: QA CORRECTIONS (automatic fix of QA-detected issues) ===
-      // Check if QA corrections already completed (resume support)
-      const existingQaCorrectionReport = await storage.getReeditAuditReportByType(projectId, "qa_corrections");
-      const qaCorrectionsCompleted = !!existingQaCorrectionReport; // If report exists, corrections phase completed
-
-      if (!qaCorrectionsCompleted) {
-        const qaFindings = await this.collectQaFindings(projectId);
+      // === STAGE 5: CONSOLIDATED NARRATIVE REWRITING (Architect + QA problems in ONE pass) ===
+      // Collect all problems from Architect
+      const architectProblems = this.collectArchitectProblems(architectResult);
+      
+      // Collect all problems from QA agents
+      const qaFindings = await this.collectQaFindings(projectId);
+      
+      // Consolidate all problems by chapter
+      const consolidatedProblems = await this.consolidateAllProblems(architectProblems, qaFindings);
+      
+      // Check if NarrativeRewriter already completed (resume support)
+      const existingRewriteReport = await storage.getReeditAuditReportByType(projectId, "narrative_rewrite");
+      const narrativeRewriteCompleted = existingRewriteReport && 
+        (existingRewriteReport.findings as any)?.chaptersRewritten > 0;
+      
+      // Track which chapters were rewritten (for CopyEditor optimization)
+      const rewrittenChapters = new Set<number>();
+      
+      if (consolidatedProblems.size > 0 && !narrativeRewriteCompleted) {
+        const totalProblemsCount = Array.from(consolidatedProblems.values()).reduce((sum, p) => sum + p.length, 0);
+        console.log(`[ReeditOrchestrator] OPTIMIZED: Consolidating ${totalProblemsCount} problems (Architect + QA) in ${consolidatedProblems.size} chapters for SINGLE rewriting pass`);
         
-        if (qaFindings.size > 0) {
-          console.log(`[ReeditOrchestrator] Found QA issues in ${qaFindings.size} chapters, starting automatic corrections...`);
+        this.emitProgress({
+          projectId,
+          stage: "narrative_rewriting",
+          currentChapter: 0,
+          totalChapters: consolidatedProblems.size,
+          message: `Reescritura consolidada: ${totalProblemsCount} problemas (Arquitecto + QA) en ${consolidatedProblems.size} capítulos...`,
+        });
+        
+        await storage.updateReeditProject(projectId, { currentStage: "narrative_rewriting" });
+        
+        let fixedCount = 0;
+        const rewriteResults: any[] = [];
+        const chapterEntries = Array.from(consolidatedProblems.entries()).sort((a, b) => a[0] - b[0]);
+        
+        for (const [chapNum, chapterProblems] of chapterEntries) {
+          if (await this.checkCancellation(projectId)) {
+            console.log(`[ReeditOrchestrator] Processing cancelled during narrative rewriting`);
+            return;
+          }
           
-          await storage.updateReeditProject(projectId, { currentStage: "qa_corrections" });
+          const chapter = validChapters.find(c => c.chapterNumber === chapNum);
+          if (!chapter) {
+            console.log(`[ReeditOrchestrator] Chapter ${chapNum} not found for narrative rewriting`);
+            continue;
+          }
+          
+          // Group problems by source for logging
+          const architectCount = chapterProblems.filter(p => p.source === 'architect').length;
+          const qaCount = chapterProblems.filter(p => p.source !== 'architect').length;
           
           this.emitProgress({
             projectId,
-            stage: "qa_corrections",
-            currentChapter: 0,
-            totalChapters: qaFindings.size,
-            message: `Corrigiendo automáticamente problemas de QA en ${qaFindings.size} capítulos...`,
+            stage: "narrative_rewriting",
+            currentChapter: fixedCount + 1,
+            totalChapters: consolidatedProblems.size,
+            message: `Reescribiendo capítulo ${chapNum}: ${chapterProblems.length} problemas (${architectCount} estructurales, ${qaCount} QA)...`,
           });
           
-          // Get World Bible for context
-          const worldBible = await storage.getReeditWorldBibleByProject(projectId);
-          const worldBibleData = worldBible ? {
-            personajes: worldBible.characters,
-            ubicaciones: worldBible.locations,
-            timeline: worldBible.timeline,
-            reglasDelMundo: worldBible.loreRules,
-            epocaHistorica: {
-              periodo: worldBible.historicalPeriod,
-              detalles: worldBible.historicalDetails,
-            },
-          } : {};
-          
-          let fixedCount = 0;
-          const correctionResults: any[] = [];
-          const chapterEntries = Array.from(qaFindings.entries()).sort((a, b) => a[0] - b[0]);
-          
-          for (const [chapNum, chapterProblems] of chapterEntries) {
-            if (await this.checkCancellation(projectId)) {
-              console.log(`[ReeditOrchestrator] Processing cancelled during QA corrections`);
-              return;
-            }
-            
-            const chapter = validChapters.find(c => c.chapterNumber === chapNum);
-            if (!chapter) {
-              console.log(`[ReeditOrchestrator] Chapter ${chapNum} not found for QA corrections`);
-              continue;
-            }
-            
-            this.emitProgress({
-              projectId,
-              stage: "qa_corrections",
-              currentChapter: fixedCount + 1,
-              totalChapters: qaFindings.size,
-              message: `Corrigiendo capítulo ${chapNum}: ${chapterProblems.length} problema(s) de QA...`,
-            });
-            
-            // Build adjacent chapter context for narrative continuity
+          try {
             const adjacentContext = this.buildAdjacentChapterContext(validChapters, chapNum);
             
-            // Use NarrativeRewriter to fix QA issues
-            const contentToFix = chapter.editedContent || chapter.originalContent;
+            const rewriteResult = await this.narrativeRewriter.rewriteChapter(
+              chapter.originalContent,
+              chapNum,
+              chapterProblems.map((p: any, idx: number) => ({
+                id: `${p.source}-${idx + 1}`,
+                tipo: p.tipo || 'structural',
+                descripcion: p.descripcion,
+                severidad: p.severidad || 'mayor',
+                accionSugerida: p.accionSugerida,
+                fuente: p.source
+              })),
+              worldBibleResult,
+              adjacentContext,
+              detectedLang
+            );
+            this.trackTokens(rewriteResult);
             
-            // Format problems for the rewriter
-            const formattedProblems = chapterProblems.map(p => ({
-              tipo: `qa_${p.source}`,
-              severidad: p.severity,
-              descripcion: p.summary,
-              accionSugerida: p.correctionHint,
-              evidencia: p.evidence,
-            }));
+            const hasChanges = rewriteResult.cambiosRealizados?.length > 0 || 
+                              (rewriteResult.capituloReescrito && rewriteResult.capituloReescrito !== chapter.originalContent);
             
-            try {
-              const rewriteResult = await this.narrativeRewriter.rewriteChapter(
-                contentToFix,
-                chapNum,
-                formattedProblems,
-                worldBibleData,
-                adjacentContext,
-                detectedLang
-              );
-              this.trackTokens(rewriteResult);
+            if (rewriteResult.capituloReescrito && hasChanges) {
+              // Update originalContent with rewritten version AND set editedContent
+              // This is key for optimization: rewritten chapters already have final content
+              const wordCount = rewriteResult.capituloReescrito.split(/\s+/).filter((w: string) => w.length > 0).length;
               
-              if (rewriteResult.capituloCorregido) {
-                // Update chapter with corrected content
-                await storage.updateReeditChapter(chapter.id, {
-                  editedContent: rewriteResult.capituloCorregido,
-                  processingStage: "qa_corrected",
-                });
-                
-                correctionResults.push({
-                  chapter: chapNum,
-                  problemsFixed: chapterProblems.length,
-                  corrections: rewriteResult.correccionesRealizadas || [],
-                  confidence: rewriteResult.confianzaCorreccion || 7,
-                });
-                
-                console.log(`[ReeditOrchestrator] Fixed ${chapterProblems.length} QA issue(s) in chapter ${chapNum}`);
-              }
-            } catch (error) {
-              console.error(`[ReeditOrchestrator] Failed to fix QA issues in chapter ${chapNum}:`, error);
-              correctionResults.push({
-                chapter: chapNum,
-                problemsFixed: 0,
-                error: error instanceof Error ? error.message : "Unknown error",
+              await storage.updateReeditChapter(chapter.id, {
+                originalContent: rewriteResult.capituloReescrito,
+                editedContent: rewriteResult.capituloReescrito, // Skip CopyEditor for this chapter
+                wordCount,
+                processingStage: "completed",
               });
+              
+              rewrittenChapters.add(chapNum);
+              rewriteResults.push({
+                chapter: chapNum,
+                problemsTotal: chapterProblems.length,
+                problemsArchitect: architectCount,
+                problemsQA: qaCount,
+                changes: rewriteResult.cambiosRealizados?.length || 0,
+                confidence: rewriteResult.verificacionInterna?.confianzaEnCorreccion || 0,
+                summary: rewriteResult.resumenEjecutivo
+              });
+              
+              console.log(`[ReeditOrchestrator] Chapter ${chapNum} rewritten (consolidated): ${rewriteResult.cambiosRealizados?.length || 0} changes, confidence: ${rewriteResult.verificacionInterna?.confianzaEnCorreccion || 'N/A'}/10`);
+            } else {
+              console.log(`[ReeditOrchestrator] Chapter ${chapNum}: No effective changes from consolidated rewriting`);
             }
-            
-            fixedCount++;
-            await this.updateHeartbeat(projectId, chapNum);
+          } catch (rewriteError) {
+            console.error(`[ReeditOrchestrator] Error rewriting chapter ${chapNum}:`, rewriteError);
           }
           
-          // Store QA corrections report
-          const totalProblemsFixed = correctionResults.reduce((sum, r) => sum + (r.problemsFixed || 0), 0);
-          await storage.createReeditAuditReport({
-            projectId,
-            auditType: "qa_corrections",
-            chapterRange: "all",
-            score: totalProblemsFixed > 0 ? 8 : 10,
-            findings: {
-              chaptersFixed: fixedCount,
-              totalProblemsFixed,
-              corrections: correctionResults,
-            },
-            recommendations: [],
-          });
-          
-          console.log(`[ReeditOrchestrator] QA corrections complete: fixed ${totalProblemsFixed} problems in ${fixedCount} chapters`);
-        } else {
-          console.log(`[ReeditOrchestrator] No critical/major QA issues found, skipping corrections`);
-          
-          // Create empty report to mark completion
-          await storage.createReeditAuditReport({
-            projectId,
-            auditType: "qa_corrections",
-            chapterRange: "all",
-            score: 10,
-            findings: {
-              chaptersFixed: 0,
-              totalProblemsFixed: 0,
-              message: "No se encontraron problemas de QA críticos o mayores",
-            },
-            recommendations: [],
-          });
+          fixedCount++;
+          await this.updateHeartbeat(projectId);
+        }
+        
+        // Save consolidated narrative rewriting report
+        await storage.createReeditAuditReport({
+          projectId,
+          auditType: "narrative_rewrite",
+          chapterRange: "all",
+          score: rewriteResults.length > 0 ? Math.round(rewriteResults.reduce((sum, r) => sum + (r.confidence || 7), 0) / rewriteResults.length) : 7,
+          findings: {
+            optimizedPipeline: true,
+            totalProblemsConsolidated: totalProblemsCount,
+            chaptersRewritten: rewrittenChapters.size,
+            architectProblemsTotal: architectProblems.length,
+            qaProblemsTotal: Array.from(qaFindings.values()).reduce((sum, p) => sum + p.length, 0),
+            rewriteResults: rewriteResults
+          },
+          recommendations: [],
+        });
+        
+        console.log(`[ReeditOrchestrator] Consolidated narrative rewriting complete: ${rewrittenChapters.size} chapters updated`);
+        
+        // Reload chapters to get updated content
+        const updatedChapters = await storage.getReeditChaptersByProject(projectId);
+        validChapters.length = 0;
+        validChapters.push(...updatedChapters.filter(c => c.originalContent));
+      } else if (narrativeRewriteCompleted) {
+        const chaptersRewritten = (existingRewriteReport.findings as any)?.chaptersRewritten || 0;
+        console.log(`[ReeditOrchestrator] Skipping narrative rewriting (already completed: ${chaptersRewritten} chapters rewritten)`);
+        // Mark rewritten chapters from previous run
+        if (existingRewriteReport?.findings) {
+          const results = (existingRewriteReport.findings as any)?.rewriteResults || [];
+          for (const r of results) {
+            if (r.chapter) rewrittenChapters.add(r.chapter);
+          }
         }
       } else {
-        console.log(`[ReeditOrchestrator] Skipping QA corrections (already completed)`);
+        console.log(`[ReeditOrchestrator] No problems to fix (Architect + QA both clean)`);
       }
+
+      // Check cancellation before CopyEditor stage
+      if (await this.checkCancellation(projectId)) {
+        console.log(`[ReeditOrchestrator] Processing cancelled before CopyEditor stage`);
+        return;
+      }
+
+      // === STAGE 6: COPY EDITING (OPTIMIZED - only chapters NOT rewritten) ===
+      const chaptersNeedingCopyEdit = validChapters.filter(c => !rewrittenChapters.has(c.chapterNumber));
+      const skippedCount = validChapters.length - chaptersNeedingCopyEdit.length;
+      
+      console.log(`[ReeditOrchestrator] OPTIMIZED CopyEditor: Processing ${chaptersNeedingCopyEdit.length} chapters (skipping ${skippedCount} already rewritten)`);
+      
+      this.emitProgress({
+        projectId,
+        stage: "copyediting",
+        currentChapter: 0,
+        totalChapters: chaptersNeedingCopyEdit.length,
+        message: `Corrección de estilo: ${chaptersNeedingCopyEdit.length} capítulos (${skippedCount} ya procesados)...`,
+      });
+
+      await storage.updateReeditProject(projectId, { currentStage: "copyediting" });
+      await this.updateHeartbeat(projectId);
+
+      for (let i = 0; i < chaptersNeedingCopyEdit.length; i++) {
+        if (await this.checkCancellation(projectId)) {
+          console.log(`[ReeditOrchestrator] Processing cancelled at copyediting stage, chapter ${i + 1}`);
+          return;
+        }
+
+        const chapter = chaptersNeedingCopyEdit[i];
+        
+        // Skip chapters that were already copy-edited (resume support)
+        if (chapter.editedContent && chapter.processingStage === "completed") {
+          console.log(`[ReeditOrchestrator] Skipping chapter ${chapter.chapterNumber} (already completed)`);
+          continue;
+        }
+        
+        this.emitProgress({
+          projectId,
+          stage: "copyediting",
+          currentChapter: i + 1,
+          totalChapters: chaptersNeedingCopyEdit.length,
+          message: `Capítulo ${chapter.chapterNumber}: Corrección de estilo...`,
+        });
+
+        await storage.updateReeditChapter(chapter.id, {
+          processingStage: "copyeditor",
+        });
+
+        const contentToEdit = chapter.originalContent;
+        
+        const copyEditorResult = await this.copyEditorAgent.editChapter(
+          contentToEdit,
+          chapter.chapterNumber,
+          detectedLang
+        );
+        this.trackTokens(copyEditorResult);
+
+        const editedContent = copyEditorResult.editedContent || chapter.originalContent;
+        const wordCount = editedContent.split(/\s+/).filter((w: string) => w.length > 0).length;
+
+        await storage.updateReeditChapter(chapter.id, {
+          editedContent,
+          copyeditorChanges: copyEditorResult.changesLog || "",
+          fluencyImprovements: copyEditorResult.fluencyChanges || [],
+          wordCount,
+          processingStage: "completed",
+        });
+
+        await storage.updateReeditProject(projectId, {
+          processedChapters: rewrittenChapters.size + i + 1,
+        });
+        
+        await this.updateHeartbeat(projectId, chapter.chapterNumber);
+      }
+      
+      console.log(`[ReeditOrchestrator] CopyEditor stage complete: ${chaptersNeedingCopyEdit.length} chapters processed, ${skippedCount} skipped (already rewritten)`)
 
       // === STAGE 7: FINAL REVIEW (with 9+ twice consecutive logic) ===
       await storage.updateReeditProject(projectId, { currentStage: "reviewing" });
