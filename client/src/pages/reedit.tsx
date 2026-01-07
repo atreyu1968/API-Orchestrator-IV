@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,7 +30,8 @@ import {
   ChevronRight,
   Cpu,
   TrendingUp,
-  Zap
+  Zap,
+  RotateCcw
 } from "lucide-react";
 import type { ReeditProject, ReeditChapter, ReeditAuditReport } from "@shared/schema";
 
@@ -674,6 +676,12 @@ export default function ReeditPage() {
   const [expandChapters, setExpandChapters] = useState(false);
   const [insertNewChapters, setInsertNewChapters] = useState(false);
   const [targetMinWords, setTargetMinWords] = useState(2000);
+  
+  // Restart dialog state
+  const [showRestartDialog, setShowRestartDialog] = useState(false);
+  const [restartExpandChapters, setRestartExpandChapters] = useState(false);
+  const [restartInsertNewChapters, setRestartInsertNewChapters] = useState(false);
+  const [restartTargetMinWords, setRestartTargetMinWords] = useState(2000);
 
   const { data: projects = [], isLoading: projectsLoading } = useQuery<ReeditProject[]>({
     queryKey: ["/api/reedit-projects"],
@@ -768,6 +776,44 @@ export default function ReeditPage() {
       if (selectedProject) setSelectedProject(null);
     },
   });
+
+  const restartMutation = useMutation({
+    mutationFn: async (params: { projectId: number; expandChapters: boolean; insertNewChapters: boolean; targetMinWordsPerChapter: number }) => {
+      return apiRequest("POST", `/api/reedit-projects/${params.projectId}/restart`, {
+        expandChapters: params.expandChapters,
+        insertNewChapters: params.insertNewChapters,
+        targetMinWordsPerChapter: params.targetMinWordsPerChapter,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Proyecto Reiniciado", description: "El proyecto usará la versión editada como base para la nueva reedición." });
+      queryClient.invalidateQueries({ queryKey: ["/api/reedit-projects"] });
+      setShowRestartDialog(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleRestartProject = useCallback(() => {
+    if (!selectedProjectData) return;
+    restartMutation.mutate({
+      projectId: selectedProjectData.id,
+      expandChapters: restartExpandChapters,
+      insertNewChapters: restartInsertNewChapters,
+      targetMinWordsPerChapter: restartTargetMinWords,
+    });
+  }, [selectedProjectData, restartExpandChapters, restartInsertNewChapters, restartTargetMinWords, restartMutation]);
+
+  const openRestartDialog = useCallback(() => {
+    if (selectedProjectData) {
+      // Initialize with current project settings
+      setRestartExpandChapters(selectedProjectData.expandChapters || false);
+      setRestartInsertNewChapters(selectedProjectData.insertNewChapters || false);
+      setRestartTargetMinWords(selectedProjectData.targetMinWordsPerChapter || 2000);
+      setShowRestartDialog(true);
+    }
+  }, [selectedProjectData]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1049,6 +1095,16 @@ export default function ReeditPage() {
                         Continuar
                       </Button>
                     )}
+                    {selectedProjectData.status === "completed" && (
+                      <Button
+                        variant="outline"
+                        onClick={openRestartDialog}
+                        data-testid="button-restart-reedit"
+                      >
+                        <RotateCcw className="h-4 w-4 mr-2" />
+                        Reeditar de Nuevo
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -1272,6 +1328,74 @@ export default function ReeditPage() {
           )}
         </div>
       </div>
+
+      {/* Restart Dialog */}
+      <Dialog open={showRestartDialog} onOpenChange={setShowRestartDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reeditar de Nuevo</DialogTitle>
+            <DialogDescription>
+              El proyecto se reiniciará usando la versión editada como base para la nueva reedición.
+              Configura las opciones de expansión si lo deseas.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Expandir Capítulos Cortos</Label>
+                <p className="text-xs text-muted-foreground">Añade escenas y diálogos a capítulos por debajo del mínimo</p>
+              </div>
+              <Switch
+                checked={restartExpandChapters}
+                onCheckedChange={setRestartExpandChapters}
+                data-testid="switch-restart-expand-chapters"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Insertar Nuevos Capítulos</Label>
+                <p className="text-xs text-muted-foreground">Detecta huecos narrativos e inserta capítulos intermedios</p>
+              </div>
+              <Switch
+                checked={restartInsertNewChapters}
+                onCheckedChange={setRestartInsertNewChapters}
+                data-testid="switch-restart-insert-chapters"
+              />
+            </div>
+            {(restartExpandChapters || restartInsertNewChapters) && (
+              <div>
+                <Label>Palabras Mínimas por Capítulo</Label>
+                <Input
+                  type="number"
+                  value={restartTargetMinWords}
+                  onChange={(e) => setRestartTargetMinWords(parseInt(e.target.value) || 2000)}
+                  min={500}
+                  max={10000}
+                  className="mt-1"
+                  data-testid="input-restart-min-words"
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRestartDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleRestartProject}
+              disabled={restartMutation.isPending}
+              data-testid="button-confirm-restart"
+            >
+              {restartMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <RotateCcw className="h-4 w-4 mr-2" />
+              )}
+              Reiniciar Proyecto
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

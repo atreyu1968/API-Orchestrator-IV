@@ -4976,40 +4976,53 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         return res.status(400).json({ error: "Project is currently being processed" });
       }
 
-      // Reset project state
+      // Get expansion options from request body
+      const { expandChapters, insertNewChapters, targetMinWordsPerChapter } = req.body;
+
+      // Reset project state with new expansion options if provided
       await storage.updateReeditProject(projectId, {
         status: "pending",
-        currentStage: null,
+        currentStage: "uploaded",
         processedChapters: 0,
+        currentChapter: 0,
         finalReviewResult: null,
         bestsellerScore: null,
-        worldBible: null,
         structureAnalysis: null,
-        qaReports: null,
+        expansionPlan: null,
         errorMessage: null,
         cancelRequested: false,
         totalInputTokens: 0,
         totalOutputTokens: 0,
         totalThinkingTokens: 0,
+        ...(expandChapters !== undefined && { expandChapters }),
+        ...(insertNewChapters !== undefined && { insertNewChapters }),
+        ...(targetMinWordsPerChapter !== undefined && { targetMinWordsPerChapter }),
       });
+      
+      // Delete world bible for this project
+      await storage.deleteReeditWorldBible(projectId);
 
-      // Reset all chapters to pending state
+      // Reset chapters: use editedContent as new originalContent (if available)
       const chapters = await storage.getReeditChaptersByProject(projectId);
       for (const chapter of chapters) {
+        const newOriginalContent = chapter.editedContent || chapter.originalContent;
         await storage.updateReeditChapter(chapter.id, {
           status: "pending",
+          originalContent: newOriginalContent,
           editedContent: null,
-          auditReport: null,
         });
       }
 
-      // Delete audit reports for this project
-      await storage.deleteReeditAuditReports(projectId);
+      // Delete all audit reports for this project
+      const auditTypes = ["editor_review", "architect_analysis", "continuity_sentinel", "voice_rhythm", "semantic_repetition", "anachronism_detector", "final_review"];
+      for (const reportType of auditTypes) {
+        await storage.deleteReeditAuditReportsByType(projectId, reportType);
+      }
 
-      console.log(`[ReeditRestart] Project ${projectId} reset to pending state`);
+      console.log(`[ReeditRestart] Project ${projectId} reset to pending state, using edited content as new base`);
       res.json({ 
         success: true, 
-        message: "Proyecto reiniciado. Puede iniciar la reedición nuevamente.",
+        message: "Proyecto reiniciado con la versión editada como base. Puede iniciar la reedición nuevamente.",
         projectId 
       });
     } catch (error) {

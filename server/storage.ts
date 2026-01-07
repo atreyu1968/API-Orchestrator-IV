@@ -169,6 +169,7 @@ export interface IStorage {
   createReeditWorldBible(data: InsertReeditWorldBible): Promise<ReeditWorldBible>;
   getReeditWorldBibleByProject(projectId: number): Promise<ReeditWorldBible | undefined>;
   updateReeditWorldBible(id: number, data: Partial<ReeditWorldBible>): Promise<ReeditWorldBible | undefined>;
+  deleteReeditWorldBible(projectId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -960,6 +961,11 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(reeditWorldBibles).set(data)
       .where(eq(reeditWorldBibles.id, id)).returning();
     return updated;
+  }
+
+  async deleteReeditWorldBible(projectId: number): Promise<void> {
+    await db.delete(reeditWorldBibles)
+      .where(eq(reeditWorldBibles.projectId, projectId));
   }
 }
 
