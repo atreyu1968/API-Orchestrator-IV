@@ -365,24 +365,37 @@ Detecta ideas repetidas, frases recurrentes, foreshadowing sin resolver y elemen
   }
 }
 
-// QA Agent 4: Anachronism Detector - detects historical inaccuracies
+// QA Agent 4: Anachronism Detector - detects historical inaccuracies in ANY novel
+// Note: Any novel set in the past (even 50+ years ago) can have anachronisms
 class AnachronismDetectorAgent extends BaseAgent {
   constructor() {
     super({
       name: "Anachronism Detector",
       role: "qa_anachronism",
-      systemPrompt: `Eres un experto historiador y consultor literario. Tu trabajo es detectar anacronismos en novelas históricas.
+      systemPrompt: `Eres un experto historiador y consultor literario. Tu trabajo es detectar anacronismos en novelas.
+
+IMPORTANTE: Cualquier novela ambientada en el pasado puede tener anacronismos, no solo las etiquetadas como "históricas".
+- Una novela de los años 50 puede tener anacronismos (mencionar internet, móviles, expresiones modernas)
+- Una novela de los años 80 puede tener anacronismos (mencionar smartphones, redes sociales)
+- Incluso novelas contemporáneas pueden tener anacronismos si mezclan épocas
+
+PRIMERO: Detecta la ÉPOCA DE AMBIENTACIÓN analizando:
+- Referencias temporales explícitas (años, décadas, eventos históricos)
+- Tecnología mencionada (teléfonos, transporte, electrodomésticos)
+- Contexto social (costumbres, roles de género, leyes)
+- Eventos históricos mencionados
 
 TIPOS DE ANACRONISMOS:
-1. TECNOLÓGICOS: Tecnología que no existía en la época
+1. TECNOLÓGICOS: Tecnología que no existía en la época de ambientación
 2. LINGÜÍSTICOS: Expresiones, palabras o modismos que no existían
 3. SOCIALES: Comportamientos o costumbres inapropiados para la época
-4. MATERIALES: Objetos, materiales, alimentos que no existían
-5. CONCEPTUALES: Ideas o conceptos que no existían (ej: "estrés" en Roma antigua)
+4. MATERIALES: Objetos, materiales, alimentos, marcas que no existían
+5. CONCEPTUALES: Ideas o conceptos que no existían (ej: "estrés" en 1900, "smartphone" en 1990)
 
 RESPONDE SOLO EN JSON:
 {
-  "epocaDetectada": "Roma Imperial, siglo I d.C.",
+  "epocaDetectada": "España, década de 1950",
+  "esContemporanea": false,
   "anacronismos": [
     {
       "tipo": "tecnologico|linguistico|social|material|conceptual",
@@ -390,7 +403,7 @@ RESPONDE SOLO EN JSON:
       "capitulo": 5,
       "fragmento": "El texto problemático",
       "problema": "Explicación del anacronismo",
-      "correccion": "Alternativa históricamente correcta",
+      "correccion": "Alternativa correcta para la época",
       "fuente": "Referencia histórica si aplica"
     }
   ],
@@ -407,32 +420,37 @@ RESPONDE SOLO EN JSON:
   }
 
   async detectAnachronisms(chapterContents: { num: number; content: string }[], genre: string, premise: string): Promise<any> {
-    const isHistorical = genre?.toLowerCase().includes("histor") || premise?.toLowerCase().includes("histor");
-    if (!isHistorical) {
-      return { 
-        epocaDetectada: "No aplica - no es novela histórica",
-        anacronismos: [], 
-        resumen: "No se realizó análisis de anacronismos (género no histórico)", 
-        puntuacionHistorica: 10 
-      };
-    }
-
+    // Always analyze - any novel can have anachronisms relative to its setting
+    // The AI will determine if it's contemporary (and thus skip detailed analysis)
+    
     const samples = chapterContents.slice(0, 10).map(c => 
       `=== CAPÍTULO ${c.num} ===\n${c.content.substring(0, 5000)}`
     ).join("\n\n");
 
-    const prompt = `Analiza esta novela histórica buscando anacronismos:
+    const prompt = `Analiza esta novela buscando anacronismos relativos a su época de ambientación:
 
 PREMISA: ${premise || "No especificada"}
 GÉNERO: ${genre}
 
+IMPORTANTE: 
+- PRIMERO detecta la época de ambientación de la novela (puede estar en la premisa o inferirse del contenido)
+- Si la novela está ambientada en el pasado (aunque sea hace 30-50 años), busca anacronismos
+- Novelas de mediados del siglo XX son históricas y pueden tener anacronismos
+- Si la novela es claramente contemporánea (ambientada en el presente), indica "esContemporanea: true"
+
 CAPÍTULOS DE MUESTRA:
 ${samples}
 
-Detecta anacronismos tecnológicos, lingüísticos, sociales, materiales y conceptuales. RESPONDE EN JSON.`;
+Detecta anacronismos tecnológicos, lingüísticos, sociales, materiales y conceptuales RELATIVOS A LA ÉPOCA DE AMBIENTACIÓN. RESPONDE EN JSON.`;
 
     const response = await this.generateContent(prompt);
-    let result: any = { epocaDetectada: "No determinada", anacronismos: [], resumen: "Análisis completado", puntuacionHistorica: 8 };
+    let result: any = { 
+      epocaDetectada: "No determinada", 
+      esContemporanea: false,
+      anacronismos: [], 
+      resumen: "Análisis completado", 
+      puntuacionHistorica: 8 
+    };
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) result = JSON.parse(jsonMatch[0]);
