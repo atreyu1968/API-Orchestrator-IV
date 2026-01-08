@@ -2862,12 +2862,28 @@ export class ReeditOrchestrator {
       let revisionCycle = savedProject?.revisionCycle || 0;
       let consecutiveHighScores = savedProject?.consecutiveHighScores || 0;
       const previousScores: number[] = (savedProject?.previousScores as number[]) || [];
+      let nonPerfectCount = savedProject?.nonPerfectFinalReviews || 0;
+      const userInstructions = savedProject?.pendingUserInstructions || "";
       let finalResult: FinalReviewerResult | null = null;
       let bestsellerScore = 0;
       const correctedIssueDescriptions: string[] = [];
+      
+      // Maximum non-10 scores before pausing for user instructions
+      const MAX_NON_PERFECT_BEFORE_PAUSE = 15;
 
       if (revisionCycle > 0) {
-        console.log(`[ReeditOrchestrator] RESUMING Final Review: cycle ${revisionCycle}, consecutive=${consecutiveHighScores}, scores=[${previousScores.join(',')}]`);
+        console.log(`[ReeditOrchestrator] RESUMING Final Review: cycle ${revisionCycle}, consecutive=${consecutiveHighScores}, nonPerfect=${nonPerfectCount}, scores=[${previousScores.join(',')}]`);
+      }
+      
+      // If user provided instructions, add them to the correction context
+      if (userInstructions) {
+        console.log(`[ReeditOrchestrator] User instructions received: "${userInstructions.substring(0, 100)}..."`);
+        correctedIssueDescriptions.push(`INSTRUCCIONES DEL USUARIO: ${userInstructions}`);
+        // Clear instructions after applying
+        await storage.updateReeditProject(projectId, { 
+          pendingUserInstructions: null,
+          pauseReason: null,
+        });
       }
 
       // Get World Bible and style guide for full final review
@@ -2926,8 +2942,40 @@ export class ReeditOrchestrator {
 
         if (rawScore >= this.minAcceptableScore) {
           consecutiveHighScores++;
+          // Reset non-perfect counter when we get a 10
+          nonPerfectCount = 0;
         } else {
           consecutiveHighScores = 0;
+          nonPerfectCount++;
+          
+          // Check if we should pause for user instructions
+          if (nonPerfectCount >= MAX_NON_PERFECT_BEFORE_PAUSE) {
+            const pauseReason = `Después de ${nonPerfectCount} evaluaciones sin alcanzar 10/10, el proceso se ha pausado. Última puntuación: ${rawScore}/10. Issues detectados: ${issuesCount}. Por favor, proporciona instrucciones para continuar.`;
+            
+            console.log(`[ReeditOrchestrator] PAUSING after ${nonPerfectCount} non-perfect scores. Waiting for user instructions.`);
+            
+            await storage.updateReeditProject(projectId, {
+              status: "awaiting_instructions",
+              pauseReason,
+              revisionCycle,
+              consecutiveHighScores,
+              nonPerfectFinalReviews: nonPerfectCount,
+              previousScores: previousScores as any,
+              finalReviewResult: finalResult,
+              bestsellerScore: Math.round(bestsellerScore),
+            });
+            
+            this.emitProgress({
+              projectId,
+              stage: "paused",
+              currentChapter: validChapters.length,
+              totalChapters: validChapters.length,
+              message: pauseReason,
+            });
+            
+            // Exit the loop - wait for user to resume with instructions
+            return;
+          }
         }
 
         if (consecutiveHighScores >= this.requiredConsecutiveHighScores) {
@@ -3086,6 +3134,7 @@ export class ReeditOrchestrator {
         await storage.updateReeditProject(projectId, {
           revisionCycle,
           consecutiveHighScores,
+          nonPerfectFinalReviews: nonPerfectCount,
           previousScores: previousScores as any,
         });
       }

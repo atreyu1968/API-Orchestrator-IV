@@ -23,6 +23,7 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
+  AlertTriangle,
   Play,
   StopCircle,
   Star,
@@ -31,7 +32,8 @@ import {
   Cpu,
   TrendingUp,
   Zap,
-  RotateCcw
+  RotateCcw,
+  Pause
 } from "lucide-react";
 import type { ReeditProject, ReeditChapter, ReeditAuditReport } from "@shared/schema";
 
@@ -68,17 +70,19 @@ function getStatusBadge(status: string) {
     processing: "Procesando",
     completed: "Completado",
     error: "Error",
+    awaiting_instructions: "Esperando Instrucciones",
   };
   const variants: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle }> = {
     pending: { variant: "outline", icon: Clock },
     processing: { variant: "secondary", icon: Loader2 },
     completed: { variant: "default", icon: CheckCircle },
     error: { variant: "destructive", icon: AlertCircle },
+    awaiting_instructions: { variant: "outline", icon: Pause },
   };
   const config = variants[status] || variants.pending;
   const IconComponent = config.icon;
   return (
-    <Badge variant={config.variant} className="flex items-center gap-1">
+    <Badge variant={config.variant} className={`flex items-center gap-1 ${status === 'awaiting_instructions' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : ''}`}>
       <IconComponent className={`h-3 w-3 ${status === 'processing' ? 'animate-spin' : ''}`} />
       {statusLabels[status] || status}
     </Badge>
@@ -682,6 +686,9 @@ export default function ReeditPage() {
   const [restartExpandChapters, setRestartExpandChapters] = useState(false);
   const [restartInsertNewChapters, setRestartInsertNewChapters] = useState(false);
   const [restartTargetMinWords, setRestartTargetMinWords] = useState(2000);
+  
+  // User instructions for awaiting_instructions state
+  const [userInstructions, setUserInstructions] = useState("");
 
   const { data: projects = [], isLoading: projectsLoading } = useQuery<ReeditProject[]>({
     queryKey: ["/api/reedit-projects"],
@@ -756,12 +763,13 @@ export default function ReeditPage() {
   });
 
   const resumeMutation = useMutation({
-    mutationFn: async (projectId: number) => {
-      return apiRequest("POST", `/api/reedit-projects/${projectId}/resume`);
+    mutationFn: async ({ projectId, instructions }: { projectId: number; instructions?: string }) => {
+      return apiRequest("POST", `/api/reedit-projects/${projectId}/resume`, { instructions });
     },
     onSuccess: () => {
       toast({ title: "Procesamiento Reanudado", description: "El manuscrito continúa siendo reeditado" });
       queryClient.invalidateQueries({ queryKey: ["/api/reedit-projects"] });
+      setUserInstructions("");
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -1085,7 +1093,7 @@ export default function ReeditPage() {
                     )}
                     {selectedProjectData.status === "error" && (
                       <Button
-                        onClick={() => resumeMutation.mutate(selectedProjectData.id)}
+                        onClick={() => resumeMutation.mutate({ projectId: selectedProjectData.id })}
                         disabled={resumeMutation.isPending}
                         data-testid="button-resume-reedit"
                       >
@@ -1095,6 +1103,20 @@ export default function ReeditPage() {
                           <Play className="h-4 w-4 mr-2" />
                         )}
                         Continuar
+                      </Button>
+                    )}
+                    {selectedProjectData.status === "awaiting_instructions" && (
+                      <Button
+                        onClick={() => resumeMutation.mutate({ projectId: selectedProjectData.id, instructions: userInstructions })}
+                        disabled={resumeMutation.isPending}
+                        data-testid="button-resume-with-instructions"
+                      >
+                        {resumeMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Play className="h-4 w-4 mr-2" />
+                        )}
+                        Continuar con Instrucciones
                       </Button>
                     )}
                     {selectedProjectData.status === "completed" && (
@@ -1167,6 +1189,35 @@ export default function ReeditPage() {
                           </div>
                         )}
                       </div>
+                    )}
+
+                    {selectedProjectData.status === "awaiting_instructions" && (
+                      <Card className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20">
+                        <CardContent className="pt-6 space-y-4">
+                          <div className="flex items-start gap-3">
+                            <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-medium text-amber-800 dark:text-amber-200">Pausa Automática - Instrucciones Requeridas</p>
+                              <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                                {(selectedProjectData as any).pauseReason || "El sistema ha pausado después de 15 evaluaciones sin alcanzar la puntuación perfecta (10/10)."}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Instrucciones para el agente (opcional):</label>
+                            <textarea
+                              className="w-full min-h-[100px] p-3 border rounded-md bg-background resize-y"
+                              placeholder="Ej: Enfócate en mejorar el ritmo narrativo de los capítulos 5-8. El tono debería ser más oscuro..."
+                              value={userInstructions}
+                              onChange={(e) => setUserInstructions(e.target.value)}
+                              data-testid="input-user-instructions"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Estas instrucciones se pasarán al agente en el próximo ciclo de corrección.
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
                     )}
 
                     <RealTimeCostWidget 

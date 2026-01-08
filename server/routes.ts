@@ -4816,6 +4816,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
   app.post("/api/reedit-projects/:id/resume", async (req: Request, res: Response) => {
     try {
       const projectId = parseInt(req.params.id);
+      const { instructions } = req.body || {};
       const project = await storage.getReeditProject(projectId);
       
       if (!project) {
@@ -4826,10 +4827,24 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         return res.status(400).json({ error: "Project is already being processed" });
       }
 
-      await storage.updateReeditProject(projectId, { 
+      // Save user instructions if provided (for awaiting_instructions status)
+      const updateData: any = { 
         status: "processing", 
         errorMessage: null 
-      });
+      };
+      
+      if (instructions && typeof instructions === 'string' && instructions.trim()) {
+        updateData.pendingUserInstructions = instructions.trim();
+        console.log(`[ReeditResume] User provided instructions: "${instructions.substring(0, 100)}..."`);
+      }
+      
+      // If resuming from awaiting_instructions, reset the non-perfect counter
+      if (project.status === "awaiting_instructions") {
+        updateData.nonPerfectFinalReviews = 0;
+        console.log(`[ReeditResume] Resetting non-perfect counter after user instructions`);
+      }
+
+      await storage.updateReeditProject(projectId, updateData);
       console.log(`[ReeditResume] Cleared error state for project ${projectId}, starting orchestrator...`);
 
       const orchestrator = new ReeditOrchestrator();

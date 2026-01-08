@@ -565,6 +565,10 @@ export const reeditProjects = pgTable("reedit_projects", {
   revisionCycle: integer("revision_cycle").default(0),
   consecutiveHighScores: integer("consecutive_high_scores").default(0),
   previousScores: jsonb("previous_scores"), // Array of scores from previous review cycles
+  // Pause after N non-perfect scores
+  nonPerfectFinalReviews: integer("non_perfect_final_reviews").default(0),
+  pauseReason: text("pause_reason"), // Why the process was paused
+  pendingUserInstructions: text("pending_user_instructions"), // User guidance for next cycle
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
