@@ -2857,12 +2857,18 @@ export class ReeditOrchestrator {
       // === STAGE 7: FINAL REVIEW (with 10/10 twice consecutive logic using full content reviewer) ===
       await storage.updateReeditProject(projectId, { currentStage: "reviewing" });
 
-      let revisionCycle = 0;
-      let consecutiveHighScores = 0;
-      const previousScores: number[] = [];
+      // Load saved review cycle state for resume support
+      const savedProject = await storage.getReeditProject(projectId);
+      let revisionCycle = savedProject?.revisionCycle || 0;
+      let consecutiveHighScores = savedProject?.consecutiveHighScores || 0;
+      const previousScores: number[] = (savedProject?.previousScores as number[]) || [];
       let finalResult: FinalReviewerResult | null = null;
       let bestsellerScore = 0;
       const correctedIssueDescriptions: string[] = [];
+
+      if (revisionCycle > 0) {
+        console.log(`[ReeditOrchestrator] RESUMING Final Review: cycle ${revisionCycle}, consecutive=${consecutiveHighScores}, scores=[${previousScores.join(',')}]`);
+      }
 
       // Get World Bible and style guide for full final review
       const worldBibleForReview = await storage.getReeditWorldBibleByProject(projectId);
@@ -3075,6 +3081,13 @@ export class ReeditOrchestrator {
         }
 
         revisionCycle++;
+        
+        // Save review cycle state for resume support
+        await storage.updateReeditProject(projectId, {
+          revisionCycle,
+          consecutiveHighScores,
+          previousScores: previousScores as any,
+        });
       }
 
       for (const chapter of validChapters) {

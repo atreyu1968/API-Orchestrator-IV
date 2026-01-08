@@ -561,6 +561,10 @@ export const reeditProjects = pgTable("reedit_projects", {
   insertNewChapters: boolean("insert_new_chapters").default(false),
   targetMinWordsPerChapter: integer("target_min_words_per_chapter").default(2000),
   expansionPlan: jsonb("expansion_plan"),
+  // Final review cycle state (for resume support)
+  revisionCycle: integer("revision_cycle").default(0),
+  consecutiveHighScores: integer("consecutive_high_scores").default(0),
+  previousScores: jsonb("previous_scores"), // Array of scores from previous review cycles
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
