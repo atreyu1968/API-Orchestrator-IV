@@ -4954,6 +4954,89 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     }
   });
 
+  // Sync internal chapter headers with their metadata titles
+  app.post("/api/reedit-projects/:id/sync-chapter-headers", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getReeditProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const chapters = await storage.getReeditChaptersByProject(projectId);
+      let updatedCount = 0;
+      
+      // Pattern to match chapter headers at the start of content
+      const headerPatterns = [
+        /^(Capítulo|Capitulo|CAPÍTULO|CAPITULO)\s+(\d+|[IVXLCDM]+)\s*[:|-]?\s*([^\n]*)/im,
+        /^(Chapter|CHAPTER)\s+(\d+|[IVXLCDM]+)\s*[:|-]?\s*([^\n]*)/im,
+        /^(Chapitre|CHAPITRE)\s+(\d+|[IVXLCDM]+)\s*[:|-]?\s*([^\n]*)/im,
+        /^(Capitolo|CAPITOLO)\s+(\d+|[IVXLCDM]+)\s*[:|-]?\s*([^\n]*)/im,
+        /^(Kapitel|KAPITEL)\s+(\d+|[IVXLCDM]+)\s*[:|-]?\s*([^\n]*)/im,
+        /^(Capítol|Capitol|CAPÍTOL|CAPITOL)\s+(\d+|[IVXLCDM]+)\s*[:|-]?\s*([^\n]*)/im,
+      ];
+      
+      const specialTitles = /^(prólogo|epílogo|preludio|interludio|epilogue|prologue|prelude|interlude)/i;
+      
+      for (const chapter of chapters) {
+        // Skip special sections
+        if (chapter.title && specialTitles.test(chapter.title.trim())) {
+          continue;
+        }
+        
+        const updates: any = {};
+        const targetTitle = chapter.title || `Capítulo ${chapter.chapterNumber}`;
+        
+        // Update originalContent
+        if (chapter.originalContent) {
+          for (const pattern of headerPatterns) {
+            const match = chapter.originalContent.match(pattern);
+            if (match) {
+              const updatedContent = chapter.originalContent.replace(pattern, targetTitle);
+              if (updatedContent !== chapter.originalContent) {
+                updates.originalContent = updatedContent;
+                console.log(`[SyncHeaders] Chapter ${chapter.chapterNumber} originalContent: "${match[0].substring(0, 40)}..." -> "${targetTitle}"`);
+              }
+              break;
+            }
+          }
+        }
+        
+        // Update editedContent
+        if (chapter.editedContent) {
+          for (const pattern of headerPatterns) {
+            const match = chapter.editedContent.match(pattern);
+            if (match) {
+              const updatedContent = chapter.editedContent.replace(pattern, targetTitle);
+              if (updatedContent !== chapter.editedContent) {
+                updates.editedContent = updatedContent;
+                console.log(`[SyncHeaders] Chapter ${chapter.chapterNumber} editedContent: "${match[0].substring(0, 40)}..." -> "${targetTitle}"`);
+              }
+              break;
+            }
+          }
+        }
+        
+        if (Object.keys(updates).length > 0) {
+          await storage.updateReeditChapter(chapter.id, updates);
+          updatedCount++;
+        }
+      }
+      
+      console.log(`[SyncHeaders] Project ${projectId}: Updated ${updatedCount} chapters`);
+      res.json({ 
+        success: true, 
+        message: `Sincronizados ${updatedCount} capítulos`,
+        updatedCount,
+        totalChapters: chapters.length
+      });
+    } catch (error) {
+      console.error("Error syncing chapter headers:", error);
+      res.status(500).json({ error: "Failed to sync chapter headers" });
+    }
+  });
+
   app.post("/api/reedit-projects/:id/cancel", async (req: Request, res: Response) => {
     try {
       const projectId = parseInt(req.params.id);
