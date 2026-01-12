@@ -2,20 +2,18 @@
 
 ## Overview
 
-LitAgents is a Node.js application that orchestrates 4 autonomous AI literary agents using Google's Gemini 3 Pro model with advanced reasoning capabilities. The system manages the complete novel-writing workflow from plot planning to final manuscript production.
+LitAgents is a Node.js application designed for orchestrating autonomous AI literary agents using Google's Gemini 3 Pro. Its primary purpose is to manage the entire novel-writing workflow, from initial plot planning to the production of a final, polished manuscript. The system aims to provide a comprehensive solution for authoring and refining literary works, enhancing efficiency and quality through AI-driven processes.
 
-The application features:
-- **9 Specialized AI Agents**: 
-  - **Core Pipeline**: Architect (plot planning), Ghostwriter (prose writing), Editor (quality auditing), Copy Editor (style polishing)
-  - **Structural Fixer** (NEW): Automatically corrects plot holes, incomplete arcs, contradictions, and unresolved subplots detected by ArchitectAnalyzer
-  - **3-Layer QA System**: Continuity Sentinel (every 5 chapters - temporal/spatial/state drift detection), Voice & Rhythm Auditor (10-chapter tranches - tonal consistency and pacing), Semantic Repetition Detector (manuscript-wide - idea repetition and foreshadowing payoff tracking)
-  - **Final Reviewer**: End-to-end manuscript validation
-- **World Bible System**: Persistent memory for characters, locations, timeline events, and lore rules
-- **Thought Signature Logging**: Captures AI reasoning processes for auditing how decisions were made
-- **Real-time Dashboard**: Monitors agent status, chapter progress, and console output
-- **Refinement Loops**: Automatic rejection and rewriting of chapters that don't meet quality thresholds
-- **Auto-Recovery System**: Heartbeat monitoring detects frozen generations (8 min inactivity) and automatically restarts them with logging
-- **Imported Manuscripts**: Upload external Word documents in 6 languages (EN, FR, DE, IT, PT, CA), automatically parse chapters, and professionally edit them using the CopyEditor agent with token cost tracking
+Key capabilities include:
+- Orchestration of 9 specialized AI agents covering plot planning, prose writing, editing, quality assurance, and structural corrections.
+- A persistent World Bible system for maintaining consistent lore and character details.
+- Logging of AI reasoning processes for transparency and auditing.
+- A real-time dashboard for monitoring progress and agent activities.
+- Automated refinement loops for re-writing content that does not meet quality standards.
+- An auto-recovery system to handle stalled AI generations.
+- The ability to import and professionally edit external manuscripts in multiple languages.
+- Advanced features like chapter expansion, new chapter insertion, and chapter reordering for narrative optimization.
+- An automatic pause system for user intervention and a robust approval logic to ensure high-quality manuscript completion.
 
 ## User Preferences
 
@@ -24,198 +22,58 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Frontend Architecture
-- **Framework**: React with TypeScript
-- **Build Tool**: Vite with custom configuration for Replit environment
-- **Routing**: Wouter for lightweight client-side routing
-- **State Management**: TanStack Query for server state and caching
-- **UI Components**: shadcn/ui component library with Radix UI primitives
-- **Styling**: Tailwind CSS with custom theme using CSS variables for light/dark mode
-- **Design System**: Microsoft Fluent Design approach - productivity-focused with clear typography hierarchy (Inter for UI, JetBrains Mono for logs, Merriweather for manuscripts)
+- **Framework**: React with TypeScript, built using Vite.
+- **Routing**: Wouter for client-side navigation.
+- **State Management**: TanStack Query for server state and caching.
+- **UI Components**: shadcn/ui library leveraging Radix UI primitives.
+- **Styling**: Tailwind CSS with a custom theme supporting light/dark modes.
+- **Design System**: Adheres to Microsoft Fluent Design principles, emphasizing productivity and clear typography (Inter, JetBrains Mono, Merriweather).
 
 ### Backend Architecture
-- **Runtime**: Node.js with Express
-- **Language**: TypeScript with ES modules
-- **API Pattern**: RESTful endpoints with Server-Sent Events (SSE) for real-time updates
-- **Agent System**: Modular agent classes extending a BaseAgent abstract class
-  - Each agent has specialized system prompts optimized for Gemini 3's reasoning mode
-  - Orchestrator manages the pipeline flow between agents
-  - Refinement loops (max 3 attempts) allow the Editor agent to reject and trigger rewrites
-  - **Critical**: Editor feedback (continuity errors, verisimilitude problems, missing beats, repeated phrases, style violations) is explicitly passed to Ghostwriter during rewrites via `buildRefinementInstructions()`
+- **Runtime**: Node.js with Express.
+- **Language**: TypeScript with ES modules.
+- **API Pattern**: RESTful endpoints supplemented with Server-Sent Events (SSE) for real-time updates.
+- **Agent System**: Features modular agent classes inheriting from a BaseAgent, each with specialized system prompts optimized for Gemini 3's reasoning mode. An orchestrator manages the pipeline flow, incorporating refinement loops where the Editor agent can trigger rewrites based on detailed feedback.
 
 ### Data Storage
-- **Database**: PostgreSQL with Drizzle ORM
-- **Schema Location**: `shared/schema.ts` contains all table definitions
-- **Key Tables**:
-  - `projects`: Novel projects with genre, tone, chapter count, and series settings (workType, seriesId, seriesOrder)
-  - `chapters`: Individual chapter content with status tracking
-  - `worldBibles`: JSON storage for characters, timeline, rules, and plot outlines
-  - `thoughtLogs`: AI reasoning signatures for each agent action
-  - `agentStatuses`: Real-time status tracking for dashboard display
-  - `series`: Groups projects into series/trilogies for continuity (includes `seriesGuide` for uploaded Word documents with series-wide plot guidance)
-  - `continuitySnapshots`: Stores summaries of completed works for AI continuity (8-12k tokens)
-  - `importedManuscripts`: External manuscript uploads with language and status tracking
-  - `importedChapters`: Chapters parsed from uploaded manuscripts with original/edited content and token usage
+- **Database**: PostgreSQL, managed with Drizzle ORM.
+- **Schema**: Defined in `shared/schema.ts`.
+- **Key Tables**: `projects`, `chapters`, `worldBibles`, `thoughtLogs`, `agentStatuses`, `series`, `continuitySnapshots`, `importedManuscripts`, `importedChapters`. These tables store project metadata, chapter content, world-building elements, AI process logs, real-time status, series information, continuity summaries, and details on imported manuscripts.
 
 ### AI Integration
-- **Model**: Gemini 3 Pro Preview via Replit AI Integrations
-- **Configuration**: 
-  - `thinkingConfig.thinkingBudget: 10000` for deep reasoning
-  - `temperature: 1.0` and `topP: 0.95` for creative output
-- **Client Setup**: Uses `@google/genai` SDK with Replit's proxy endpoints (no external API key required)
+- **Model**: Gemini 3 Pro Preview, accessed via Replit AI Integrations.
+- **Configuration**: Uses `thinkingBudget: 10000` for deep reasoning and `temperature: 1.0`, `topP: 0.95` for creative output.
+- **Client Setup**: Utilizes the `@google/genai` SDK with Replit's proxy, eliminating the need for an external API key.
 
 ### Build System
-- **Development**: `tsx` for TypeScript execution with hot reload
-- **Production**: esbuild bundles server code, Vite builds client assets
-- **Output**: Combined into `dist/` directory with static files in `dist/public/`
+- **Development**: `tsx` for TypeScript execution with hot reload.
+- **Production**: `esbuild` for server code bundling and Vite for client asset compilation, outputting to a `dist/` directory.
+
+### Feature Specifications
+- **Optimized Pipeline**: Streamlined re-edit pipeline reducing token consumption by consolidating problem detection and rewriting into a single pass.
+- **Manuscript Expansion System**: Agents (`ChapterExpansionAnalyzer`, `ChapterExpanderAgent`, `NewChapterGeneratorAgent`) for expanding short chapters and inserting new ones to fill narrative gaps.
+- **Chapter Reordering System**: Architect Analyzer can recommend and execute chapter reordering for improved narrative pacing, including automatic renumbering and title updates.
+- **Internal Chapter Header Sync**: Automatically updates chapter headers within the content (`originalContent`, `editedContent`) when chapters are reordered or inserted.
+- **Automatic Pause System**: The system pauses after multiple non-perfect evaluations, awaiting user instructions.
+- **Approval Logic**: Requires a single score of 9+ with no critical issues for project approval, preventing infinite loops on minor issues.
+- **Issue Hash Tracking System**: Prevents re-reporting of already resolved issues by generating and tracking unique hashes for issues.
+- **Improved Cancellation**: Allows for immediate cancellation of processes, with checks implemented before each chapter correction.
+- **Fast-Track Resume System**: Optimizes project resumption from `awaiting_instructions` by skipping unnecessary pipeline stages and directly engaging `runFinalReviewOnly()` with user instructions.
 
 ## External Dependencies
 
 ### AI Services
-- **Replit AI Integrations**: Provides Gemini API access through environment variables:
-  - `AI_INTEGRATIONS_GEMINI_API_KEY`
-  - `AI_INTEGRATIONS_GEMINI_BASE_URL`
-- Models used: `gemini-3-pro-preview` for text generation, `gemini-2.5-flash-image` for image generation
+- **Replit AI Integrations**: Provides access to the Gemini API using `AI_INTEGRATIONS_GEMINI_API_KEY` and `AI_INTEGRATIONS_GEMINI_BASE_URL` environment variables.
+- **Models**: `gemini-3-pro-preview` for text generation, `gemini-2.5-flash-image` for image generation.
 
 ### Database
-- **PostgreSQL**: Connection via `DATABASE_URL` environment variable
-- **Drizzle Kit**: Database migrations stored in `migrations/` directory
+- **PostgreSQL**: Accessed via the `DATABASE_URL` environment variable.
+- **Drizzle Kit**: Used for database migrations, stored in the `migrations/` directory.
 
 ### Key NPM Packages
-- `@google/genai`: Gemini AI SDK
-- `drizzle-orm` / `drizzle-zod`: Database ORM with Zod schema validation
-- `express`: HTTP server framework
-- `@tanstack/react-query`: Async state management
-- `wouter`: Client-side routing
-- Radix UI primitives: Accessible component foundations
-
-## Recent Changes (2026-01-07)
-
-### Pipeline Optimization IMPLEMENTED
-
-The re-edit pipeline has been optimized to reduce token consumption by 40-60%:
-
-**NEW Optimized Flow (ACTIVE)**:
-1. **Editor Review** → Initial quality assessment of all chapters
-2. **World Bible Extraction** → Extract characters, locations, timeline, lore
-3. **Architect Analysis** → Detect structural issues (plot holes, contradictions, incomplete arcs)
-4. **QA Agents** (MOVED BEFORE REWRITING) → Run all 4 QA agents: Continuity Sentinel, Voice & Rhythm, Semantic Repetition, Anachronism Detector
-5. **consolidateAllProblems()** → Merge Architect + QA findings by chapter into unified problem list
-6. **SINGLE NarrativeRewriter Pass** → One consolidated rewriting pass fixing ALL problems (structural + QA)
-7. **CopyEditor** (OPTIMIZED) → Only processes chapters NOT rewritten (rewritten chapters skip this stage)
-8. **Final Review** → Bestseller validation with 9+ consecutive score logic
-
-**Key Optimizations**:
-- Eliminated redundant `qa_corrections` stage (was a second NarrativeRewriter pass)
-- CopyEditor now skips chapters that were already rewritten by NarrativeRewriter
-- Single consolidated rewrite addresses both Architect structural issues AND QA problems
-- Rewritten chapters get `editedContent` set directly, bypassing CopyEditor entirely
-
-**Expected Token Savings**: 40-60% reduction in token usage for manuscripts with significant issues
-
-### Previous Bug Fixes (2026-01-06)
-- **Integer score validation**: Added `Math.round()` to all audit report scores to prevent database errors
-- **Spanish accent support in severities**: Extended severity matching to include both "critica" and "crítica"
-- **consolidateAllProblems() function**: Helper function to merge Architect + QA findings by chapter
-
-### Manuscript Expansion System (NEW - 2026-01-07)
-
-New functionality to expand manuscripts by:
-1. **Chapter Expansion**: Automatically expands short chapters (below target word count) by adding scenes, dialogues, and descriptions
-2. **New Chapter Insertion**: Detects narrative gaps and inserts new intermediate chapters
-
-**New Agents**:
-- `ChapterExpansionAnalyzer`: Analyzes manuscript structure and creates expansion plan
-- `ChapterExpanderAgent`: Expands existing chapters while preserving author voice
-- `NewChapterGeneratorAgent`: Generates new chapters that integrate seamlessly
-
-**Configuration Fields** (reeditProjects table):
-- `expandChapters` (boolean): Enable chapter expansion
-- `insertNewChapters` (boolean): Enable new chapter insertion
-- `targetMinWordsPerChapter` (integer, default 2000): Minimum word target per chapter
-- `expansionPlan` (jsonb): Stores the expansion analysis results
-
-**Pipeline Integration**: Runs as STAGE 3.5 after World Bible extraction, before Architect analysis
-
-**UI**: Upload form now includes toggle switches for expansion options
-
-### Chapter Reordering System (NEW - 2026-01-07)
-
-The Architect Analyzer can now recommend and automatically execute chapter reordering when beneficial for narrative pacing:
-
-**How it works**:
-1. Architect Analyzer detects suboptimal chapter order during analysis
-2. Generates `reordenamientoSugerido` array with moves: `{capituloActual, nuevaPosicion, razon}`
-3. `reorderChaptersFromAnalysis()` executes the reordering automatically
-4. All chapters are renumbered and titles updated to reflect new positions
-
-**Pipeline Integration**: Runs as STAGE 4.1 immediately after Architect Analysis, before QA Agents
-
-**Title Handling Fix**: 
-- Inserted chapters now automatically get "Capítulo X:" prefix (previously only preserved existing prefixes)
-- Special titles (Prólogo, Epílogo, Preludio, Interludio) are preserved without prefix
-
-### Internal Chapter Header Sync (NEW - 2026-01-08)
-
-When chapters are renumbered (via reordering or insertion), the system now updates:
-1. **Metadata** (`chapterNumber`, `title`) - as before
-2. **Internal Content** (`originalContent`, `editedContent`) - NEW: headers inside the text are updated
-
-**normalizeChapterHeaderContent()** function:
-- Detects chapter headers in 6 languages (Spanish, English, French, Italian, German, Catalan)
-- Replaces old header with new title matching the renumbered position
-- Preserves special sections (Prólogo, Epílogo, etc.) without renumbering
-- Works with various formats: "Capítulo X:", "Capítulo X -", "CAPÍTULO X", etc.
-
-### Automatic Pause System (NEW - 2026-01-08)
-
-The system now pauses automatically after 15 non-perfect evaluations (< 10/10):
-- Status changes to `awaiting_instructions`
-- `pauseReason` field explains why the pause occurred
-- User can provide instructions via textarea in UI
-- On resume, `nonPerfectFinalReviews` counter resets to 0
-- `pendingUserInstructions` passed to next correction cycle
-
-### Perfection Mode (10/10 Scoring)
-
-All agents now target 10/10 perfection:
-- **Architect Analyzer**: 10/10 = zero structural/plot problems
-- **NarrativeRewriter**: Each correction must be DEFINITIVE, eliminating problems completely
-- **StructuralFixer**: Same perfection objective with complete problem elimination
-- **CopyEditor**: Zero editorial/stylistic/fluency errors
-- **Final Reviewer**: MUST give 10/10 when manuscript is perfect (no artificial criticism)
-- **Approval Logic**: Requires TWO consecutive 10/10 scores (no escape hatch)
-
-### Critical Bug Fix (2026-01-08)
-
-**Problem**: Projects could be marked "completed" with low scores (e.g., 6/10) without resolving critical issues. The while loop would exit after reaching `maxFinalReviewCycles` (10) and proceed to mark as "completed" without verifying 2x 10/10 consecutive scores were achieved.
-
-**Solution**: Added mandatory pause check after the review loop exits:
-- If `consecutiveHighScores < requiredConsecutiveHighScores`, the project is set to `awaiting_instructions` status
-- The project is NOT marked as "completed" until 2x consecutive 10/10 scores are achieved
-- This applies to both `runReedit()` and `runFinalReviewOnly()` functions
-
-**Result**: Projects will NEVER close with unresolved problems. They will pause waiting for user instructions instead.
-
-### Fast-Track Resume System (NEW - 2026-01-08)
-
-**Problem**: When resuming from `awaiting_instructions`, the system re-executed World Bible, Architect, and QA stages unnecessarily, wasting tokens.
-
-**Solution**: Added fast-track detection at the start of `processProject()`:
-1. Detects if project has existing `finalReviewResult` with issues
-2. Detects if project has `pendingUserInstructions` or `currentStage` is "completed"/"reviewing"
-3. If both conditions met: skips entire pipeline and calls `runFinalReviewOnly()` directly
-
-**Enhanced `runFinalReviewOnly()`**:
-- Now processes `pendingUserInstructions` before re-evaluating
-- Applies corrections from existing `finalReviewResult.issues` FIRST
-- Merges user instructions into problem descriptions for NarrativeRewriter
-- Clears `pendingUserInstructions` and `pauseReason` after applying
-
-**Expected Savings**: 80-90% token reduction for projects resuming from `awaiting_instructions`
-
-### Project Status
-- Project 4 "La superficie rota": COMPLETED (65 chapters, 97,683 words, score 9/10, "muy alto potencial de mercado")
-- Project 5 "El silencio de las plataneras": AWAITING_INSTRUCTIONS (40 chapters, score 6/10, critical issues to resolve: redundant ch36, Gaspar death inconsistency, geographic inconsistency)
-- Pipeline optimization: IMPLEMENTED and ready for next project
-- Manuscript expansion system: IMPLEMENTED with 3 specialized agents
-- Chapter reordering: IMPLEMENTED with automatic title renumbering
+- `@google/genai`: Google Gemini AI SDK.
+- `drizzle-orm` / `drizzle-zod`: ORM for database interaction and Zod for schema validation.
+- `express`: Web application framework for Node.js.
+- `@tanstack/react-query`: Library for asynchronous state management in React.
+- `wouter`: Lightweight routing library for React.
+- Radix UI primitives: Core components for building accessible UIs.

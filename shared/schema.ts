@@ -570,6 +570,8 @@ export const reeditProjects = pgTable("reedit_projects", {
   nonPerfectFinalReviews: integer("non_perfect_final_reviews").default(0),
   pauseReason: text("pause_reason"), // Why the process was paused
   pendingUserInstructions: text("pending_user_instructions"), // User guidance for next cycle
+  // Tracking de issues resueltos - evita que el revisor re-reporte problemas ya corregidos
+  resolvedIssueHashes: jsonb("resolved_issue_hashes").default([]), // Array of hashes for resolved issues
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

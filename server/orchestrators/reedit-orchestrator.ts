@@ -1270,6 +1270,80 @@ export class ReeditOrchestrator {
     }
   }
   
+  /**
+   * Generate a hash for an issue to track if it has been resolved.
+   * Uses category + simplified description + affected chapters to create stable ID.
+   */
+  private generateIssueHash(issue: FinalReviewIssue): string {
+    // Normalize description: lowercase, remove extra spaces, keep first 100 chars
+    const normalizedDesc = (issue.descripcion || "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim()
+      .substring(0, 100);
+    
+    // Sort chapters for consistent hashing
+    const chapters = (issue.capitulos_afectados || []).sort((a, b) => a - b).join(",");
+    
+    // Create hash from category + description + chapters
+    const hashInput = `${issue.categoria || "unknown"}|${normalizedDesc}|${chapters}`;
+    
+    // Simple string hash (djb2 algorithm)
+    let hash = 5381;
+    for (let i = 0; i < hashInput.length; i++) {
+      hash = ((hash << 5) + hash) + hashInput.charCodeAt(i);
+    }
+    return `issue_${Math.abs(hash).toString(16)}`;
+  }
+  
+  /**
+   * Filter out issues that have already been resolved in previous cycles.
+   */
+  private filterNewIssues(
+    issues: FinalReviewIssue[],
+    resolvedHashes: string[]
+  ): { newIssues: FinalReviewIssue[]; filteredCount: number } {
+    const resolvedSet = new Set(resolvedHashes);
+    const newIssues: FinalReviewIssue[] = [];
+    let filteredCount = 0;
+    
+    for (const issue of issues) {
+      const hash = this.generateIssueHash(issue);
+      if (resolvedSet.has(hash)) {
+        console.log(`[ReeditOrchestrator] Filtering resolved issue: ${issue.categoria} - ${issue.descripcion?.substring(0, 50)}...`);
+        filteredCount++;
+      } else {
+        newIssues.push(issue);
+      }
+    }
+    
+    if (filteredCount > 0) {
+      console.log(`[ReeditOrchestrator] Filtered ${filteredCount} previously resolved issues, ${newIssues.length} new issues remain`);
+    }
+    
+    return { newIssues, filteredCount };
+  }
+  
+  /**
+   * Mark issues as resolved by adding their hashes to the project's resolved list.
+   */
+  private async markIssuesResolved(projectId: number, issues: FinalReviewIssue[]): Promise<void> {
+    if (issues.length === 0) return;
+    
+    const project = await storage.getReeditProject(projectId);
+    const existingHashes = (project?.resolvedIssueHashes as string[]) || [];
+    
+    const newHashes = issues.map(issue => this.generateIssueHash(issue));
+    const combinedHashes = [...existingHashes, ...newHashes];
+    const allHashes = combinedHashes.filter((hash, index) => combinedHashes.indexOf(hash) === index);
+    
+    await storage.updateReeditProject(projectId, {
+      resolvedIssueHashes: allHashes as any,
+    });
+    
+    console.log(`[ReeditOrchestrator] Marked ${newHashes.length} issues as resolved (total: ${allHashes.length})`);
+  }
+  
   private async saveTokenUsage(projectId: number) {
     await storage.updateReeditProject(projectId, {
       totalInputTokens: this.totalInputTokens,
@@ -3093,16 +3167,21 @@ export class ReeditOrchestrator {
         previousScores.push(rawScore);
 
         const veredicto = finalResult?.veredicto || "REQUIERE_REVISION";
-        const issuesCount = finalResult?.issues?.length || 0;
+        const rawIssuesForApproval = finalResult?.issues || [];
         const chapsToRewrite = finalResult?.capitulos_para_reescribir?.length || 0;
         
-        // Check for critical issues that block approval
-        const criticalIssues = (finalResult?.issues || []).filter((issue: any) => 
+        // Filter out resolved issues BEFORE checking for critical issues
+        const resolvedHashesForApproval = (project.resolvedIssueHashes as string[]) || [];
+        const { newIssues: filteredIssuesForApproval } = this.filterNewIssues(rawIssuesForApproval, resolvedHashesForApproval);
+        
+        // Check for critical issues from FILTERED list only
+        const criticalIssues = filteredIssuesForApproval.filter((issue: any) => 
           issue.severidad === "critica" || issue.severidad === "crítica"
         );
         const hasCriticalIssues = criticalIssues.length > 0;
+        const issuesCount = filteredIssuesForApproval.length;
 
-        console.log(`[ReeditOrchestrator] Final review cycle ${revisionCycle + 1}: score ${rawScore}/10, veredicto: ${veredicto}, issues: ${issuesCount} (${criticalIssues.length} críticos), chapters to rewrite: ${chapsToRewrite}`);
+        console.log(`[ReeditOrchestrator] Final review cycle ${revisionCycle + 1}: score ${rawScore}/10, veredicto: ${veredicto}, issues: ${issuesCount} (${criticalIssues.length} críticos, ${rawIssuesForApproval.length - issuesCount} ya resueltos), chapters to rewrite: ${chapsToRewrite}`);
 
         // Aprobar si: puntuación >= 9 Y no hay issues críticos
         if (rawScore >= this.minAcceptableScore && !hasCriticalIssues) {
@@ -3191,8 +3270,16 @@ export class ReeditOrchestrator {
         });
 
         // Apply corrections based on FULL final reviewer feedback
-        const issues = finalResult?.issues || [];
+        const rawIssues = finalResult?.issues || [];
         const chaptersToRewrite = finalResult?.capitulos_para_reescribir || [];
+        
+        // Filter out issues that have already been resolved in previous cycles
+        const resolvedHashes = (project.resolvedIssueHashes as string[]) || [];
+        const { newIssues: issues, filteredCount } = this.filterNewIssues(rawIssues, resolvedHashes);
+        
+        if (filteredCount > 0) {
+          console.log(`[ReeditOrchestrator] ${filteredCount} issues ya resueltos fueron filtrados, quedan ${issues.length} nuevos`);
+        }
         
         if (issues.length > 0 || chaptersToRewrite.length > 0) {
           // Get unique chapter numbers that need fixes
@@ -3280,6 +3367,9 @@ export class ReeditOrchestrator {
                 for (const issue of chapterIssues) {
                   correctedIssueDescriptions.push(issue.descripcion);
                 }
+                
+                // Mark these issues as resolved with hash tracking
+                await this.markIssuesResolved(projectId, chapterIssues);
               }
             } catch (err) {
               console.error(`[ReeditOrchestrator] Error fixing chapter ${chapter.chapterNumber}:`, err);
@@ -3620,13 +3710,28 @@ export class ReeditOrchestrator {
       previousScores.push(rawScore);
 
       const veredicto = finalResult?.veredicto || "REQUIERE_REVISION";
-      const issuesCount = finalResult?.issues?.length || 0;
+      const rawIssuesFROApproval = finalResult?.issues || [];
       const chapsToRewrite = finalResult?.capitulos_para_reescribir?.length || 0;
+      
+      // Filter out resolved issues BEFORE checking for critical issues
+      const resolvedHashesFROApproval = (project.resolvedIssueHashes as string[]) || [];
+      const { newIssues: filteredIssuesFROApproval } = this.filterNewIssues(rawIssuesFROApproval, resolvedHashesFROApproval);
+      
+      // Check for critical issues from FILTERED list only
+      const criticalIssuesFRO = filteredIssuesFROApproval.filter((issue: any) => 
+        issue.severidad === "critica" || issue.severidad === "crítica"
+      );
+      const hasCriticalIssuesFRO = criticalIssuesFRO.length > 0;
+      const issuesCount = filteredIssuesFROApproval.length;
 
-      console.log(`[ReeditOrchestrator] Final review cycle ${revisionCycle + 1}: score ${rawScore}/10, veredicto: ${veredicto}, issues: ${issuesCount}, chapters to rewrite: ${chapsToRewrite}`);
+      console.log(`[ReeditOrchestrator] Final review cycle ${revisionCycle + 1}: score ${rawScore}/10, veredicto: ${veredicto}, issues: ${issuesCount} (${criticalIssuesFRO.length} críticos, ${rawIssuesFROApproval.length - issuesCount} ya resueltos), chapters to rewrite: ${chapsToRewrite}`);
 
-      if (rawScore >= this.minAcceptableScore) {
+      // Aprobar si: puntuación >= 9 Y no hay issues críticos NUEVOS
+      if (rawScore >= this.minAcceptableScore && !hasCriticalIssuesFRO) {
         consecutiveHighScores++;
+      } else if (rawScore >= this.minAcceptableScore && hasCriticalIssuesFRO) {
+        // Puntuación alta pero con issues críticos - no aprobar pero no contar como fallo
+        console.log(`[ReeditOrchestrator] FRO: Score ${rawScore}/10 is good but ${criticalIssuesFRO.length} critical issue(s) remain. Correcting...`);
       } else {
         consecutiveHighScores = 0;
       }
@@ -3676,8 +3781,16 @@ export class ReeditOrchestrator {
       });
 
       // Apply corrections based on FULL final reviewer feedback
-      const issues = finalResult?.issues || [];
+      const rawIssuesFRO = finalResult?.issues || [];
       const chaptersToRewrite = finalResult?.capitulos_para_reescribir || [];
+      
+      // Filter out issues that have already been resolved in previous cycles
+      const resolvedHashesFRO = (project.resolvedIssueHashes as string[]) || [];
+      const { newIssues: issues, filteredCount: filteredCountFRO } = this.filterNewIssues(rawIssuesFRO, resolvedHashesFRO);
+      
+      if (filteredCountFRO > 0) {
+        console.log(`[ReeditOrchestrator] FRO: ${filteredCountFRO} issues ya resueltos fueron filtrados, quedan ${issues.length} nuevos`);
+      }
       
       if (issues.length > 0 || chaptersToRewrite.length > 0) {
         // Get unique chapter numbers that need fixes
@@ -3756,6 +3869,9 @@ export class ReeditOrchestrator {
                 editedContent: rewriteResult.rewrittenContent,
                 wordCount,
               });
+              
+              // Mark these issues as resolved with hash tracking
+              await this.markIssuesResolved(projectId, chapterIssues);
               
               // Track corrected issues so FinalReviewer doesn't report them again
               for (const issue of chapterIssues) {
