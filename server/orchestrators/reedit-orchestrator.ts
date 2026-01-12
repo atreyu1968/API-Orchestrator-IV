@@ -1241,8 +1241,8 @@ export class ReeditOrchestrator {
   private totalThinkingTokens: number = 0;
   
   private maxFinalReviewCycles = 10;
-  private minAcceptableScore = 10;
-  private requiredConsecutiveHighScores = 2;
+  private minAcceptableScore = 9; // Acepta 9+ como suficiente (antes era 10)
+  private requiredConsecutiveHighScores = 1; // Solo necesita 1 puntuación 9+ sin issues críticos (antes eran 2)
 
   constructor() {
     this.editorAgent = new ReeditEditorAgent();
@@ -3095,13 +3095,22 @@ export class ReeditOrchestrator {
         const veredicto = finalResult?.veredicto || "REQUIERE_REVISION";
         const issuesCount = finalResult?.issues?.length || 0;
         const chapsToRewrite = finalResult?.capitulos_para_reescribir?.length || 0;
+        
+        // Check for critical issues that block approval
+        const criticalIssues = (finalResult?.issues || []).filter((issue: any) => 
+          issue.severidad === "critica" || issue.severidad === "crítica"
+        );
+        const hasCriticalIssues = criticalIssues.length > 0;
 
-        console.log(`[ReeditOrchestrator] Final review cycle ${revisionCycle + 1}: score ${rawScore}/10, veredicto: ${veredicto}, issues: ${issuesCount}, chapters to rewrite: ${chapsToRewrite}`);
+        console.log(`[ReeditOrchestrator] Final review cycle ${revisionCycle + 1}: score ${rawScore}/10, veredicto: ${veredicto}, issues: ${issuesCount} (${criticalIssues.length} críticos), chapters to rewrite: ${chapsToRewrite}`);
 
-        if (rawScore >= this.minAcceptableScore) {
+        // Aprobar si: puntuación >= 9 Y no hay issues críticos
+        if (rawScore >= this.minAcceptableScore && !hasCriticalIssues) {
           consecutiveHighScores++;
-          // Reset non-perfect counter when we get a 10
           nonPerfectCount = 0;
+        } else if (rawScore >= this.minAcceptableScore && hasCriticalIssues) {
+          // Puntuación alta pero con issues críticos - no aprobar pero no contar como fallo
+          console.log(`[ReeditOrchestrator] Score ${rawScore}/10 is good but ${criticalIssues.length} critical issue(s) remain. Correcting...`);
         } else {
           consecutiveHighScores = 0;
           nonPerfectCount++;
