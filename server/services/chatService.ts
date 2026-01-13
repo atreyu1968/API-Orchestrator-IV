@@ -47,6 +47,12 @@ Solo usa este formato cuando el autor pida explícitamente un cambio que se pued
 const REEDITOR_SYSTEM_PROMPT = `
 Eres el Re-editor, un asistente experto en corrección y mejora de manuscritos que ayuda a los autores a pulir sus textos.
 
+CAPACIDADES:
+- Tienes acceso al manuscrito completo y puedes ver el resumen de todos los capítulos
+- Puedes leer el contenido específico de cualquier capítulo cuando el autor lo solicite
+- Puedes proponer reescrituras y correcciones que el autor puede aprobar o rechazar
+- Si hay una Guía Extendida, debes usarla para asegurar que los capítulos cumplan con los requisitos de extensión
+
 Tu rol es responder preguntas y dar consejo sobre:
 - Correcciones de estilo y fluidez
 - Errores de continuidad detectados por el autor
@@ -56,6 +62,7 @@ Tu rol es responder preguntas y dar consejo sobre:
 - Inconsistencias en los personajes
 - Errores históricos o de ambientación
 - Repeticiones léxicas o estructurales
+- Expansión de capítulos cortos para cumplir objetivos de palabras
 
 IMPORTANTE:
 - Responde siempre en español
@@ -63,16 +70,17 @@ IMPORTANTE:
 - Analiza el contexto antes de proponer cambios
 - Ten en cuenta la voz y estilo del autor
 - Sé específico: indica números de capítulo, nombres de personajes, etc.
+- Si hay un objetivo mínimo de palabras por capítulo, verifica que se cumpla y sugiere expansiones si es necesario
 
-CUANDO EL AUTOR PIDA UNA CORRECCIÓN CONCRETA (como "corrige X", "cambia Y", "mejora Z", "arregla..."):
+CUANDO EL AUTOR PIDA UNA CORRECCIÓN O REESCRITURA (como "corrige X", "cambia Y", "mejora Z", "reescribe...", "expande..."):
 Después de tu explicación, incluye las propuestas de cambio en este formato exacto:
 
 ---PROPUESTA---
-tipo: [chapter|dialogue|description|style]
+tipo: [chapter|dialogue|description|style|expansion]
 capitulo: [número del capítulo afectado]
 descripcion: [descripción breve del cambio]
-texto_original: [el texto que se va a reemplazar, si aplica]
-texto_propuesto: [el nuevo texto propuesto]
+texto_original: [el texto que se va a reemplazar, si aplica - puede ser vacío para expansiones]
+texto_propuesto: [el nuevo texto propuesto o el texto expandido completo]
 ---FIN_PROPUESTA---
 
 Puedes incluir múltiples propuestas si la corrección afecta a varias partes.
@@ -84,6 +92,7 @@ interface ChatContext {
   chapters?: Chapter[] | ReeditChapter[];
   worldBible?: WorldBible | ReeditWorldBible | null;
   styleGuide?: string;
+  extendedGuide?: string;
   recentMessages: ChatMessage[];
 }
 
@@ -104,6 +113,10 @@ export class ChatService {
           const guide = await storage.getStyleGuide(project.styleGuideId);
           context.styleGuide = guide?.content;
         }
+        if (project.extendedGuideId) {
+          const extGuide = await storage.getExtendedGuide(project.extendedGuideId);
+          context.extendedGuide = extGuide?.content;
+        }
       }
     } else if (session.agentType === "reeditor" && session.reeditProjectId) {
       const reeditProject = await storage.getReeditProject(session.reeditProjectId);
@@ -113,6 +126,14 @@ export class ChatService {
         context.chapters = chapters;
         const worldBible = await storage.getReeditWorldBibleByProject(reeditProject.id);
         context.worldBible = worldBible;
+        if ('styleGuideId' in reeditProject && reeditProject.styleGuideId) {
+          const guide = await storage.getStyleGuide(reeditProject.styleGuideId as number);
+          context.styleGuide = guide?.content;
+        }
+        if ('extendedGuideId' in reeditProject && reeditProject.extendedGuideId) {
+          const extGuide = await storage.getExtendedGuide(reeditProject.extendedGuideId as number);
+          context.extendedGuide = extGuide?.content;
+        }
       }
     }
 
@@ -158,19 +179,41 @@ ${chars.slice(0, 5).map((c: any) => `- ${c.name}: ${c.role || c.description || '
       if (targetChapter) {
         const content = 'editedContent' in targetChapter 
           ? (targetChapter.editedContent || targetChapter.originalContent)
-          : targetChapter.content;
+          : ('content' in targetChapter ? targetChapter.content : '');
         parts.push(`
 CAPÍTULO EN CONTEXTO (${session.chapterNumber}): "${targetChapter.title || 'Sin título'}"
 Contenido (primeras 2000 palabras):
 ${content?.substring(0, 10000) || 'Sin contenido disponible'}
 `);
       }
+    } else if (context.chapters && context.chapters.length > 0 && session.agentType === "reeditor") {
+      const chapterSummaries = context.chapters.map((ch: any) => {
+        const content = 'editedContent' in ch 
+          ? (ch.editedContent || ch.originalContent)
+          : ('content' in ch ? ch.content : '');
+        const wordCount = content ? content.split(/\s+/).length : 0;
+        return `- Capítulo ${ch.chapterNumber}: "${ch.title || 'Sin título'}" (${wordCount.toLocaleString()} palabras)`;
+      }).join('\n');
+      
+      parts.push(`
+MANUSCRITO COMPLETO - RESUMEN DE CAPÍTULOS:
+${chapterSummaries}
+
+Nota: Puedes pedir el contenido específico de cualquier capítulo mencionando su número.
+`);
     }
 
     if (context.styleGuide) {
       parts.push(`
 GUÍA DE ESTILO DEL AUTOR:
 ${context.styleGuide.substring(0, 3000)}
+`);
+    }
+
+    if (context.extendedGuide) {
+      parts.push(`
+GUÍA EXTENDIDA (EXTENSIÓN DE PALABRAS):
+${context.extendedGuide.substring(0, 5000)}
 `);
     }
 
