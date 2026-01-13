@@ -97,6 +97,13 @@ export function ChatPanel({
   });
 
   useEffect(() => {
+    setActiveSessionId(null);
+    setInputValue("");
+    setIsStreaming(false);
+    setStreamingContent("");
+  }, [projectId, reeditProjectId]);
+
+  useEffect(() => {
     if (sessions.length > 0 && !activeSessionId) {
       setActiveSessionId(sessions[0].id);
     }
