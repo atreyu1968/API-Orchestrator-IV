@@ -13,6 +13,11 @@ const ai = new GoogleGenAI({
 const ARCHITECT_SYSTEM_PROMPT = `
 Eres el Arquitecto de Tramas, un asistente experto en narrativa literaria que ayuda a los autores durante el proceso de creación de novelas.
 
+CAPACIDADES:
+- TIENES ACCESO DIRECTO AL MANUSCRITO: Los primeros capítulos ya están cargados en tu contexto. Puedes leerlos y analizarlos directamente.
+- Si necesitas ver capítulos adicionales, menciona el número específico y serán cargados automáticamente.
+- NO pidas al usuario que copie contenido - ya tienes acceso directo al manuscrito.
+
 Tu rol es responder preguntas y dar consejo sobre:
 - Estructura narrativa y arcos argumentales
 - Desarrollo de personajes y sus motivaciones
@@ -48,10 +53,11 @@ const REEDITOR_SYSTEM_PROMPT = `
 Eres el Re-editor, un asistente experto en corrección y mejora de manuscritos que ayuda a los autores a pulir sus textos.
 
 CAPACIDADES:
-- Tienes acceso al manuscrito completo y puedes ver el resumen de todos los capítulos
-- Puedes leer el contenido específico de cualquier capítulo cuando el autor lo solicite
-- Puedes proponer reescrituras y correcciones que el autor puede aprobar o rechazar
-- Si hay una Guía Extendida, debes usarla para asegurar que los capítulos cumplan con los requisitos de extensión
+- TIENES ACCESO DIRECTO AL MANUSCRITO: Los primeros capítulos ya están cargados en tu contexto. Puedes leerlos y analizarlos directamente.
+- Si necesitas ver capítulos adicionales que no están en el contexto, menciona el número específico y serán cargados automáticamente.
+- Puedes proponer reescrituras y correcciones que el autor puede aprobar o rechazar.
+- Si hay una Guía Extendida, debes usarla para asegurar que los capítulos cumplan con los requisitos de extensión.
+- NO pidas al usuario que copie contenido - ya tienes acceso directo al manuscrito.
 
 Tu rol es responder preguntas y dar consejo sobre:
 - Correcciones de estilo y fluidez
@@ -186,8 +192,10 @@ Contenido (primeras 2000 palabras):
 ${content?.substring(0, 10000) || 'Sin contenido disponible'}
 `);
       }
-    } else if (context.chapters && context.chapters.length > 0 && session.agentType === "reeditor") {
-      const chapterSummaries = context.chapters.map((ch: any) => {
+    } else if (context.chapters && context.chapters.length > 0) {
+      const sortedChapters = [...context.chapters].sort((a: any, b: any) => a.chapterNumber - b.chapterNumber);
+      
+      const chapterSummaries = sortedChapters.map((ch: any) => {
         const content = 'editedContent' in ch 
           ? (ch.editedContent || ch.originalContent)
           : ('content' in ch ? ch.content : '');
@@ -196,11 +204,34 @@ ${content?.substring(0, 10000) || 'Sin contenido disponible'}
       }).join('\n');
       
       parts.push(`
-MANUSCRITO COMPLETO - RESUMEN DE CAPÍTULOS:
+MANUSCRITO COMPLETO - ÍNDICE DE CAPÍTULOS:
 ${chapterSummaries}
-
-Nota: Puedes pedir el contenido específico de cualquier capítulo mencionando su número.
 `);
+
+      const MAX_CHAPTERS_IN_CONTEXT = 5;
+      const MAX_CHARS_PER_CHAPTER = 15000;
+      const chaptersToInclude = sortedChapters.slice(0, MAX_CHAPTERS_IN_CONTEXT);
+      
+      for (const ch of chaptersToInclude as any[]) {
+        const content = 'editedContent' in ch 
+          ? (ch.editedContent || ch.originalContent)
+          : ('content' in ch ? ch.content : '');
+        if (content) {
+          const truncatedContent = content.length > MAX_CHARS_PER_CHAPTER 
+            ? content.substring(0, MAX_CHARS_PER_CHAPTER) + '\n[... contenido truncado ...]'
+            : content;
+          parts.push(`
+--- CAPÍTULO ${ch.chapterNumber}: "${ch.title || 'Sin título'}" ---
+${truncatedContent}
+`);
+        }
+      }
+      
+      if (sortedChapters.length > MAX_CHAPTERS_IN_CONTEXT) {
+        parts.push(`
+[Nota: Se muestran los primeros ${MAX_CHAPTERS_IN_CONTEXT} capítulos. Hay ${sortedChapters.length - MAX_CHAPTERS_IN_CONTEXT} capítulos adicionales disponibles. Pide capítulos específicos por número si necesitas verlos.]
+`);
+      }
     }
 
     if (context.styleGuide) {
@@ -218,6 +249,35 @@ ${context.extendedGuide.substring(0, 5000)}
     }
 
     return parts.join('\n');
+  }
+
+  private extractRequestedChapters(message: string): number[] {
+    const chapterNumbers: number[] = [];
+    
+    const patterns = [
+      /cap[ií]tulo\s*(\d+)/gi,
+      /cap\.?\s*(\d+)/gi,
+      /chapter\s*(\d+)/gi,
+      /\bcap\s+(\d+)/gi,
+      /el\s+(\d+)/gi,
+      /prólogo/gi,
+      /epilogo|epílogo/gi,
+    ];
+    
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(message)) !== null) {
+        if (match[1]) {
+          chapterNumbers.push(parseInt(match[1], 10));
+        } else if (match[0].toLowerCase().includes('prólogo')) {
+          chapterNumbers.push(0);
+        } else if (match[0].toLowerCase().includes('pílogo')) {
+          chapterNumbers.push(-1);
+        }
+      }
+    }
+    
+    return Array.from(new Set(chapterNumbers));
   }
 
   async sendMessage(
@@ -238,7 +298,37 @@ ${context.extendedGuide.substring(0, 5000)}
     });
 
     const context = await this.buildContext(session);
-    const contextPrompt = this.buildContextPrompt(context, session);
+    
+    const requestedChapters = this.extractRequestedChapters(userMessage);
+    let additionalChaptersContext = "";
+    
+    if (requestedChapters.length > 0 && context.chapters) {
+      const sortedChapters = [...context.chapters].sort((a: any, b: any) => a.chapterNumber - b.chapterNumber);
+      const alreadyIncludedNums = sortedChapters.slice(0, 5).map((c: any) => c.chapterNumber);
+      
+      for (const chNum of requestedChapters) {
+        if (!alreadyIncludedNums.includes(chNum)) {
+          const chapter = sortedChapters.find((c: any) => c.chapterNumber === chNum);
+          if (chapter) {
+            const ch = chapter as any;
+            const content = 'editedContent' in ch 
+              ? (ch.editedContent || ch.originalContent)
+              : ('content' in ch ? ch.content : '');
+            if (content) {
+              const truncatedContent = content.length > 15000 
+                ? content.substring(0, 15000) + '\n[... contenido truncado ...]'
+                : content;
+              additionalChaptersContext += `
+--- CAPÍTULO ${ch.chapterNumber} (SOLICITADO): "${ch.title || 'Sin título'}" ---
+${truncatedContent}
+`;
+            }
+          }
+        }
+      }
+    }
+    
+    const contextPrompt = this.buildContextPrompt(context, session) + additionalChaptersContext;
     
     const systemPrompt = session.agentType === "architect" 
       ? ARCHITECT_SYSTEM_PROMPT 

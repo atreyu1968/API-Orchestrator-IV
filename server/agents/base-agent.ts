@@ -72,6 +72,27 @@ export function isProjectCancelled(projectId: number): boolean {
   return controller?.signal.aborted ?? false;
 }
 
+export async function isProjectCancelledFromDb(projectId: number): Promise<boolean> {
+  if (isProjectCancelled(projectId)) {
+    return true;
+  }
+  
+  try {
+    const project = await storage.getProject(projectId);
+    if (!project) return true;
+    
+    const cancelledStatuses = ["idle", "cancelled", "completed", "paused"];
+    if (cancelledStatuses.includes(project.status)) {
+      console.log(`[BaseAgent] Project ${projectId} cancelled via DB status: ${project.status}`);
+      return true;
+    }
+  } catch (error) {
+    console.error(`[BaseAgent] Error checking project status:`, error);
+  }
+  
+  return false;
+}
+
 export function clearProjectAbortController(projectId: number): void {
   activeAbortControllers.delete(projectId);
 }

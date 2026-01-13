@@ -8,6 +8,7 @@ import {
   ContinuitySentinelAgent,
   VoiceRhythmAuditorAgent,
   SemanticRepetitionDetectorAgent,
+  isProjectCancelledFromDb,
   type EditorResult, 
   type FinalReviewerResult,
   type ContinuitySentinelResult,
@@ -654,6 +655,17 @@ ${chapterSummaries || "Sin capítulos disponibles"}
         : baseStyleGuide;
 
       for (let i = 0; i < chapters.length; i++) {
+        if (await isProjectCancelledFromDb(project.id)) {
+          console.log(`[Orchestrator] Project ${project.id} cancelled before chapter ${i + 1}. Stopping.`);
+          await storage.createActivityLog({
+            projectId: project.id,
+            level: "info",
+            message: `Generación detenida por el usuario antes del capítulo ${i + 1}`,
+            agentRole: "orchestrator",
+          });
+          return;
+        }
+
         const chapter = chapters[i];
         const sectionData = allSections[i];
 
@@ -1897,6 +1909,17 @@ ${chapterSummaries || "Sin capítulos disponibles"}
       }
 
       for (let rewriteIndex = 0; rewriteIndex < chaptersToRewrite.length; rewriteIndex++) {
+        if (await isProjectCancelledFromDb(project.id)) {
+          console.log(`[Orchestrator] Project ${project.id} cancelled during revision. Stopping.`);
+          await storage.createActivityLog({
+            projectId: project.id,
+            level: "info",
+            message: `Revisión detenida por el usuario`,
+            agentRole: "orchestrator",
+          });
+          return false;
+        }
+
         const chapterNum = chaptersToRewrite[rewriteIndex];
         const chapter = updatedChapters.find(c => c.chapterNumber === chapterNum);
         const sectionData = allSections.find(s => s.numero === chapterNum);
