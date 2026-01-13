@@ -419,8 +419,26 @@ export class GhostwriterAgent extends BaseAgent {
     ${chapterData.arcos_que_avanza.map(a => `- ${a.arco}: de "${a.de}" a "${a.a}"`).join("\n")}
     ` : ""}
     
-    BEATS NARRATIVOS (SIGUE EN ORDEN):
-    ${chapterData.beats.map((beat, i) => `${i + 1}. ${beat}`).join("\n")}
+    BEATS NARRATIVOS (SIGUE EN ORDEN - DESARROLLA CADA UNO CON 300-500 PALABRAS):
+    ${chapterData.beats.map((beat: any, i: number) => {
+      // Handle both string and object beat formats
+      if (typeof beat === 'string') {
+        return `${i + 1}. ${beat}`;
+      } else {
+        // Object format with rich details
+        let beatText = `${beat.numero || i + 1}. [${beat.tipo?.toUpperCase() || 'BEAT'}] ${beat.descripcion || ''}`;
+        if (beat.personajes_activos?.length) beatText += `\n      Personajes: ${beat.personajes_activos.join(', ')}`;
+        if (beat.accion_principal) beatText += `\n      Acción: ${beat.accion_principal}`;
+        if (beat.elementos_sensoriales?.length) beatText += `\n      Elementos sensoriales a incluir: ${beat.elementos_sensoriales.join(', ')}`;
+        if (beat.dialogo_sugerido) beatText += `\n      Diálogo sugerido: ${beat.dialogo_sugerido}`;
+        if (beat.subtrama_tocada) beatText += `\n      Subtrama: ${beat.subtrama_tocada}`;
+        if (beat.monologo_interno) beatText += `\n      Monólogo interno: ${beat.monologo_interno}`;
+        if (beat.informacion_nueva) beatText += `\n      Información a revelar: ${beat.informacion_nueva}`;
+        if (beat.tipo_hook) beatText += `\n      Tipo de hook: ${beat.tipo_hook}`;
+        if (beat.pregunta_abierta) beatText += `\n      Pregunta para el lector: ${beat.pregunta_abierta}`;
+        return beatText;
+      }
+    }).join("\n\n")}
     
     ${chapterData.pregunta_dramatica ? `
     PREGUNTA DRAMÁTICA (debe quedar planteada al final):

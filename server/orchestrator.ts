@@ -748,6 +748,20 @@ ${chapterSummaries || "Sin capítulos disponibles"}
               this.callbacks.onAgentStatus("ghostwriter", "warning", 
                 `${sectionLabel} guardado con ${contentWordCount} palabras (objetivo: ${TARGET_MIN}). Requiere expansión.`
               );
+              
+              // Track token usage even for short chapters
+              await this.trackTokenUsage(project.id, writerResult.tokenUsage, "El Narrador", "gemini-3-pro-preview", sectionData.numero, "chapter_write_short");
+              
+              if (writerResult.thoughtSignature) {
+                await storage.createThoughtLog({
+                  projectId: project.id,
+                  chapterId: chapter.id,
+                  agentName: "El Narrador",
+                  agentRole: "ghostwriter",
+                  thoughtContent: writerResult.thoughtSignature,
+                });
+              }
+              
               // Mark chapter as needing expansion - will be handled specially
               await storage.updateChapter(chapter.id, {
                 content: currentContent,
@@ -756,6 +770,10 @@ ${chapterSummaries || "Sin capítulos disponibles"}
                 needsRevision: true,
                 revisionReason: `Capítulo corto: ${contentWordCount}/${TARGET_MIN} palabras después de ${refinementAttempts + 1} intentos`
               });
+              
+              // Emit chapter status change callback
+              this.callbacks.onChapterStatusChange(sectionData.numero, "needs_expansion");
+              
               continue; // Skip to next chapter without editor pass
             }
           }
@@ -1269,6 +1287,20 @@ ${chapterSummaries || "Sin capítulos disponibles"}
               this.callbacks.onAgentStatus("ghostwriter", "warning", 
                 `${sectionLabel} guardado con ${contentWordCount} palabras (objetivo: ${TARGET_MIN}). Requiere expansión.`
               );
+              
+              // Track token usage even for short chapters
+              await this.trackTokenUsage(project.id, writerResult.tokenUsage, "El Narrador", "gemini-3-pro-preview", sectionData.numero, "chapter_write_short");
+              
+              if (writerResult.thoughtSignature) {
+                await storage.createThoughtLog({
+                  projectId: project.id,
+                  chapterId: chapter.id,
+                  agentName: "El Narrador",
+                  agentRole: "ghostwriter",
+                  thoughtContent: writerResult.thoughtSignature,
+                });
+              }
+              
               // Mark chapter as needing expansion - will be handled specially
               await storage.updateChapter(chapter.id, {
                 content: currentContent,
@@ -1277,6 +1309,10 @@ ${chapterSummaries || "Sin capítulos disponibles"}
                 needsRevision: true,
                 revisionReason: `Capítulo corto: ${contentWordCount}/${TARGET_MIN} palabras después de ${refinementAttempts + 1} intentos`
               });
+              
+              // Emit chapter status change callback
+              this.callbacks.onChapterStatusChange(sectionData.numero, "needs_expansion");
+              
               continue; // Skip to next chapter without editor pass
             }
           }
