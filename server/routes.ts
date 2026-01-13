@@ -6215,24 +6215,84 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         const targetChapter = chapters.find(ch => ch.chapterNumber === capitulo);
         
         if (targetChapter) {
-          // For now, we append a note about the proposed change
-          // In a full implementation, we would apply the specific text replacement
           const currentContent = targetChapter.editedContent || targetChapter.originalContent || "";
           
+          // Helper function for flexible text matching
+          const findAndReplace = (content: string, original: string, replacement: string): string | null => {
+            // Try exact match first
+            if (content.includes(original)) {
+              return content.replace(original, replacement);
+            }
+            
+            // Try normalized whitespace match
+            const normalizeWs = (s: string) => s.replace(/\s+/g, ' ').trim();
+            const normalizedOriginal = normalizeWs(original);
+            const normalizedContent = normalizeWs(content);
+            
+            if (normalizedContent.includes(normalizedOriginal)) {
+              // Find approximate position and replace
+              const startIdx = normalizedContent.indexOf(normalizedOriginal);
+              const beforeNormalized = normalizedContent.substring(0, startIdx);
+              // Count actual characters by matching word boundaries
+              const words = beforeNormalized.split(' ').filter(w => w.length > 0);
+              const searchStart = content.split(/\s+/).slice(0, words.length).join(' ').length;
+              
+              // Find the actual text span in original content
+              const originalWords = original.split(/\s+/).filter(w => w.length > 0);
+              let pos = 0;
+              let matchStart = -1;
+              let matchEnd = -1;
+              
+              for (let i = 0; i < originalWords.length; i++) {
+                const wordIdx = content.indexOf(originalWords[i], pos);
+                if (wordIdx === -1) break;
+                if (i === 0) matchStart = wordIdx;
+                matchEnd = wordIdx + originalWords[i].length;
+                pos = matchEnd;
+              }
+              
+              if (matchStart >= 0 && matchEnd > matchStart) {
+                // Extend to include surrounding whitespace
+                while (matchStart > 0 && /\s/.test(content[matchStart - 1])) matchStart--;
+                while (matchEnd < content.length && /\s/.test(content[matchEnd])) matchEnd++;
+                
+                return content.substring(0, matchStart) + replacement + content.substring(matchEnd);
+              }
+            }
+            
+            // Try first 50 chars as anchor
+            const anchor = original.substring(0, 50).trim();
+            if (anchor.length > 20 && content.includes(anchor)) {
+              const anchorIdx = content.indexOf(anchor);
+              // Find the end of the paragraph/section
+              const endMarkers = ['\n\n', '\n---', '.\n'];
+              let endIdx = content.length;
+              for (const marker of endMarkers) {
+                const markerIdx = content.indexOf(marker, anchorIdx + anchor.length);
+                if (markerIdx !== -1 && markerIdx < endIdx) {
+                  endIdx = markerIdx + (marker === '.\n' ? 1 : 0);
+                }
+              }
+              return content.substring(0, anchorIdx) + replacement + content.substring(endIdx);
+            }
+            
+            return null;
+          };
+          
           // If there's original text to find and replace
-          if (proposal.texto_original) {
-            const newContent = currentContent.replace(proposal.texto_original, textoNuevo);
-            if (newContent !== currentContent) {
+          if (proposal.texto_original && proposal.texto_original.trim().length > 10) {
+            const newContent = findAndReplace(currentContent, proposal.texto_original, textoNuevo);
+            if (newContent && newContent !== currentContent) {
               await storage.updateReeditChapter(targetChapter.id, { editedContent: newContent });
               result = { applied: true, message: `Cambio aplicado al capítulo ${capitulo}` };
             } else {
-              result = { applied: false, message: "No se encontró el texto original en el capítulo" };
+              result = { applied: false, message: "No se pudo encontrar el texto original en el capítulo. El texto puede haber sido modificado." };
             }
           } else {
-            // No specific original text, create a note
+            // No specific original text - append the proposed text as a replacement note or apply directly
             result = { 
               applied: false, 
-              message: "Propuesta guardada. Necesitas revisar y aplicar manualmente el cambio propuesto.",
+              message: "La propuesta no incluye texto original para reemplazar. Usa copiar/pegar para aplicar manualmente.",
               proposedContent: textoNuevo
             };
           }
@@ -6248,18 +6308,63 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         if (targetChapter) {
           const currentContent = targetChapter.content || "";
           
-          if (proposal.texto_original) {
-            const newContent = currentContent.replace(proposal.texto_original, textoNuevo);
-            if (newContent !== currentContent) {
+          // Helper function for flexible text matching (same as reedit)
+          const findAndReplace = (content: string, original: string, replacement: string): string | null => {
+            if (content.includes(original)) {
+              return content.replace(original, replacement);
+            }
+            const normalizeWs = (s: string) => s.replace(/\s+/g, ' ').trim();
+            const normalizedOriginal = normalizeWs(original);
+            const normalizedContent = normalizeWs(content);
+            
+            if (normalizedContent.includes(normalizedOriginal)) {
+              const originalWords = original.split(/\s+/).filter(w => w.length > 0);
+              let pos = 0;
+              let matchStart = -1;
+              let matchEnd = -1;
+              
+              for (let i = 0; i < originalWords.length; i++) {
+                const wordIdx = content.indexOf(originalWords[i], pos);
+                if (wordIdx === -1) break;
+                if (i === 0) matchStart = wordIdx;
+                matchEnd = wordIdx + originalWords[i].length;
+                pos = matchEnd;
+              }
+              
+              if (matchStart >= 0 && matchEnd > matchStart) {
+                return content.substring(0, matchStart) + replacement + content.substring(matchEnd);
+              }
+            }
+            
+            const anchor = original.substring(0, 50).trim();
+            if (anchor.length > 20 && content.includes(anchor)) {
+              const anchorIdx = content.indexOf(anchor);
+              const endMarkers = ['\n\n', '\n---', '.\n'];
+              let endIdx = content.length;
+              for (const marker of endMarkers) {
+                const markerIdx = content.indexOf(marker, anchorIdx + anchor.length);
+                if (markerIdx !== -1 && markerIdx < endIdx) {
+                  endIdx = markerIdx + (marker === '.\n' ? 1 : 0);
+                }
+              }
+              return content.substring(0, anchorIdx) + replacement + content.substring(endIdx);
+            }
+            
+            return null;
+          };
+          
+          if (proposal.texto_original && proposal.texto_original.trim().length > 10) {
+            const newContent = findAndReplace(currentContent, proposal.texto_original, textoNuevo);
+            if (newContent && newContent !== currentContent) {
               await storage.updateChapter(targetChapter.id, { content: newContent });
               result = { applied: true, message: `Cambio aplicado al capítulo ${capitulo}` };
             } else {
-              result = { applied: false, message: "No se encontró el texto original en el capítulo" };
+              result = { applied: false, message: "No se pudo encontrar el texto original en el capítulo. El texto puede haber sido modificado." };
             }
           } else {
             result = { 
               applied: false, 
-              message: "Propuesta guardada. Necesitas revisar y aplicar manualmente el cambio propuesto.",
+              message: "La propuesta no incluye texto original para reemplazar. Usa copiar/pegar para aplicar manualmente.",
               proposedContent: textoNuevo
             };
           }

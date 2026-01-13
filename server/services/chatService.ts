@@ -70,11 +70,28 @@ Tu rol es responder preguntas y dar consejo sobre:
 - Repeticiones léxicas o estructurales
 - Expansión de capítulos cortos para cumplir objetivos de palabras
 
+INSTRUCCIÓN CRÍTICA - GUÍA DE ESTILO:
+═══════════════════════════════════════════════════════════════════
+Si hay una "GUÍA DE ESTILO DEL AUTOR" en el contexto, DEBES aplicarla estrictamente.
+Esta guía contiene las preferencias del autor sobre:
+- Vocabulario específico a usar o evitar
+- Términos prohibidos para el período histórico
+- Estilo de diálogo y narración
+- Registro lingüístico (formal/coloquial)
+- Expresiones características de la época
+
+ANTES de proponer cualquier texto, verifica que:
+1. No uses términos modernos prohibidos en la guía
+2. Respetas el vocabulario autorizado de época
+3. Mantienes el tono y registro indicado
+4. Sigues las instrucciones específicas del autor
+═══════════════════════════════════════════════════════════════════
+
 IMPORTANTE:
 - Responde siempre en español
 - Cuando el autor señale un problema, proporciona soluciones concretas
 - Analiza el contexto antes de proponer cambios
-- Ten en cuenta la voz y estilo del autor
+- Ten en cuenta la voz y estilo del autor (lee la GUÍA DE ESTILO)
 - Sé específico: indica números de capítulo, nombres de personajes, etc.
 - Si hay un objetivo mínimo de palabras por capítulo, verifica que se cumpla y sugiere expansiones si es necesario
 
@@ -85,9 +102,14 @@ Después de tu explicación, incluye las propuestas de cambio en este formato ex
 tipo: [chapter|dialogue|description|style|expansion]
 capitulo: [número del capítulo afectado]
 descripcion: [descripción breve del cambio]
-texto_original: [el texto que se va a reemplazar, si aplica - puede ser vacío para expansiones]
-texto_propuesto: [el nuevo texto propuesto o el texto expandido completo]
+texto_original: [el texto EXACTO que se va a reemplazar - copia literalmente del manuscrito incluyendo puntuación y espacios]
+texto_propuesto: [el nuevo texto propuesto - DEBE seguir la GUÍA DE ESTILO]
 ---FIN_PROPUESTA---
+
+CRÍTICO PARA texto_original:
+- Copia el texto EXACTAMENTE como aparece en el manuscrito
+- Incluye suficiente contexto (al menos 50 caracteres) para encontrarlo
+- Preserva puntuación, espacios y saltos de línea originales
 
 Puedes incluir múltiples propuestas si la corrección afecta a varias partes.
 Solo usa este formato cuando el autor pida explícitamente una corrección que se pueda aplicar al manuscrito.
@@ -236,15 +258,23 @@ ${truncatedContent}
 
     if (context.styleGuide) {
       parts.push(`
-GUÍA DE ESTILO DEL AUTOR:
-${context.styleGuide.substring(0, 3000)}
+═══════════════════════════════════════════════════════════════════
+GUÍA DE ESTILO DEL AUTOR (OBLIGATORIA):
+═══════════════════════════════════════════════════════════════════
+${context.styleGuide.substring(0, 8000)}
+═══════════════════════════════════════════════════════════════════
+⚠️ TODO el texto que propongas DEBE seguir estrictamente esta guía.
+═══════════════════════════════════════════════════════════════════
 `);
     }
 
     if (context.extendedGuide) {
       parts.push(`
+═══════════════════════════════════════════════════════════════════
 GUÍA EXTENDIDA (EXTENSIÓN DE PALABRAS):
-${context.extendedGuide.substring(0, 5000)}
+═══════════════════════════════════════════════════════════════════
+${context.extendedGuide.substring(0, 8000)}
+═══════════════════════════════════════════════════════════════════
 `);
     }
 
