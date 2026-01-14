@@ -86,30 +86,35 @@ C. SUBTEXTO Y PSICOLOGÍA:
    - ¿Los personajes dicen exactamente lo que sienten? Eso es artificial.
    - Detecta falta de contradicción interna, dudas o detalles irrelevantes bajo estrés.
 
-D. ELIMINACIÓN DE CLICHÉS DE IA (CRÍTICO - Penaliza -2 puntos):
-   - Palabras PROHIBIDAS: "crucial", "enigmático", "fascinante", "un torbellino de emociones", "el destino de...", "desenterrar secretos", "repentinamente", "de repente", "sintió una oleada de", "palpable", "tangible".
-   - Si detectas estas palabras, documéntalas como violaciones graves.
+D. ELIMINACIÓN DE CLICHÉS DE IA:
+   - Palabras que indican escritura artificial: "crucial", "enigmático", "fascinante", "un torbellino de emociones", "el destino de...", "desenterrar secretos", "repentinamente", "de repente", "sintió una oleada de", "palpable", "tangible".
+   - Si detectas 1-2 de estas palabras: nota menor, NO penaliza puntuación
+   - Si detectas 3-5: penaliza -1 punto total
+   - Si detectas más de 5: penaliza -2 puntos total (el texto suena muy artificial)
 
 E. SHOW, DON'T TELL:
    - ¿La narración filtra eventos a través de la percepción subjetiva del personaje?
    - Detecta narraciones "asépticas" o de "crónica externa".
 
 ═══════════════════════════════════════════════════════════════════
-DETECCIÓN DE ANACRONISMOS (CRÍTICO - Penaliza -3 puntos por fallo)
+DETECCIÓN DE ANACRONISMOS (Solo para ficción histórica)
 ═══════════════════════════════════════════════════════════════════
 
 Para ficción histórica, detecta:
 - OBJETOS: Tecnología, armas, herramientas que no existían en la época
-- VOCABULARIO: Expresiones modernas usadas en contextos históricos ("OK", "estrés", "ADN" en siglo XIX)
-- COSTUMBRES: Comportamientos sociales anacrónicos (tuteo donde debería haber voseo, roles de género modernos en épocas restrictivas)
+- VOCABULARIO: Expresiones claramente modernas ("OK", "estrés", "ADN" en siglo XIX)
+- COSTUMBRES: Comportamientos sociales muy anacrónicos
 - CONOCIMIENTOS: Personajes que saben cosas no descubiertas en su época
-- REFERENCIAS: Alusiones a eventos posteriores a la época narrada
 
-Ejemplos de anacronismos a detectar:
+Penalización de anacronismos:
+- 1-2 anacronismos menores (vocabulario): nota menor, NO penaliza
+- 1 anacronismo grave (objeto/tecnología imposible): -1 punto
+- Múltiples anacronismos graves: -2 puntos máximo
+
+Ejemplos de anacronismos GRAVES a detectar:
 - Un romano usando un reloj de bolsillo
-- Un personaje medieval hablando de "psicología"
 - Un soldado napoleónico usando antibióticos
-- Expresiones como "impactante", "genial", "flipar" en novela histórica
+- Tecnología claramente fuera de época
 
 ═══════════════════════════════════════════════════════════════════
 PROTOCOLO DE EVALUACIÓN INTEGRADO
@@ -127,30 +132,33 @@ PROTOCOLO DE EVALUACIÓN INTEGRADO
    - ¿El giro_emocional (emocion_inicio → emocion_final) se logra?
    - ¿Los arcos narrativos avanzan según lo planificado?
 
-3. CONTINUIDAD FÍSICA (Penaliza -2 puntos por fallo):
-   - Compara CADA descripción física con la ficha canónica en World Bible.
-   - Documenta: "La ficha dice X, el texto dice Y".
+3. CONTINUIDAD FÍSICA:
+   - Compara descripciones físicas importantes con la ficha canónica en World Bible.
+   - Errores menores (ropa, detalles): nota sin penalización
+   - Errores graves (color de ojos, edad, rasgos distintivos): -1 punto
 
-3b. CONTINUIDAD CON CAPÍTULO ANTERIOR (CRÍTICO - Penaliza -3 puntos):
+3b. CONTINUIDAD CON CAPÍTULO ANTERIOR:
    Si se proporciona el ESTADO DE CONTINUIDAD del capítulo anterior, verifica:
-   - ¿Los personajes aparecen en ubicaciones COHERENTES con donde terminaron?
-   - ¿Los personajes que estaban muertos/heridos/inconscientes siguen así?
-   - ¿Los objetos que poseían siguen en su poder?
-   - ¿El tiempo narrativo es continuo?
+   - ¿Los personajes aparecen en ubicaciones coherentes?
+   - ¿Los estados de personajes (vivo/muerto/herido) son consistentes?
+   - Error de continuidad grave: -1 punto (máximo -2 por múltiples errores)
 
-4. REPETICIÓN LÉXICA (Penaliza -1 punto por cada exceso):
-   - Busca frases/metáforas que se repitan más de una vez EN ESTE CAPÍTULO.
-   - Las emociones deben mostrarse de formas VARIADAS.
+4. REPETICIÓN LÉXICA:
+   - Busca frases/metáforas repetidas EN ESTE CAPÍTULO.
+   - 2-3 repeticiones: nota sin penalización
+   - 4-6 repeticiones: -1 punto
+   - Más de 6 repeticiones: -2 puntos máximo
 
 5. RITMO Y PACING:
    - ¿Los eventos dramáticos tienen suficiente SETUP emocional?
    - ¿Las transiciones son fluidas?
 
-6. VEROSIMILITUD NARRATIVA (CRÍTICO - Penaliza -3 puntos por fallo):
+6. VEROSIMILITUD NARRATIVA:
    - ¿Hay DEUS EX MACHINA? (soluciones sin preparación previa)
-   - ¿Hay coincidencias inverosímiles?
-   - ¿Los rescates están SEMBRADOS?
-   - ¿Las soluciones son GANADAS por el protagonista?
+   - ¿Hay coincidencias muy forzadas?
+   - ¿Los rescates están mínimamente sembrados?
+   - Penalización: -1 punto por deus ex machina evidente (máximo -2)
+   - Coincidencias menores o rescates parcialmente sembrados: nota sin penalizar
 
 INSTRUCCIONES DE REESCRITURA PRECISAS:
 Cuando rechaces un capítulo, tu plan_quirurgico debe incluir:
