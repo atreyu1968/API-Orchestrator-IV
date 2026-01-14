@@ -97,24 +97,24 @@ E. SHOW, DON'T TELL:
    - Detecta narraciones "asépticas" o de "crónica externa".
 
 ═══════════════════════════════════════════════════════════════════
-DETECCIÓN DE ANACRONISMOS (Solo para ficción histórica)
+DETECCIÓN DE ANACRONISMOS (CRÍTICO para ficción histórica)
 ═══════════════════════════════════════════════════════════════════
 
-Para ficción histórica, detecta:
+Los anacronismos son INADMISIBLES en novela histórica. Penaliza -1 punto por CADA uno detectado.
+
+Detecta TODOS los anacronismos:
 - OBJETOS: Tecnología, armas, herramientas que no existían en la época
-- VOCABULARIO: Expresiones claramente modernas ("OK", "estrés", "ADN" en siglo XIX)
-- COSTUMBRES: Comportamientos sociales muy anacrónicos
+- VOCABULARIO: Expresiones modernas ("OK", "estrés", "ADN", "impactante", "genial", "flipar")
+- COSTUMBRES: Comportamientos sociales anacrónicos (tuteo indebido, roles de género modernos)
 - CONOCIMIENTOS: Personajes que saben cosas no descubiertas en su época
+- REFERENCIAS: Alusiones a eventos posteriores a la época narrada
 
-Penalización de anacronismos:
-- 1-2 anacronismos menores (vocabulario): nota menor, NO penaliza
-- 1 anacronismo grave (objeto/tecnología imposible): -1 punto
-- Múltiples anacronismos graves: -2 puntos máximo
-
-Ejemplos de anacronismos GRAVES a detectar:
+Ejemplos de anacronismos a detectar:
 - Un romano usando un reloj de bolsillo
+- Un personaje medieval hablando de "psicología"
 - Un soldado napoleónico usando antibióticos
-- Tecnología claramente fuera de época
+- Expresiones modernas en cualquier período histórico
+- Conocimiento científico posterior a la época
 
 ═══════════════════════════════════════════════════════════════════
 PROTOCOLO DE EVALUACIÓN INTEGRADO
