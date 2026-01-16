@@ -58,6 +58,7 @@ CAPACIDADES:
 - Puedes proponer reescrituras y correcciones que el autor puede aprobar o rechazar.
 - Si hay una Guía Extendida, debes usarla para asegurar que los capítulos cumplan con los requisitos de extensión.
 - NO pidas al usuario que copie contenido - ya tienes acceso directo al manuscrito.
+- NUEVO: Puedes aplicar diagnósticos editoriales completos para reestructurar el manuscrito.
 
 Tu rol es responder preguntas y dar consejo sobre:
 - Correcciones de estilo y fluidez
@@ -69,6 +70,25 @@ Tu rol es responder preguntas y dar consejo sobre:
 - Errores históricos o de ambientación
 - Repeticiones léxicas o estructurales
 - Expansión de capítulos cortos para cumplir objetivos de palabras
+- Condensación y reestructuración de manuscritos
+
+═══════════════════════════════════════════════════════════════════
+COMANDO ESPECIAL: DIAGNÓSTICO EDITORIAL
+═══════════════════════════════════════════════════════════════════
+Si el usuario escribe "aplicar diagnóstico editorial" seguido de instrucciones detalladas,
+el sistema activará el modo de reestructuración automática que:
+1. Analizará las instrucciones capítulo por capítulo
+2. Aplicará recortes según los porcentajes indicados
+3. Preservará lo marcado como obligatorio
+4. Añadirá ganchos, transiciones y contenido nuevo
+5. Presentará cada capítulo modificado para aprobación
+
+Ejemplo de uso:
+"Aplicar diagnóstico editorial:
+- Prólogo: recortar 20%, mantener la frase del título, añadir gancho final
+- Capítulos 1-3: recortar 15% de introspección, añadir fricción antes del cap 4
+- No tocar: escenas de clímax romántico"
+═══════════════════════════════════════════════════════════════════
 
 INSTRUCCIÓN CRÍTICA - GUÍA DE ESTILO:
 ═══════════════════════════════════════════════════════════════════
@@ -310,6 +330,152 @@ ${context.extendedGuide.substring(0, 8000)}
     return Array.from(new Set(chapterNumbers));
   }
 
+  private isEditorialDiagnosisCommand(message: string): boolean {
+    const triggers = [
+      /aplicar\s+diagn[óo]stico\s+editorial/i,
+      /ejecutar\s+diagn[óo]stico/i,
+      /reestructurar\s+seg[úu]n/i,
+      /aplicar\s+plan\s+editorial/i,
+    ];
+    return triggers.some(pattern => pattern.test(message));
+  }
+
+  private async handleEditorialDiagnosis(
+    session: ChatSession,
+    userMessage: string,
+    context: ChatContext,
+    onProgress?: (chunk: string) => void
+  ): Promise<string> {
+    const { RestructurerAgent } = await import("../agents/restructurer");
+    const restructurer = new RestructurerAgent();
+    
+    const chapters = context.chapters || [];
+    if (chapters.length === 0) {
+      return "No hay capítulos en el manuscrito para reestructurar.";
+    }
+
+    const sortedChapters = [...chapters].sort((a: any, b: any) => a.chapterNumber - b.chapterNumber);
+    const diagnosis = userMessage.replace(/aplicar\s+diagn[óo]stico\s+editorial:?\s*/i, '').trim();
+    
+    let fullResponse = `## Iniciando reestructuración editorial\n\n`;
+    fullResponse += `📋 **Diagnóstico recibido:**\n\`\`\`\n${diagnosis.substring(0, 500)}${diagnosis.length > 500 ? '...' : ''}\n\`\`\`\n\n`;
+    fullResponse += `📚 **Capítulos a procesar:** ${sortedChapters.length}\n\n`;
+    
+    if (onProgress) {
+      onProgress(fullResponse);
+    }
+
+    const results: Array<{
+      chapterNumber: number;
+      title: string;
+      originalWords: number;
+      finalWords: number;
+      changes: any;
+      newContent: string;
+    }> = [];
+
+    for (const chapter of sortedChapters) {
+      const ch = chapter as any;
+      const chapterContent = 'editedContent' in ch 
+        ? (ch.editedContent || ch.originalContent || '')
+        : ('content' in ch ? ch.content : '');
+      
+      if (!chapterContent) continue;
+
+      const chapterTitle = ch.title || `Capítulo ${ch.chapterNumber}`;
+      
+      const progressMsg = `\n### Procesando: ${chapterTitle}\n`;
+      fullResponse += progressMsg;
+      if (onProgress) {
+        onProgress(progressMsg);
+      }
+
+      try {
+        const worldBible = context.worldBible ? 
+          (typeof context.worldBible === 'object' ? context.worldBible : null) : null;
+        
+        const result = await restructurer.execute({
+          chapterNumber: ch.chapterNumber,
+          chapterTitle,
+          chapterContent,
+          editorialDiagnosis: diagnosis,
+          chapterInstructions: "",
+          worldBible,
+          guiaEstilo: context.styleGuide,
+        });
+
+        if (result.result) {
+          const r = result.result;
+          results.push({
+            chapterNumber: ch.chapterNumber,
+            title: chapterTitle,
+            originalWords: r.palabras_originales,
+            finalWords: r.palabras_finales,
+            changes: r.cambios_realizados,
+            newContent: r.texto_reestructurado,
+          });
+
+          const chapterResult = `
+✅ **${chapterTitle}**
+- Palabras originales: ${r.palabras_originales}
+- Palabras finales: ${r.palabras_finales}
+- Reducción: ${r.porcentaje_reduccion}%
+- Recortes: ${r.cambios_realizados.recortes?.length || 0}
+- Adiciones: ${r.cambios_realizados.adiciones?.length || 0}
+
+---PROPUESTA---
+tipo: restructure
+capitulo: ${ch.chapterNumber}
+descripcion: Reestructuración según diagnóstico editorial
+texto_original: [Capítulo completo - ${r.palabras_originales} palabras]
+texto_propuesto: ${r.texto_reestructurado}
+---FIN_PROPUESTA---
+
+`;
+          fullResponse += chapterResult;
+          if (onProgress) {
+            onProgress(chapterResult);
+          }
+        } else {
+          const errorMsg = `⚠️ No se pudo procesar ${chapterTitle}\n`;
+          fullResponse += errorMsg;
+          if (onProgress) {
+            onProgress(errorMsg);
+          }
+        }
+      } catch (error: any) {
+        const errorMsg = `❌ Error en ${chapterTitle}: ${error.message}\n`;
+        fullResponse += errorMsg;
+        if (onProgress) {
+          onProgress(errorMsg);
+        }
+      }
+    }
+
+    const totalOriginal = results.reduce((sum, r) => sum + r.originalWords, 0);
+    const totalFinal = results.reduce((sum, r) => sum + r.finalWords, 0);
+    const totalReduction = totalOriginal > 0 ? Math.round((1 - totalFinal / totalOriginal) * 100) : 0;
+
+    const summary = `
+## Resumen de reestructuración
+
+| Métrica | Valor |
+|---------|-------|
+| Capítulos procesados | ${results.length} |
+| Palabras originales | ${totalOriginal.toLocaleString()} |
+| Palabras finales | ${totalFinal.toLocaleString()} |
+| Reducción total | ${totalReduction}% |
+
+Revisa cada propuesta y usa el botón **Aplicar** para confirmar los cambios que desees.
+`;
+    fullResponse += summary;
+    if (onProgress) {
+      onProgress(summary);
+    }
+
+    return fullResponse;
+  }
+
   async sendMessage(
     sessionId: number,
     userMessage: string,
@@ -328,6 +494,20 @@ ${context.extendedGuide.substring(0, 8000)}
     });
 
     const context = await this.buildContext(session);
+
+    // Check for editorial diagnosis command
+    if (session.agentType === "reeditor" && this.isEditorialDiagnosisCommand(userMessage)) {
+      const diagnosisResponse = await this.handleEditorialDiagnosis(session, userMessage, context, onProgress);
+      
+      const assistantMsg = await storage.createChatMessage({
+        sessionId,
+        role: "assistant",
+        content: diagnosisResponse,
+        chapterReference: session.chapterNumber,
+      });
+
+      return { message: assistantMsg, inputTokens: 0, outputTokens: 0 };
+    }
     
     const requestedChapters = this.extractRequestedChapters(userMessage);
     let additionalChaptersContext = "";

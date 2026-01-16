@@ -6217,8 +6217,13 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         if (targetChapter) {
           const currentContent = targetChapter.editedContent || targetChapter.originalContent || "";
           
-          // Helper function for flexible text matching
-          const findAndReplace = (content: string, original: string, replacement: string): string | null => {
+          // Handle restructure type - replaces entire chapter content
+          if (tipo === "restructure") {
+            await storage.updateReeditChapter(targetChapter.id, { editedContent: textoNuevo });
+            result = { applied: true, message: `Capítulo ${capitulo} reestructurado completamente` };
+          } else {
+            // Helper function for flexible text matching
+            const findAndReplace = (content: string, original: string, replacement: string): string | null => {
             // Try exact match first
             if (content.includes(original)) {
               return content.replace(original, replacement);
@@ -6279,22 +6284,23 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
             return null;
           };
           
-          // If there's original text to find and replace
-          if (proposal.texto_original && proposal.texto_original.trim().length > 10) {
-            const newContent = findAndReplace(currentContent, proposal.texto_original, textoNuevo);
-            if (newContent && newContent !== currentContent) {
-              await storage.updateReeditChapter(targetChapter.id, { editedContent: newContent });
-              result = { applied: true, message: `Cambio aplicado al capítulo ${capitulo}` };
+            // If there's original text to find and replace
+            if (proposal.texto_original && proposal.texto_original.trim().length > 10) {
+              const newContent = findAndReplace(currentContent, proposal.texto_original, textoNuevo);
+              if (newContent && newContent !== currentContent) {
+                await storage.updateReeditChapter(targetChapter.id, { editedContent: newContent });
+                result = { applied: true, message: `Cambio aplicado al capítulo ${capitulo}` };
+              } else {
+                result = { applied: false, message: "No se pudo encontrar el texto original en el capítulo. El texto puede haber sido modificado." };
+              }
             } else {
-              result = { applied: false, message: "No se pudo encontrar el texto original en el capítulo. El texto puede haber sido modificado." };
+              // No specific original text - append the proposed text as a replacement note or apply directly
+              result = { 
+                applied: false, 
+                message: "La propuesta no incluye texto original para reemplazar. Usa copiar/pegar para aplicar manualmente.",
+                proposedContent: textoNuevo
+              };
             }
-          } else {
-            // No specific original text - append the proposed text as a replacement note or apply directly
-            result = { 
-              applied: false, 
-              message: "La propuesta no incluye texto original para reemplazar. Usa copiar/pegar para aplicar manualmente.",
-              proposedContent: textoNuevo
-            };
           }
         } else {
           result = { applied: false, message: `Capítulo ${capitulo} no encontrado` };
