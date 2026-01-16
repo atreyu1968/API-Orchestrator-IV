@@ -13,6 +13,17 @@ import {
   type FinalReviewIssue 
 } from "../agents/final-reviewer";
 
+function getChapterSortOrder(chapterNumber: number): number {
+  if (chapterNumber === 0) return -1000;
+  if (chapterNumber === -1 || chapterNumber === 998) return 1000;
+  if (chapterNumber === -2 || chapterNumber === 999) return 1001;
+  return chapterNumber;
+}
+
+function sortChaptersByNarrativeOrder<T extends { chapterNumber: number }>(chapters: T[]): T[] {
+  return [...chapters].sort((a, b) => getChapterSortOrder(a.chapterNumber) - getChapterSortOrder(b.chapterNumber));
+}
+
 interface StructureAnalysis {
   hasIssues: boolean;
   duplicateChapters: Array<{ chapterId: number; duplicateOf: number; similarity: number }>;
@@ -1455,7 +1466,7 @@ export class ReeditOrchestrator {
     chapters: ReeditChapter[],
     currentChapterNumber: number
   ): { previousChapter?: string; nextChapter?: string; previousSummary?: string; nextSummary?: string } {
-    const sortedChapters = [...chapters].sort((a, b) => a.chapterNumber - b.chapterNumber);
+    const sortedChapters = [...chapters].sort((a, b) => getChapterSortOrder(a.chapterNumber) - getChapterSortOrder(b.chapterNumber));
     const currentIndex = sortedChapters.findIndex(c => c.chapterNumber === currentChapterNumber);
     
     const context: { previousChapter?: string; nextChapter?: string; previousSummary?: string; nextSummary?: string } = {};
@@ -1871,7 +1882,7 @@ export class ReeditOrchestrator {
     console.log(`[ReeditOrchestrator] Reordering ${reordenamientos.length} chapters based on Architect analysis:`);
     
     // Sort chapters by current number
-    let sortedChapters = [...chapters].sort((a, b) => a.chapterNumber - b.chapterNumber);
+    let sortedChapters = [...chapters].sort((a, b) => getChapterSortOrder(a.chapterNumber) - getChapterSortOrder(b.chapterNumber));
     
     // Apply each reordering
     for (const reorder of reordenamientos) {
@@ -2388,7 +2399,7 @@ export class ReeditOrchestrator {
       let validChapters = chapters.filter(c => {
         const isDup = structureAnalysis.duplicateChapters?.some((d: any) => d.chapterId === c.id);
         return !isDup;
-      }).sort((a, b) => a.chapterNumber - b.chapterNumber);
+      }).sort((a, b) => getChapterSortOrder(a.chapterNumber) - getChapterSortOrder(b.chapterNumber));
 
       const detectedLang = project.detectedLanguage || "es";
       const chapterSummaries: string[] = [];
@@ -2653,7 +2664,7 @@ export class ReeditOrchestrator {
         );
 
         // Rebuild chapter arrays after reordering
-        validChapters = validChapters.sort((a, b) => a.chapterNumber - b.chapterNumber);
+        validChapters = validChapters.sort((a, b) => getChapterSortOrder(a.chapterNumber) - getChapterSortOrder(b.chapterNumber));
         console.log(`[ReeditOrchestrator] Chapters reordered. New order: ${validChapters.map(c => c.chapterNumber).join(', ')}`);
         
         await this.updateHeartbeat(projectId);
@@ -3139,7 +3150,7 @@ export class ReeditOrchestrator {
         const updatedChapters = await storage.getReeditChaptersByProject(projectId);
         const completedChapters = updatedChapters
           .filter(c => c.editedContent)
-          .sort((a, b) => a.chapterNumber - b.chapterNumber);
+          .sort((a, b) => getChapterSortOrder(a.chapterNumber) - getChapterSortOrder(b.chapterNumber));
 
         // Build chapters array with full content for FinalReviewer
         const chaptersForReview = completedChapters.map(c => ({
@@ -3497,7 +3508,7 @@ export class ReeditOrchestrator {
     });
 
     const chapters = await storage.getReeditChaptersByProject(projectId);
-    let validChapters = chapters.filter(c => c.editedContent).sort((a, b) => a.chapterNumber - b.chapterNumber);
+    let validChapters = chapters.filter(c => c.editedContent).sort((a, b) => getChapterSortOrder(a.chapterNumber) - getChapterSortOrder(b.chapterNumber));
 
     // Get World Bible and style guide for full final review
     const worldBibleForReview = await storage.getReeditWorldBibleByProject(projectId);
@@ -3885,7 +3896,7 @@ export class ReeditOrchestrator {
 
         // Refresh validChapters for next review
         const refreshedChapters = await storage.getReeditChaptersByProject(projectId);
-        validChapters = refreshedChapters.filter(ch => ch.editedContent).sort((a, b) => a.chapterNumber - b.chapterNumber);
+        validChapters = refreshedChapters.filter(ch => ch.editedContent).sort((a, b) => getChapterSortOrder(a.chapterNumber) - getChapterSortOrder(b.chapterNumber));
       }
 
       revisionCycle++;

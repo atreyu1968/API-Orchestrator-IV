@@ -5582,7 +5582,8 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         return res.status(400).json({ error: "No chapters to export" });
       }
 
-      const sortedChapters = [...chapters].sort((a, b) => a.chapterNumber - b.chapterNumber);
+      const getReeditChapterSortOrder = (n: number) => n === 0 ? -1000 : n === -1 || n === 998 ? 1000 : n === -2 || n === 999 ? 1001 : n;
+      const sortedChapters = [...chapters].sort((a, b) => getReeditChapterSortOrder(a.chapterNumber) - getReeditChapterSortOrder(b.chapterNumber));
       
       // Localized chapter labels based on detected language
       const exportLabels: Record<string, { prologue: string; epilogue: string; authorNote: string; chapter: string }> = {
@@ -5612,9 +5613,9 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         let chapterTitle = chapter.title || `${labels.chapter} ${chapter.chapterNumber}`;
         if (chapter.chapterNumber === 0) {
           chapterTitle = chapter.title || labels.prologue;
-        } else if (chapter.chapterNumber === 998) {
+        } else if (chapter.chapterNumber === -1 || chapter.chapterNumber === 998) {
           chapterTitle = chapter.title || labels.epilogue;
-        } else if (chapter.chapterNumber === 999) {
+        } else if (chapter.chapterNumber === -2 || chapter.chapterNumber === 999) {
           chapterTitle = chapter.title || labels.authorNote;
         }
 
@@ -5653,7 +5654,8 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         return res.status(400).json({ error: "No chapters to export" });
       }
 
-      const sortedChapters = [...chapters].sort((a, b) => a.chapterNumber - b.chapterNumber);
+      const getReeditChapterSortOrder2 = (n: number) => n === 0 ? -1000 : n === -1 || n === 998 ? 1000 : n === -2 || n === 999 ? 1001 : n;
+      const sortedChapters = [...chapters].sort((a, b) => getReeditChapterSortOrder2(a.chapterNumber) - getReeditChapterSortOrder2(b.chapterNumber));
       
       // Localized chapter labels based on detected language
       const exportLabels: Record<string, { prologue: string; epilogue: string; authorNote: string; chapter: string }> = {
@@ -5682,9 +5684,9 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         let chapterTitle = chapter.title || `${labels.chapter} ${chapter.chapterNumber}`;
         if (chapter.chapterNumber === 0) {
           chapterTitle = chapter.title || labels.prologue;
-        } else if (chapter.chapterNumber === 998) {
+        } else if (chapter.chapterNumber === -1 || chapter.chapterNumber === 998) {
           chapterTitle = chapter.title || labels.epilogue;
-        } else if (chapter.chapterNumber === 999) {
+        } else if (chapter.chapterNumber === -2 || chapter.chapterNumber === 999) {
           chapterTitle = chapter.title || labels.authorNote;
         }
 
@@ -5737,7 +5739,8 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
 
       const docSections: any[] = [];
       
-      const sortedChapters = [...chapters].sort((a, b) => a.chapterNumber - b.chapterNumber);
+      const getReeditChapterSortOrder3 = (n: number) => n === 0 ? -1000 : n === -1 || n === 998 ? 1000 : n === -2 || n === 999 ? 1001 : n;
+      const sortedChapters = [...chapters].sort((a, b) => getReeditChapterSortOrder3(a.chapterNumber) - getReeditChapterSortOrder3(b.chapterNumber));
       
       for (const chapter of sortedChapters) {
         const content = chapter.editedContent || chapter.originalContent;
@@ -5746,9 +5749,9 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         let chapterTitle = chapter.title || `${labels.chapter} ${chapter.chapterNumber}`;
         if (chapter.chapterNumber === 0) {
           chapterTitle = chapter.title || labels.prologue;
-        } else if (chapter.chapterNumber === 998) {
+        } else if (chapter.chapterNumber === -1 || chapter.chapterNumber === 998) {
           chapterTitle = chapter.title || labels.epilogue;
-        } else if (chapter.chapterNumber === 999) {
+        } else if (chapter.chapterNumber === -2 || chapter.chapterNumber === 999) {
           chapterTitle = chapter.title || labels.authorNote;
         }
 
@@ -5871,7 +5874,8 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         return;
       }
       
-      const sortedChapters = [...chapters].sort((a, b) => a.chapterNumber - b.chapterNumber);
+      const getReeditChapterSortOrder4 = (n: number) => n === 0 ? -1000 : n === -1 || n === 998 ? 1000 : n === -2 || n === 999 ? 1001 : n;
+      const sortedChapters = [...chapters].sort((a, b) => getReeditChapterSortOrder4(a.chapterNumber) - getReeditChapterSortOrder4(b.chapterNumber));
       const chaptersWithContent = sortedChapters.filter(c => 
         (c.editedContent || c.originalContent)?.trim().length > 0
       );
@@ -5900,8 +5904,8 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       
       for (const chapter of chaptersWithContent) {
         const chapterLabel = chapter.chapterNumber === 0 ? "Prólogo" :
-                            chapter.chapterNumber === 998 ? "Epílogo" :
-                            chapter.chapterNumber === 999 ? "Nota del Autor" :
+                            chapter.chapterNumber === -1 || chapter.chapterNumber === 998 ? "Epílogo" :
+                            chapter.chapterNumber === -2 || chapter.chapterNumber === 999 ? "Nota del Autor" :
                             `Capítulo ${chapter.chapterNumber}`;
         
         sendEvent("progress", {

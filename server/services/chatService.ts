@@ -235,14 +235,16 @@ ${content?.substring(0, 10000) || 'Sin contenido disponible'}
 `);
       }
     } else if (context.chapters && context.chapters.length > 0) {
-      const sortedChapters = [...context.chapters].sort((a: any, b: any) => a.chapterNumber - b.chapterNumber);
+      const getChapterSortOrder = (n: number) => n === 0 ? -1000 : n === -1 || n === 998 ? 1000 : n === -2 || n === 999 ? 1001 : n;
+      const sortedChapters = [...context.chapters].sort((a: any, b: any) => getChapterSortOrder(a.chapterNumber) - getChapterSortOrder(b.chapterNumber));
       
+      const getChapterLabel = (num: number) => num === 0 ? "Prólogo" : num === -1 || num === 998 ? "Epílogo" : num === -2 || num === 999 ? "Nota del Autor" : `Capítulo ${num}`;
       const chapterSummaries = sortedChapters.map((ch: any) => {
         const content = 'editedContent' in ch 
           ? (ch.editedContent || ch.originalContent)
           : ('content' in ch ? ch.content : '');
         const wordCount = content ? content.split(/\s+/).length : 0;
-        return `- Capítulo ${ch.chapterNumber}: "${ch.title || 'Sin título'}" (${wordCount.toLocaleString()} palabras)`;
+        return `- ${getChapterLabel(ch.chapterNumber)}: "${ch.title || 'Sin título'}" (${wordCount.toLocaleString()} palabras)`;
       }).join('\n');
       
       parts.push(`
@@ -354,7 +356,8 @@ ${context.extendedGuide.substring(0, 8000)}
       return "No hay capítulos en el manuscrito para reestructurar.";
     }
 
-    const sortedChapters = [...chapters].sort((a: any, b: any) => a.chapterNumber - b.chapterNumber);
+    const getChapterSortOrder = (n: number) => n === 0 ? -1000 : n === -1 || n === 998 ? 1000 : n === -2 || n === 999 ? 1001 : n;
+    const sortedChapters = [...chapters].sort((a: any, b: any) => getChapterSortOrder(a.chapterNumber) - getChapterSortOrder(b.chapterNumber));
     const diagnosis = userMessage.replace(/aplicar\s+diagn[óo]stico\s+editorial:?\s*/i, '').trim();
     
     let fullResponse = `## Iniciando reestructuración editorial\n\n`;
@@ -513,7 +516,8 @@ Revisa cada propuesta y usa el botón **Aplicar** para confirmar los cambios que
     let additionalChaptersContext = "";
     
     if (requestedChapters.length > 0 && context.chapters) {
-      const sortedChapters = [...context.chapters].sort((a: any, b: any) => a.chapterNumber - b.chapterNumber);
+      const getChapterSortOrder2 = (n: number) => n === 0 ? -1000 : n === -1 || n === 998 ? 1000 : n === -2 || n === 999 ? 1001 : n;
+      const sortedChapters = [...context.chapters].sort((a: any, b: any) => getChapterSortOrder2(a.chapterNumber) - getChapterSortOrder2(b.chapterNumber));
       const alreadyIncludedNums = sortedChapters.slice(0, 5).map((c: any) => c.chapterNumber);
       
       for (const chNum of requestedChapters) {
