@@ -127,8 +127,28 @@ export class ContinuitySentinelAgent extends BaseAgent {
   }
 
   async execute(input: ContinuitySentinelInput): Promise<AgentResponse & { result?: ContinuitySentinelResult }> {
-    const chaptersText = input.chaptersInScope.map(c => `
-===== CAPÍTULO ${c.numero}: ${c.titulo} =====
+    // Helper to get proper chapter label based on number
+    const getChapterLabel = (num: number): string => {
+      if (num === 0) return "Prólogo";
+      if (num === -1 || num === 998) return "Epílogo";
+      if (num === -2 || num === 999) return "Nota del Autor";
+      return `Capítulo ${num}`;
+    };
+    
+    // Sort chapters in narrative order (prologue first, epilogue/author note last)
+    const getChapterSortOrder = (n: number): number => {
+      if (n === 0) return -1000;
+      if (n === -1 || n === 998) return 1000;
+      if (n === -2 || n === 999) return 1001;
+      return n;
+    };
+    
+    const sortedChapters = [...input.chaptersInScope].sort((a, b) => 
+      getChapterSortOrder(a.numero) - getChapterSortOrder(b.numero)
+    );
+    
+    const chaptersText = sortedChapters.map(c => `
+===== ${getChapterLabel(c.numero)}: ${c.titulo} =====
 ESTADO DE CONTINUIDAD REGISTRADO:
 ${JSON.stringify(c.continuityState, null, 2)}
 
