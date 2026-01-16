@@ -3101,12 +3101,19 @@ export class ReeditOrchestrator {
       const worldBibleForReview = await storage.getReeditWorldBibleByProject(projectId);
       const guiaEstilo = (project as any).styleGuide || "";
 
+      // Track resolved hashes locally to avoid stale data from project object
+      let localResolvedHashes: string[] = (project.resolvedIssueHashes as string[]) || [];
+      
       while (revisionCycle < this.maxFinalReviewCycles) {
         // Check for cancellation at start of each cycle
         if (await this.checkCancellation(projectId)) {
           console.log(`[ReeditOrchestrator] Cancelled during final review cycle ${revisionCycle}`);
           return;
         }
+        
+        // CRITICAL: Reload resolved hashes from DB to include newly resolved issues
+        const refreshedProject = await storage.getReeditProject(projectId);
+        localResolvedHashes = (refreshedProject?.resolvedIssueHashes as string[]) || [];
         
         // Check total cycle limit to prevent infinite loops
         totalCyclesExecuted++;
@@ -3182,8 +3189,8 @@ export class ReeditOrchestrator {
         const chapsToRewrite = finalResult?.capitulos_para_reescribir?.length || 0;
         
         // Filter out resolved issues BEFORE checking for critical issues
-        const resolvedHashesForApproval = (project.resolvedIssueHashes as string[]) || [];
-        const { newIssues: filteredIssuesForApproval } = this.filterNewIssues(rawIssuesForApproval, resolvedHashesForApproval);
+        // Use localResolvedHashes which is refreshed each cycle instead of stale project data
+        const { newIssues: filteredIssuesForApproval } = this.filterNewIssues(rawIssuesForApproval, localResolvedHashes);
         
         // Check for critical issues from FILTERED list only
         const criticalIssues = filteredIssuesForApproval.filter((issue: any) => 
@@ -3285,8 +3292,8 @@ export class ReeditOrchestrator {
         const chaptersToRewrite = finalResult?.capitulos_para_reescribir || [];
         
         // Filter out issues that have already been resolved in previous cycles
-        const resolvedHashes = (project.resolvedIssueHashes as string[]) || [];
-        const { newIssues: issues, filteredCount } = this.filterNewIssues(rawIssues, resolvedHashes);
+        // Use localResolvedHashes which is refreshed each cycle instead of stale project data
+        const { newIssues: issues, filteredCount } = this.filterNewIssues(rawIssues, localResolvedHashes);
         
         if (filteredCount > 0) {
           console.log(`[ReeditOrchestrator] ${filteredCount} issues ya resueltos fueron filtrados, quedan ${issues.length} nuevos`);
@@ -3651,12 +3658,19 @@ export class ReeditOrchestrator {
       }
     }
 
+    // Track resolved hashes locally to avoid stale data from project object
+    let localResolvedHashesFRO: string[] = (project.resolvedIssueHashes as string[]) || [];
+    
     while (revisionCycle < this.maxFinalReviewCycles) {
       // Check for cancellation at start of each cycle
       if (await this.checkCancellation(projectId)) {
         console.log(`[ReeditOrchestrator] Cancelled during final review cycle ${revisionCycle}`);
         return;
       }
+      
+      // CRITICAL: Reload resolved hashes from DB to include newly resolved issues
+      const refreshedProjectFRO = await storage.getReeditProject(projectId);
+      localResolvedHashesFRO = (refreshedProjectFRO?.resolvedIssueHashes as string[]) || [];
       
       // Check total cycle limit to prevent infinite loops
       totalCyclesExecuted++;
@@ -3725,8 +3739,8 @@ export class ReeditOrchestrator {
       const chapsToRewrite = finalResult?.capitulos_para_reescribir?.length || 0;
       
       // Filter out resolved issues BEFORE checking for critical issues
-      const resolvedHashesFROApproval = (project.resolvedIssueHashes as string[]) || [];
-      const { newIssues: filteredIssuesFROApproval } = this.filterNewIssues(rawIssuesFROApproval, resolvedHashesFROApproval);
+      // Use localResolvedHashesFRO which is refreshed each cycle instead of stale project data
+      const { newIssues: filteredIssuesFROApproval } = this.filterNewIssues(rawIssuesFROApproval, localResolvedHashesFRO);
       
       // Check for critical issues from FILTERED list only
       const criticalIssuesFRO = filteredIssuesFROApproval.filter((issue: any) => 
@@ -3796,8 +3810,8 @@ export class ReeditOrchestrator {
       const chaptersToRewrite = finalResult?.capitulos_para_reescribir || [];
       
       // Filter out issues that have already been resolved in previous cycles
-      const resolvedHashesFRO = (project.resolvedIssueHashes as string[]) || [];
-      const { newIssues: issues, filteredCount: filteredCountFRO } = this.filterNewIssues(rawIssuesFRO, resolvedHashesFRO);
+      // Use localResolvedHashesFRO which is refreshed each cycle instead of stale project data
+      const { newIssues: issues, filteredCount: filteredCountFRO } = this.filterNewIssues(rawIssuesFRO, localResolvedHashesFRO);
       
       if (filteredCountFRO > 0) {
         console.log(`[ReeditOrchestrator] FRO: ${filteredCountFRO} issues ya resueltos fueron filtrados, quedan ${issues.length} nuevos`);
