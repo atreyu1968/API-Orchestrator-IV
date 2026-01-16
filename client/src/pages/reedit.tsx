@@ -56,6 +56,20 @@ function getLanguageName(code: string | null | undefined): string {
   return lang ? lang.name : code.toUpperCase();
 }
 
+function getChapterLabel(chapterNumber: number, title?: string | null): string {
+  if (chapterNumber === 0) return title || "Prólogo";
+  if (chapterNumber === -1) return title || "Epílogo";
+  if (chapterNumber === -2) return title || "Nota del Autor";
+  return title || `Capítulo ${chapterNumber}`;
+}
+
+function getChapterBadgeLabel(chapterNumber: number): string {
+  if (chapterNumber === 0) return "Prólogo";
+  if (chapterNumber === -1) return "Epílogo";
+  if (chapterNumber === -2) return "N.A.";
+  return `Cap. ${chapterNumber}`;
+}
+
 const INPUT_PRICE_PER_MILLION = 0.80;
 const OUTPUT_PRICE_PER_MILLION = 6.50;
 const THINKING_PRICE_PER_MILLION = 3.0;
@@ -250,11 +264,14 @@ function StructureAnalysisDisplay({ analysis }: { analysis: any }) {
             Capítulos Duplicados ({duplicates.length})
           </p>
           <div className="flex flex-wrap gap-2">
-            {duplicates.map((dup: any, i: number) => (
-              <Badge key={i} variant="secondary">
-                Cap. {dup.chapterNumber || dup.chapter || dup}
-              </Badge>
-            ))}
+            {duplicates.map((dup: any, i: number) => {
+              const num = dup.chapterNumber ?? dup.chapter ?? dup;
+              return (
+                <Badge key={i} variant="secondary">
+                  {getChapterBadgeLabel(typeof num === 'number' ? num : parseInt(num) || 0)}
+                </Badge>
+              );
+            })}
           </div>
         </div>
       )}
@@ -265,11 +282,14 @@ function StructureAnalysisDisplay({ analysis }: { analysis: any }) {
             Capítulos Fuera de Orden ({outOfOrder.length})
           </p>
           <div className="flex flex-wrap gap-2">
-            {outOfOrder.map((ch: any, i: number) => (
-              <Badge key={i} variant="secondary">
-                Cap. {ch.chapterNumber || ch.chapter || ch}
-              </Badge>
-            ))}
+            {outOfOrder.map((ch: any, i: number) => {
+              const num = ch.chapterNumber ?? ch.chapter ?? ch;
+              return (
+                <Badge key={i} variant="secondary">
+                  {getChapterBadgeLabel(typeof num === 'number' ? num : parseInt(num) || 0)}
+                </Badge>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1308,8 +1328,8 @@ export default function ReeditPage() {
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
-                                  <Badge variant="outline">Cap. {chapter.chapterNumber}</Badge>
-                                  <span className="font-medium">{chapter.title || `Capítulo ${chapter.chapterNumber}`}</span>
+                                  <Badge variant="outline">{getChapterBadgeLabel(chapter.chapterNumber)}</Badge>
+                                  <span className="font-medium">{getChapterLabel(chapter.chapterNumber, chapter.title)}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   {chapter.editorScore && (
