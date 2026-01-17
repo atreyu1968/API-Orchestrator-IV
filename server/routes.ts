@@ -4970,7 +4970,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      const { title, language = "es", expandChapters, insertNewChapters, targetMinWordsPerChapter } = req.body;
+      const { title, language = "es", expandChapters, insertNewChapters, targetMinWordsPerChapter, instructions } = req.body;
       if (!title) {
         return res.status(400).json({ error: "Title is required" });
       }
@@ -4991,6 +4991,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         expandChapters: expandChapters === "true",
         insertNewChapters: insertNewChapters === "true",
         targetMinWordsPerChapter: parseInt(targetMinWordsPerChapter) || 2000,
+        architectInstructions: instructions?.trim() || null,
       });
 
       const chapterPattern = /^(Prólogo|Prologue|Prolog|Prologo|Epílogo|Epilogue|Epilog|Epilogo|Nota\s+de(?:l)?\s+Autor(?:a)?|Author'?s?\s+Note|Note\s+de\s+l'Auteur|Nachwort|Nota\s+dell'Autore|Nota\s+de\s+l'Autor|Capítulo\s+\d+|Chapter\s+\d+|Chapitre\s+\d+|Kapitel\s+\d+|Capitolo\s+\d+|Capítol\s+\d+)(?:\s*[:\-–—.]?\s*(.*))?$/gim;

@@ -1,0 +1,1 @@
+ALTER TABLE "reedit_projects" ADD COLUMN "architect_instructions" text;

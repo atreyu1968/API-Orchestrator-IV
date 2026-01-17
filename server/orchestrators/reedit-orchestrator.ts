@@ -2862,7 +2862,7 @@ export class ReeditOrchestrator {
       const rewrittenChapters = new Set<number>();
       
       // Get user instructions for rewriting (architectInstructions from project creation)
-      const userRewriteInstructions = (project as any).architectInstructions || "";
+      const userRewriteInstructions = project.architectInstructions || "";
       
       if (consolidatedProblems.size > 0 && !narrativeRewriteCompleted) {
         const totalProblemsCount = Array.from(consolidatedProblems.values()).reduce((sum, p) => sum + p.length, 0);
@@ -4061,7 +4061,7 @@ export class ReeditOrchestrator {
     const worldBible = await storage.getReeditWorldBibleByProject(projectId);
     
     // Get user instructions (architectInstructions or pendingUserInstructions)
-    const userInstructions = project.pendingUserInstructions || (project as any).architectInstructions || "";
+    const userInstructions = project.pendingUserInstructions || project.architectInstructions || "";
 
     // Get all chapters
     const allChapters = await storage.getReeditChaptersByProject(projectId);

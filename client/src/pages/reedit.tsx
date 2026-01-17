@@ -703,6 +703,7 @@ export default function ReeditPage() {
   const [expandChapters, setExpandChapters] = useState(false);
   const [insertNewChapters, setInsertNewChapters] = useState(false);
   const [targetMinWords, setTargetMinWords] = useState(2000);
+  const [uploadInstructions, setUploadInstructions] = useState("");
   
   // Restart dialog state
   const [showRestartDialog, setShowRestartDialog] = useState(false);
@@ -887,12 +888,16 @@ export default function ReeditPage() {
     formData.append("expandChapters", expandChapters.toString());
     formData.append("insertNewChapters", insertNewChapters.toString());
     formData.append("targetMinWordsPerChapter", targetMinWords.toString());
+    if (uploadInstructions.trim()) {
+      formData.append("instructions", uploadInstructions.trim());
+    }
     try {
       await uploadMutation.mutateAsync(formData);
+      setUploadInstructions("");
     } finally {
       setIsUploading(false);
     }
-  }, [uploadFile, uploadTitle, uploadLanguage, expandChapters, insertNewChapters, targetMinWords, uploadMutation, toast]);
+  }, [uploadFile, uploadTitle, uploadLanguage, expandChapters, insertNewChapters, targetMinWords, uploadInstructions, uploadMutation, toast]);
 
   useEffect(() => {
     if (!selectedProject && projects.length > 0) {
@@ -993,6 +998,23 @@ export default function ReeditPage() {
                     />
                   </div>
                 )}
+              </div>
+              <div className="space-y-2 pt-2 border-t">
+                <Label htmlFor="upload-instructions" className="text-sm font-medium">
+                  Instrucciones para la reedición (opcional)
+                </Label>
+                <textarea
+                  id="upload-instructions"
+                  data-testid="textarea-upload-instructions"
+                  value={uploadInstructions}
+                  onChange={(e) => setUploadInstructions(e.target.value)}
+                  placeholder="Instrucciones específicas para guiar la reedición: cambios de tono, aspectos a mejorar, elementos a preservar..."
+                  className="w-full min-h-[80px] p-2 text-sm border rounded-md bg-background resize-y"
+                  rows={3}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Estas instrucciones guiarán a los agentes de IA durante todo el proceso de reedición.
+                </p>
               </div>
               <div>
                 <Label htmlFor="reedit-file">Archivo</Label>

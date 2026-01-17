@@ -8,6 +8,13 @@
       "when": 1768573222736,
       "tag": "0000_jazzy_annihilus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1768641912225,
+      "tag": "0001_natural_bromley",
+      "breakpoints": true
     }
   ]
 }
