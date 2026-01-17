@@ -1397,6 +1397,9 @@ ${chapterSummaries || "Sin capítulos disponibles"}
       );
 
       const worldBibleData = this.reconstructWorldBibleData(worldBible, project);
+      
+      // Initialize characterStates for continuity validation
+      const characterStates: Map<string, { alive: boolean; location: string; injuries: string[]; lastSeen: number }> = new Map();
 
       for (const chapter of pendingChapters) {
         const sectionData = this.buildSectionDataFromChapter(chapter, worldBibleData);
@@ -1421,9 +1424,11 @@ ${chapterSummaries || "Sin capítulos disponibles"}
             : baseStyleGuide;
 
           const isRewrite = refinementAttempts > 0;
-          // Calculate per-chapter target from total novel target / number of chapters
+          // Use project's per-chapter settings, fallback to calculated from total
           const totalChaptersResume = existingChapters.length || project.chapterCount || 1;
-          const perChapterTargetResume = this.calculatePerChapterTarget((project as any).minWordCount, totalChaptersResume);
+          const calculatedTarget = this.calculatePerChapterTarget((project as any).minWordCount, totalChaptersResume);
+          const perChapterMinResume = (project as any).minWordsPerChapter || calculatedTarget;
+          const perChapterMaxResume = (project as any).maxWordsPerChapter || Math.round(perChapterMinResume * 1.15);
           const writerResult = await this.ghostwriter.execute({
             chapterNumber: sectionData.numero,
             chapterData: sectionData,
@@ -1433,7 +1438,8 @@ ${chapterSummaries || "Sin capítulos disponibles"}
             refinementInstructions,
             authorName,
             isRewrite,
-            minWordCount: perChapterTargetResume,
+            minWordCount: perChapterMinResume,
+            maxWordCount: perChapterMaxResume,
             extendedGuideContent: extendedGuideContent || undefined,
             previousChapterContent: isRewrite ? bestVersion.content : undefined,
             kindleUnlimitedOptimized: (project as any).kindleUnlimitedOptimized || false,
@@ -1443,12 +1449,10 @@ ${chapterSummaries || "Sin capítulos disponibles"}
           let currentContent = cleanContent;
           const currentContinuityState = continuityState;
           
-          // Validate minimum word count with 15% flexibility margin
+          // Validate word count with user-defined min/max per chapter
           const ABSOLUTE_MIN = 500; // Detect severe truncation
-          const TARGET_WORDS = perChapterTargetResume; // Per-chapter target (calculated from total / chapters)
-          const MARGIN = 0.15; // 15% flexibility
-          const TARGET_MIN = Math.round(TARGET_WORDS * (1 - MARGIN)); // Lower bound
-          const TARGET_MAX = Math.round(TARGET_WORDS * (1 + MARGIN)); // Upper bound
+          const TARGET_MIN = perChapterMinResume; // Use project's minWordsPerChapter
+          const TARGET_MAX = perChapterMaxResume; // Use project's maxWordsPerChapter
           const contentWordCount = currentContent.split(/\s+/).filter((w: string) => w.length > 0).length;
           
           // Check for severe truncation (less than 500 words)
@@ -2287,9 +2291,11 @@ ${chapterSummaries || "Sin capítulos disponibles"}
           ? `Continuidad del capítulo anterior disponible.` 
           : "";
 
-        // Calculate per-chapter target from total novel target / number of chapters
+        // Use project's per-chapter settings, fallback to calculated from total
         const totalChaptersQA = updatedChapters.length || project.chapterCount || 1;
-        const perChapterTargetQA = this.calculatePerChapterTarget((project as any).minWordCount, totalChaptersQA);
+        const calculatedTargetQA = this.calculatePerChapterTarget((project as any).minWordCount, totalChaptersQA);
+        const perChapterMinQA = (project as any).minWordsPerChapter || calculatedTargetQA;
+        const perChapterMaxQA = (project as any).maxWordsPerChapter || Math.round(perChapterMinQA * 1.15);
         const originalChapterContent = chapter.content || "";
         const writerResult = await this.ghostwriter.execute({
           chapterNumber: sectionData.numero,
@@ -2299,7 +2305,8 @@ ${chapterSummaries || "Sin capítulos disponibles"}
           previousContinuity,
           refinementInstructions: `CORRECCIONES DEL REVISOR FINAL:\n${revisionInstructions}`,
           authorName,
-          minWordCount: perChapterTargetQA,
+          minWordCount: perChapterMinQA,
+          maxWordCount: perChapterMaxQA,
           extendedGuideContent: styleGuideContent || undefined,
           previousChapterContent: originalChapterContent,
           kindleUnlimitedOptimized: (project as any).kindleUnlimitedOptimized || false,
@@ -2330,7 +2337,8 @@ ${chapterSummaries || "Sin capítulos disponibles"}
             previousContinuity,
             refinementInstructions,
             authorName,
-            minWordCount: perChapterTargetQA,
+            minWordCount: perChapterMinQA,
+            maxWordCount: perChapterMaxQA,
             extendedGuideContent: styleGuideContent || undefined,
             previousChapterContent: chapterContent,
             kindleUnlimitedOptimized: (project as any).kindleUnlimitedOptimized || false,
@@ -2656,11 +2664,13 @@ ${chapterSummaries || "Sin capítulos disponibles"}
 
         // Retry loop for truncated responses
         const MAX_REGENERATION_ATTEMPTS = 3;
-        // Calculate per-chapter target from total novel target / number of chapters
-        const perChapterTargetRegen = this.calculatePerChapterTarget((project as any).minWordCount, chapters.length);
+        // Use project's per-chapter settings, fallback to calculated from total
+        const calculatedTargetRegen = this.calculatePerChapterTarget((project as any).minWordCount, chapters.length);
+        const perChapterMinRegen = (project as any).minWordsPerChapter || calculatedTargetRegen;
+        const perChapterMaxRegen = (project as any).maxWordsPerChapter || Math.round(perChapterMinRegen * 1.15);
         const MARGIN_REGEN = 0.15; // 15% flexibility
-        const TARGET_MIN_WORDS = Math.round(perChapterTargetRegen * (1 - MARGIN_REGEN));
-        const TARGET_MAX_WORDS = Math.round(perChapterTargetRegen * (1 + MARGIN_REGEN));
+        const TARGET_MIN_WORDS = Math.round(perChapterMinRegen * (1 - MARGIN_REGEN));
+        const TARGET_MAX_WORDS = perChapterMaxRegen;
         const ABSOLUTE_MIN_WORDS = 500;
         let regenerationAttempt = 0;
         let successfulContent = "";
@@ -2680,7 +2690,8 @@ ${chapterSummaries || "Sin capítulos disponibles"}
               : "",
             authorName: "",
             isRewrite: regenerationAttempt > 1,
-            minWordCount: perChapterTargetRegen,
+            minWordCount: perChapterMinRegen,
+            maxWordCount: perChapterMaxRegen,
             kindleUnlimitedOptimized: (project as any).kindleUnlimitedOptimized || false,
           });
 
@@ -3620,6 +3631,12 @@ ${chapterSummaries || "Sin capítulos disponibles"}
       previousContinuity = `FINAL DEL CAPÍTULO ANTERIOR:\n${lastParagraphs}`;
     }
 
+    // Use project's per-chapter settings for QA rewrites
+    const allChaptersCount = (await storage.getChaptersByProject(project.id)).length || project.chapterCount || 1;
+    const calculatedTargetRewrite = this.calculatePerChapterTarget((project as any).minWordCount, allChaptersCount);
+    const perChapterMinRewrite = (project as any).minWordsPerChapter || calculatedTargetRewrite;
+    const perChapterMaxRewrite = (project as any).maxWordsPerChapter || Math.round(perChapterMinRewrite * 1.15);
+    
     const writerResult = await this.ghostwriter.execute({
       chapterNumber: sectionData.numero,
       chapterData: sectionData,
@@ -3627,6 +3644,8 @@ ${chapterSummaries || "Sin capítulos disponibles"}
       guiaEstilo,
       previousContinuity,
       refinementInstructions: `CORRECCIONES DE ${qaLabels[qaSource].toUpperCase()}:\n${correctionInstructions}`,
+      minWordCount: perChapterMinRewrite,
+      maxWordCount: perChapterMaxRewrite,
       kindleUnlimitedOptimized: (project as any).kindleUnlimitedOptimized || false,
     });
 
