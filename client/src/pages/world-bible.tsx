@@ -73,32 +73,44 @@ export default function WorldBiblePage() {
         <div className="flex items-center justify-center py-12">
           <Globe className="h-8 w-8 text-muted-foreground/30 animate-pulse" />
         </div>
-      ) : isGenerating && !worldBible ? (
-        <Card>
-          <CardContent className="py-12">
-            <div className="flex flex-col items-center justify-center text-center">
-              <Globe className="h-12 w-12 text-muted-foreground/30 mb-4 animate-pulse" />
-              <h3 className="text-lg font-medium mb-2">Generando biblia del mundo...</h3>
-              <p className="text-muted-foreground text-sm max-w-md">
-                El agente arquitecto está creando el universo narrativo. 
-                Esto puede tardar unos minutos.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Globe className="h-5 w-5" />
-              Universo Narrativo
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <WorldBibleDisplay worldBible={worldBible || null} />
-          </CardContent>
-        </Card>
-      )}
+      ) : (() => {
+        const hasData = worldBible && (
+          (worldBible.timeline && (worldBible.timeline as any[]).length > 0) ||
+          (worldBible.characters && (worldBible.characters as any[]).length > 0) ||
+          (worldBible.plotOutline && Object.keys(worldBible.plotOutline as object).length > 0)
+        );
+        
+        if (isGenerating && !hasData) {
+          return (
+            <Card>
+              <CardContent className="py-12">
+                <div className="flex flex-col items-center justify-center text-center">
+                  <Globe className="h-12 w-12 text-muted-foreground/30 mb-4 animate-pulse" />
+                  <h3 className="text-lg font-medium mb-2">Generando biblia del mundo...</h3>
+                  <p className="text-muted-foreground text-sm max-w-md">
+                    El agente arquitecto está creando el universo narrativo. 
+                    Esto puede tardar unos minutos.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        }
+        
+        return (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Globe className="h-5 w-5" />
+                Universo Narrativo
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <WorldBibleDisplay worldBible={worldBible || null} />
+            </CardContent>
+          </Card>
+        );
+      })()}
     </div>
   );
 }
