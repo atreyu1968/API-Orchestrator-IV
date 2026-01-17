@@ -5,6 +5,46 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, Users, BookOpen, Shield, Heart, Skull, GitBranch, Activity } from "lucide-react";
 import type { WorldBible, Character, TimelineEvent, WorldRule, PlotOutline } from "@shared/schema";
 
+// Helper function to safely convert any value to a displayable string
+// Handles objects with keys like {tipo, numero, descripcion, elementos_sensoriales, etc.}
+function safeStringify(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (typeof value === 'object') {
+    // Handle objects with common keys from AI-generated content
+    const obj = value as Record<string, unknown>;
+    if ('descripcion' in obj && typeof obj.descripcion === 'string') {
+      return obj.descripcion;
+    }
+    if ('description' in obj && typeof obj.description === 'string') {
+      return obj.description;
+    }
+    if ('event' in obj && typeof obj.event === 'string') {
+      return obj.event;
+    }
+    if ('name' in obj && typeof obj.name === 'string') {
+      return obj.name;
+    }
+    if ('texto' in obj && typeof obj.texto === 'string') {
+      return obj.texto;
+    }
+    // Fallback: try to create a readable summary
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '[Object]';
+    }
+  }
+  return String(value);
+}
+
 interface PlotDecision {
   decision: string;
   capitulo_establecido: number;
@@ -47,15 +87,15 @@ function TimelineTab({ events }: { events: TimelineEvent[] }) {
             <div className="bg-card border border-card-border rounded-md p-3">
               <div className="flex items-center gap-2 mb-2">
                 <Badge variant="secondary" className="text-xs">Cap. {event.chapter}</Badge>
-                <span className="text-sm font-medium">{event.event}</span>
+                <span className="text-sm font-medium">{safeStringify(event.event)}</span>
               </div>
               <div className="flex flex-wrap gap-1">
                 {event.characters.map((char, i) => (
-                  <Badge key={i} className="text-xs bg-chart-1/10 text-chart-1">{char}</Badge>
+                  <Badge key={i} className="text-xs bg-chart-1/10 text-chart-1">{safeStringify(char)}</Badge>
                 ))}
               </div>
               {event.significance && (
-                <p className="text-xs text-muted-foreground mt-2 italic">{event.significance}</p>
+                <p className="text-xs text-muted-foreground mt-2 italic">{safeStringify(event.significance)}</p>
               )}
             </div>
           </div>
@@ -94,14 +134,14 @@ function CharactersTab({ characters }: { characters: Character[] }) {
                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">
                   Perfil Psicológico
                 </p>
-                <p className="text-sm text-foreground">{character.psychologicalProfile}</p>
+                <p className="text-sm text-foreground">{safeStringify(character.psychologicalProfile)}</p>
               </div>
               {character.arc && (
                 <div>
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">
                     Arco del Personaje
                   </p>
-                  <p className="text-sm text-foreground">{character.arc}</p>
+                  <p className="text-sm text-foreground">{safeStringify(character.arc)}</p>
                 </div>
               )}
               {character.relationships && character.relationships.length > 0 && (
@@ -161,11 +201,11 @@ function WorldRulesTab({ rules }: { rules: WorldRule[] }) {
                   className="bg-card border border-card-border rounded-md p-3"
                   data-testid={`world-rule-${index}`}
                 >
-                  <p className="text-sm font-medium">{rule.rule}</p>
+                  <p className="text-sm font-medium">{safeStringify(rule.rule)}</p>
                   {rule.constraints && rule.constraints.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {rule.constraints.map((constraint, i) => (
-                        <Badge key={i} variant="outline" className="text-xs">{constraint}</Badge>
+                        <Badge key={i} variant="outline" className="text-xs">{safeStringify(constraint)}</Badge>
                       ))}
                     </div>
                   )}
@@ -312,7 +352,7 @@ function PlotTab({ plotOutline }: { plotOutline: PlotOutline | null }) {
             <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-2">
               Premisa
             </h3>
-            <p className="text-sm">{plotOutline.premise}</p>
+            <p className="text-sm">{safeStringify(plotOutline.premise)}</p>
           </div>
         )}
 
@@ -331,13 +371,13 @@ function PlotTab({ plotOutline }: { plotOutline: PlotOutline | null }) {
                   {threeActStructure.act1.setup && (
                     <div>
                       <span className="font-medium">Setup: </span>
-                      {threeActStructure.act1.setup}
+                      {safeStringify(threeActStructure.act1.setup)}
                     </div>
                   )}
                   {threeActStructure.act1.incitingIncident && (
                     <div>
                       <span className="font-medium">Incidente Incitador: </span>
-                      {threeActStructure.act1.incitingIncident}
+                      {safeStringify(threeActStructure.act1.incitingIncident)}
                     </div>
                   )}
                 </CardContent>
@@ -353,19 +393,19 @@ function PlotTab({ plotOutline }: { plotOutline: PlotOutline | null }) {
                   {threeActStructure.act2.risingAction && (
                     <div>
                       <span className="font-medium">Acción Ascendente: </span>
-                      {threeActStructure.act2.risingAction}
+                      {safeStringify(threeActStructure.act2.risingAction)}
                     </div>
                   )}
                   {threeActStructure.act2.midpoint && (
                     <div>
                       <span className="font-medium">Punto Medio: </span>
-                      {threeActStructure.act2.midpoint}
+                      {safeStringify(threeActStructure.act2.midpoint)}
                     </div>
                   )}
                   {threeActStructure.act2.complications && (
                     <div>
                       <span className="font-medium">Complicaciones: </span>
-                      {threeActStructure.act2.complications}
+                      {safeStringify(threeActStructure.act2.complications)}
                     </div>
                   )}
                 </CardContent>
@@ -381,13 +421,13 @@ function PlotTab({ plotOutline }: { plotOutline: PlotOutline | null }) {
                   {threeActStructure.act3.climax && (
                     <div>
                       <span className="font-medium">Clímax: </span>
-                      {threeActStructure.act3.climax}
+                      {safeStringify(threeActStructure.act3.climax)}
                     </div>
                   )}
                   {threeActStructure.act3.resolution && (
                     <div>
                       <span className="font-medium">Resolución: </span>
-                      {threeActStructure.act3.resolution}
+                      {safeStringify(threeActStructure.act3.resolution)}
                     </div>
                   )}
                 </CardContent>
@@ -411,10 +451,10 @@ function PlotTab({ plotOutline }: { plotOutline: PlotOutline | null }) {
                   <div className="flex items-center gap-2 mb-1">
                     <Badge variant="secondary" className="text-xs">Cap. {chapter.number}</Badge>
                   </div>
-                  <p className="text-sm mb-2">{chapter.summary}</p>
+                  <p className="text-sm mb-2">{safeStringify(chapter.summary)}</p>
                   <div className="flex flex-wrap gap-1">
                     {chapter.keyEvents.map((event, i) => (
-                      <Badge key={i} variant="outline" className="text-xs">{event}</Badge>
+                      <Badge key={i} variant="outline" className="text-xs">{safeStringify(event)}</Badge>
                     ))}
                   </div>
                 </div>
