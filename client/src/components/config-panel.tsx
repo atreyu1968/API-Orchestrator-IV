@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -23,7 +24,7 @@ import {
 } from "@/components/ui/form";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
-import { Play, RotateCcw, BookOpen, FileText, ScrollText, User, Library, BookMarked } from "lucide-react";
+import { Play, RotateCcw, BookOpen, FileText, ScrollText, User, Library, BookMarked, Plus, Trash2 } from "lucide-react";
 import type { Pseudonym, StyleGuide, Series, ExtendedGuide } from "@shared/schema";
 
 const genres = [
@@ -54,14 +55,28 @@ const workTypes = [
   { value: "standalone", label: "Obra Independiente", description: "Una novela autónoma sin continuación" },
   { value: "series", label: "Serie", description: "Parte de una serie de libros" },
   { value: "trilogy", label: "Trilogía", description: "Parte de una trilogía de 3 libros" },
+  { value: "bookbox", label: "Bookbox", description: "Serie completa en un solo manuscrito (hasta 250 capítulos, múltiples libros)" },
 ];
+
+const bookboxBookSchema = z.object({
+  bookNumber: z.number(),
+  title: z.string(),
+  startChapter: z.number(),
+  endChapter: z.number(),
+  hasPrologue: z.boolean().default(false),
+  hasEpilogue: z.boolean().default(false),
+});
+
+const bookboxStructureSchema = z.object({
+  books: z.array(bookboxBookSchema),
+}).nullable().optional();
 
 const configSchema = z.object({
   title: z.string().min(1, "El título es requerido").max(100),
   premise: z.string().min(10, "Describe la idea de tu novela (mínimo 10 caracteres)").max(2000).or(z.string().length(0)),
   genre: z.string().min(1, "Selecciona un género"),
   tone: z.string().min(1, "Selecciona un tono"),
-  chapterCount: z.number().min(1).max(100),
+  chapterCount: z.number().min(1).max(250), // Increased for bookbox support
   hasPrologue: z.boolean().default(false),
   hasEpilogue: z.boolean().default(false),
   hasAuthorNote: z.boolean().default(false),
@@ -74,6 +89,7 @@ const configSchema = z.object({
   minWordCount: z.number().min(0).nullable().optional(),
   minWordsPerChapter: z.number().min(500).max(10000).default(1500),
   maxWordsPerChapter: z.number().min(500).max(15000).default(3500),
+  bookboxStructure: bookboxStructureSchema,
 });
 
 type ConfigFormData = z.infer<typeof configSchema>;
@@ -107,6 +123,7 @@ export function ConfigPanel({ onSubmit, onReset, isLoading, defaultValues, isEdi
       minWordCount: (defaultValues as any)?.minWordCount || null,
       minWordsPerChapter: (defaultValues as any)?.minWordsPerChapter || 1500,
       maxWordsPerChapter: (defaultValues as any)?.maxWordsPerChapter || 3500,
+      bookboxStructure: (defaultValues as any)?.bookboxStructure || null,
     },
   });
 
@@ -118,6 +135,58 @@ export function ConfigPanel({ onSubmit, onReset, isLoading, defaultValues, isEdi
   const selectedPseudonymId = form.watch("pseudonymId");
   const selectedWorkType = form.watch("workType");
   const selectedSeriesId = form.watch("seriesId");
+  const bookboxStructure = form.watch("bookboxStructure");
+
+  const isBookbox = selectedWorkType === "bookbox";
+
+  const [bookboxBooks, setBookboxBooks] = useState<Array<{
+    bookNumber: number;
+    title: string;
+    startChapter: number;
+    endChapter: number;
+    hasPrologue: boolean;
+    hasEpilogue: boolean;
+  }>>(bookboxStructure?.books || [{ bookNumber: 1, title: "Libro 1", startChapter: 1, endChapter: 50, hasPrologue: true, hasEpilogue: false }]);
+
+  const addBookboxBook = () => {
+    const lastBook = bookboxBooks[bookboxBooks.length - 1];
+    const newBook = {
+      bookNumber: bookboxBooks.length + 1,
+      title: `Libro ${bookboxBooks.length + 1}`,
+      startChapter: lastBook ? lastBook.endChapter + 1 : 1,
+      endChapter: lastBook ? lastBook.endChapter + 50 : 50,
+      hasPrologue: false,
+      hasEpilogue: false,
+    };
+    const newBooks = [...bookboxBooks, newBook];
+    setBookboxBooks(newBooks);
+    form.setValue("bookboxStructure", { books: newBooks });
+    const totalChapters = newBook.endChapter;
+    if (totalChapters > chapterCount) {
+      form.setValue("chapterCount", totalChapters);
+    }
+  };
+
+  const removeBookboxBook = (index: number) => {
+    if (bookboxBooks.length <= 1) return;
+    const newBooks = bookboxBooks.filter((_, i) => i !== index).map((book, i) => ({
+      ...book,
+      bookNumber: i + 1,
+    }));
+    setBookboxBooks(newBooks);
+    form.setValue("bookboxStructure", { books: newBooks });
+  };
+
+  const updateBookboxBook = (index: number, field: string, value: any) => {
+    const newBooks = [...bookboxBooks];
+    (newBooks[index] as any)[field] = value;
+    setBookboxBooks(newBooks);
+    form.setValue("bookboxStructure", { books: newBooks });
+    const maxEnd = Math.max(...newBooks.map(b => b.endChapter));
+    if (maxEnd > chapterCount) {
+      form.setValue("chapterCount", maxEnd);
+    }
+  };
 
   const totalSections = chapterCount + (hasPrologue ? 1 : 0) + (hasEpilogue ? 1 : 0) + (hasAuthorNote ? 1 : 0);
 
@@ -396,6 +465,105 @@ export function ConfigPanel({ onSubmit, onReset, isLoading, defaultValues, isEdi
                 )}
               />
             </>
+          )}
+
+          {isBookbox && (
+            <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+              <div className="flex items-center justify-between">
+                <FormLabel className="text-sm font-medium">Estructura de Libros</FormLabel>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addBookboxBook}
+                  data-testid="button-add-bookbox-book"
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Añadir Libro
+                </Button>
+              </div>
+              <FormDescription className="text-xs">
+                Define los libros internos del bookbox. Cada libro puede tener su propio prólogo y epílogo.
+              </FormDescription>
+
+              <div className="space-y-3">
+                {bookboxBooks.map((book, index) => (
+                  <div key={index} className="p-3 bg-background rounded border space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Input
+                        value={book.title}
+                        onChange={(e) => updateBookboxBook(index, "title", e.target.value)}
+                        placeholder={`Libro ${index + 1}`}
+                        className="flex-1"
+                        data-testid={`input-bookbox-title-${index}`}
+                      />
+                      {bookboxBooks.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeBookboxBook(index)}
+                          data-testid={`button-remove-bookbox-${index}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <FormLabel className="text-xs">Capítulo Inicial</FormLabel>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={book.startChapter}
+                          onChange={(e) => updateBookboxBook(index, "startChapter", parseInt(e.target.value) || 1)}
+                          data-testid={`input-bookbox-start-${index}`}
+                        />
+                      </div>
+                      <div>
+                        <FormLabel className="text-xs">Capítulo Final</FormLabel>
+                        <Input
+                          type="number"
+                          min={book.startChapter}
+                          value={book.endChapter}
+                          onChange={(e) => updateBookboxBook(index, "endChapter", parseInt(e.target.value) || book.startChapter)}
+                          data-testid={`input-bookbox-end-${index}`}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          checked={book.hasPrologue}
+                          onCheckedChange={(checked) => updateBookboxBook(index, "hasPrologue", !!checked)}
+                          id={`bookbox-prologue-${index}`}
+                          data-testid={`checkbox-bookbox-prologue-${index}`}
+                        />
+                        <label htmlFor={`bookbox-prologue-${index}`} className="text-xs">Prólogo</label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          checked={book.hasEpilogue}
+                          onCheckedChange={(checked) => updateBookboxBook(index, "hasEpilogue", !!checked)}
+                          id={`bookbox-epilogue-${index}`}
+                          data-testid={`checkbox-bookbox-epilogue-${index}`}
+                        />
+                        <label htmlFor={`bookbox-epilogue-${index}`} className="text-xs">Epílogo</label>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {book.endChapter - book.startChapter + 1} capítulos
+                      {book.hasPrologue && " + prólogo"}
+                      {book.hasEpilogue && " + epílogo"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-xs text-muted-foreground pt-2 border-t">
+                Total: {bookboxBooks.reduce((sum, b) => sum + (b.endChapter - b.startChapter + 1) + (b.hasPrologue ? 1 : 0) + (b.hasEpilogue ? 1 : 0), 0)} secciones en {bookboxBooks.length} libro{bookboxBooks.length > 1 ? "s" : ""}
+              </div>
+            </div>
           )}
         </div>
 
