@@ -254,6 +254,56 @@ export class TranslatorAgent extends BaseAgent {
     });
   }
 
+  private cleanTranslatedText(content: string): string {
+    let cleaned = content.trim();
+    
+    // Strip markdown code block wrappers (```json ... ``` or ```markdown ... ```)
+    const codeBlockMatch = cleaned.match(/^```(?:json|markdown|md)?\s*([\s\S]*?)```\s*$/);
+    if (codeBlockMatch) {
+      cleaned = codeBlockMatch[1].trim();
+    }
+    
+    // Also strip any remaining code fences that might be embedded
+    cleaned = cleaned.replace(/```(?:json|markdown|md|text)?\n?/g, '').replace(/```\s*$/g, '');
+    
+    // If it's still JSON with translated_text field, extract it recursively
+    if (cleaned.startsWith('{') && cleaned.includes('"translated_text"')) {
+      try {
+        const parsed = JSON.parse(cleaned);
+        if (parsed.translated_text) {
+          cleaned = this.cleanTranslatedText(parsed.translated_text);
+        }
+      } catch {
+        // Not valid JSON, try to extract translated_text using regex
+        const match = cleaned.match(/"translated_text"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:source_|target_|notes)|\s*"\s*})/);
+        if (match) {
+          cleaned = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        }
+      }
+    }
+    
+    // Remove style guide contamination
+    const styleGuidePatterns = [
+      /^#+ *(?:Literary Style Guide|Writing Guide|Style Guide|Guía de Estilo|Guía de Escritura)[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo|Epilogue|Epílogo|CAPITOLO|Capitolo)\b|\n---\n|$)/gmi,
+      /^###+ *(?:Checklist|Lista de verificación)[^\n]*\n[\s\S]*?(?=^#{1,2} *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo)\b|\n---\n|$)/gmi,
+      /\n---\n[\s\S]*?(?:Style Guide|Guía de Estilo|Writing Guide)[\s\S]*?\n---\n/gi,
+      /^#+ *\d+\. *(?:Narrative Architecture|Character Construction|Central Themes|Language and Stylistic|Tone and Atmosphere|Arquitectura Narrativa)[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo)\b|$)/gmi,
+    ];
+    
+    for (const pattern of styleGuidePatterns) {
+      cleaned = cleaned.replace(pattern, '');
+    }
+    
+    // Remove orphaned JSON fields that might appear at the end
+    cleaned = cleaned.replace(/,?\s*"(?:source_language|target_language|notes)"\s*:\s*"[^"]*"\s*}?\s*$/g, '');
+    
+    // Remove any remaining raw JSON artifacts
+    cleaned = cleaned.replace(/^\s*\{\s*"translated_text"\s*:\s*"/m, '');
+    cleaned = cleaned.replace(/"\s*,?\s*"notes"\s*:\s*"[^"]*"\s*\}\s*$/m, '');
+    
+    return cleaned.trim();
+  }
+
   async execute(input: TranslatorInput): Promise<AgentResponse & { result?: TranslatorResult }> {
     const sourceLangName = LANGUAGE_NAMES[input.sourceLanguage] || input.sourceLanguage;
     const targetLangName = LANGUAGE_NAMES[input.targetLanguage] || input.targetLanguage;
@@ -340,20 +390,32 @@ RESPOND WITH JSON ONLY, no additional text.
       const jsonMatch = contentToParse.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const result = JSON.parse(jsonMatch[0]) as TranslatorResult;
-        console.log(`[Translator] Successfully parsed translation result`);
-        return { ...response, result };
+        // CRITICAL: Clean the translated text to remove any code artifacts
+        const cleanedText = this.cleanTranslatedText(result.translated_text);
+        console.log(`[Translator] Successfully parsed and cleaned translation result`);
+        return { 
+          ...response, 
+          result: {
+            ...result,
+            translated_text: cleanedText,
+          }
+        };
       }
     } catch (e) {
       console.error("[Translator] Failed to parse JSON response:", e);
     }
 
+    // Fallback: clean the raw content before returning
+    const cleanedFallback = this.cleanTranslatedText(response.content);
+    console.log(`[Translator] Using cleaned fallback content`);
+    
     return {
       ...response,
       result: {
-        translated_text: response.content,
+        translated_text: cleanedFallback,
         source_language: input.sourceLanguage,
         target_language: input.targetLanguage,
-        notes: "Respuesta no estructurada - se devuelve el contenido raw",
+        notes: "Respuesta no estructurada - contenido limpiado y devuelto",
       }
     };
   }
