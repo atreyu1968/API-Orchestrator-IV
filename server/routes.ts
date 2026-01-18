@@ -4426,32 +4426,48 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         // Remove any style guide contamination from AI output
         cleaned = removeStyleGuideContamination(cleaned);
         
-        // Extract the first markdown heading if present (# to #### at start, with or without trailing newline)
-        // Improved regex: matches 1-4 hashes, optional whitespace/newline before title, captures title until newline or end
-        const headingMatch = cleaned.match(/^(#{1,4})\s*\n?\s*(.+?)(?:\n+|$)/);
+        // Extract the first markdown heading if present (# to #### at start)
+        // CRITICAL: Require an actual newline after the heading to avoid consuming all content
+        const headingMatch = cleaned.match(/^(#{1,4})\s*(.+?)\n+/);
         let bodyText = cleaned;
         let extractedHeading: string | null = null;
         
         if (headingMatch) {
           const rawHeading = headingMatch[2].trim();
           extractedHeading = normalizeChapterHeader(rawHeading, chapterNumber, targetLang);
-          bodyText = cleaned.slice(headingMatch[0].length).trim();
+          const potentialBody = cleaned.slice(headingMatch[0].length).trim();
+          // Only strip the heading if it leaves meaningful content
+          if (potentialBody.length > 50) {
+            bodyText = potentialBody;
+          } else {
+            // Heading consumed too much - don't strip it, content is the whole thing
+            extractedHeading = null;
+          }
         }
         
-        // Aggressively remove ALL chapter-like headers from the start of body (AI sometimes includes them multiple times)
-        // This pattern catches any heading (1-4 hashes) that looks like a chapter/prologue/epilogue header
-        const chapterHeaderPattern = /^#{1,4}\s*\n?\s*(CHAPTER|Chapter|CAPÍTULO|Capítulo|CHAPITRE|Chapitre|KAPITEL|Kapitel|CAPITOLO|Capitolo|CAPÍTOL|Capítol|Prologue|PROLOGUE|Prólogo|PRÓLOGO|Prolog|PROLOG|Prologo|PROLOGO|Pròleg|PRÒLEG|Epilogue|EPILOGUE|Epílogo|EPÍLOGO|Epilog|EPILOG|Epilogo|EPILOGO|Epíleg|EPÍLEG|Author'?s?\s*Note|AUTHOR'?S?\s*NOTE|Nota\s*del?\s*Autor|NOTA\s*DEL?\s*AUTOR|Note\s*de\s*l'Auteur|NOTE\s*DE\s*L'AUTEUR|Anmerkung\s*des\s*Autors|ANMERKUNG\s*DES\s*AUTORS|Nota\s*dell'?Autore|NOTA\s*DELL'?AUTORE|Nota\s*de\s*l'Autor|NOTA\s*DE\s*L'AUTOR)[^\n]*(?:\n+|$)/i;
+        // Remove chapter-like headers from the start of body (AI sometimes includes them multiple times)
+        // CRITICAL: Require newline at end and verify content remains
+        const chapterHeaderPattern = /^#{1,4}\s*(CHAPTER|Chapter|CAPÍTULO|Capítulo|CHAPITRE|Chapitre|KAPITEL|Kapitel|CAPITOLO|Capitolo|CAPÍTOL|Capítol|Prologue|PROLOGUE|Prólogo|PRÓLOGO|Prolog|PROLOG|Prologo|PROLOGO|Pròleg|PRÒLEG|Epilogue|EPILOGUE|Epílogo|EPÍLOGO|Epilog|EPILOG|Epilogo|EPILOGO|Epíleg|EPÍLEG|Author'?s?\s*Note|AUTHOR'?S?\s*NOTE|Nota\s*del?\s*Autor|NOTA\s*DEL?\s*AUTOR|Note\s*de\s*l'Auteur|NOTE\s*DE\s*L'AUTEUR|Anmerkung\s*des\s*Autors|ANMERKUNG\s*DES\s*AUTORS|Nota\s*dell'?Autore|NOTA\s*DELL'?AUTORE|Nota\s*de\s*l'Autor|NOTA\s*DE\s*L'AUTOR)[^\n]*\n+/i;
         
-        // Remove up to 3 duplicate headers (in case AI triplicates)
+        // Remove up to 3 duplicate headers, but always verify content remains
         for (let i = 0; i < 3; i++) {
           const before = bodyText;
-          bodyText = bodyText.replace(chapterHeaderPattern, '');
-          if (bodyText === before) break;
+          const afterRemoval = bodyText.replace(chapterHeaderPattern, '');
+          // Only remove if it leaves substantial content
+          if (afterRemoval.trim().length > 50 && afterRemoval !== before) {
+            bodyText = afterRemoval;
+          } else {
+            break;
+          }
         }
         
-        // Also remove headers that are just the chapter number without "Chapter" prefix
-        // e.g., "## 1: El Comienzo" or "# 5 - The Journey"
-        bodyText = bodyText.replace(/^#{1,4}\s*\n?\s*\d+\s*[:\-–—]?\s*[^\n]*(?:\n+|$)/i, '').trim();
+        // Also remove headers that are just the chapter number (e.g., "## 1: Title\n")
+        // Only if it leaves substantial content
+        const numericHeaderPattern = /^#{1,4}\s*\d+\s*[:\-–—]?\s*[^\n]*\n+/i;
+        const afterNumericRemoval = bodyText.replace(numericHeaderPattern, '');
+        if (afterNumericRemoval.trim().length > 50) {
+          bodyText = afterNumericRemoval.trim();
+        }
         
         // Remove trailing dividers (---, ***) from the end
         bodyText = bodyText.replace(/\n*[-*]{3,}\s*$/, '').trim();
@@ -6211,17 +6227,28 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         }
         
         // Remove chapter-like headers from the start (AI includes them but we add our own)
-        const chapterHeaderPattern = /^#{1,4}\s*\n?\s*(CHAPTER|Chapter|CAPÍTULO|Capítulo|CHAPITRE|Chapitre|KAPITEL|Kapitel|CAPITOLO|Capitolo|CAPÍTOL|Capítol|Prologue|PROLOGUE|Prólogo|PRÓLOGO|Prolog|PROLOG|Prologo|PROLOGO|Pròleg|PRÒLEG|Epilogue|EPILOGUE|Epílogo|EPÍLOGO|Epilog|EPILOG|Epilogo|EPILOGO|Epíleg|EPÍLEG|Author'?s?\s*Note|AUTHOR'?S?\s*NOTE|Nota\s*del?\s*Autor|NOTA\s*DEL?\s*AUTOR|Note\s*de\s*l'Auteur|NOTE\s*DE\s*L'AUTEUR|Anmerkung\s*des\s*Autors|ANMERKUNG\s*DES\s*AUTORS|Nota\s*dell'?Autore|NOTA\s*DELL'?AUTORE|Nota\s*de\s*l'Autor|NOTA\s*DE\s*L'AUTOR)[^\n]*(?:\n+|$)/i;
+        // CRITICAL: Require newline at the end to avoid consuming prose
+        const chapterHeaderPattern = /^#{1,4}\s*(CHAPTER|Chapter|CAPÍTULO|Capítulo|CHAPITRE|Chapitre|KAPITEL|Kapitel|CAPITOLO|Capitolo|CAPÍTOL|Capítol|Prologue|PROLOGUE|Prólogo|PRÓLOGO|Prolog|PROLOG|Prologo|PROLOGO|Pròleg|PRÒLEG|Epilogue|EPILOGUE|Epílogo|EPÍLOGO|Epilog|EPILOG|Epilogo|EPILOGO|Epíleg|EPÍLEG|Author'?s?\s*Note|AUTHOR'?S?\s*NOTE|Nota\s*del?\s*Autor|NOTA\s*DEL?\s*AUTOR|Note\s*de\s*l'Auteur|NOTE\s*DE\s*L'AUTEUR|Anmerkung\s*des\s*Autors|ANMERKUNG\s*DES\s*AUTORS|Nota\s*dell'?Autore|NOTA\s*DELL'?AUTORE|Nota\s*de\s*l'Autor|NOTA\s*DE\s*L'AUTOR)[^\n]*\n+/i;
         
-        // Remove up to 3 duplicate headers
+        // Remove up to 3 duplicate headers, but verify content remains
         for (let i = 0; i < 3; i++) {
           const before = cleaned;
-          cleaned = cleaned.replace(chapterHeaderPattern, '');
-          if (cleaned === before) break;
+          const afterRemoval = cleaned.replace(chapterHeaderPattern, '');
+          // Only remove if it leaves substantial content
+          if (afterRemoval.trim().length > 50 && afterRemoval !== before) {
+            cleaned = afterRemoval;
+          } else {
+            break;
+          }
         }
         
-        // Also remove headers that are just the chapter number
-        cleaned = cleaned.replace(/^#{1,4}\s*\n?\s*\d+\s*[:\-–—]?\s*[^\n]*(?:\n+|$)/i, '').trim();
+        // Also remove headers that are just the chapter number (e.g., "## 1: Title\n")
+        // Only if it leaves content
+        const numericHeaderPattern = /^#{1,4}\s*\d+\s*[:\-–—]?\s*[^\n]*\n+/i;
+        const afterNumeric = cleaned.replace(numericHeaderPattern, '');
+        if (afterNumeric.trim().length > 50) {
+          cleaned = afterNumeric.trim();
+        }
         
         // Remove trailing dividers
         cleaned = cleaned.replace(/\n*[-*]{3,}\s*$/, '').trim();

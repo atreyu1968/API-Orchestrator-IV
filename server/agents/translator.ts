@@ -282,22 +282,25 @@ export class TranslatorAgent extends BaseAgent {
       }
     }
     
-    // Remove style guide contamination
+    // Remove style guide contamination - but only if it leaves content
     const styleGuidePatterns = [
-      /^#+ *(?:Literary Style Guide|Writing Guide|Style Guide|Guía de Estilo|Guía de Escritura)[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo|Epilogue|Epílogo|CAPITOLO|Capitolo)\b|\n---\n|$)/gmi,
-      /^###+ *(?:Checklist|Lista de verificación)[^\n]*\n[\s\S]*?(?=^#{1,2} *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo)\b|\n---\n|$)/gmi,
+      /^#+ *(?:Literary Style Guide|Writing Guide|Style Guide|Guía de Estilo|Guía de Escritura)[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo|Epilogue|Epílogo|CAPITOLO|Capitolo)\b|\n---\n)/gmi,
+      /^###+ *(?:Checklist|Lista de verificación)[^\n]*\n[\s\S]*?(?=^#{1,2} *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo)\b|\n---\n)/gmi,
       /\n---\n[\s\S]*?(?:Style Guide|Guía de Estilo|Writing Guide)[\s\S]*?\n---\n/gi,
-      /^#+ *\d+\. *(?:Narrative Architecture|Character Construction|Central Themes|Language and Stylistic|Tone and Atmosphere|Arquitectura Narrativa)[^\n]*\n[\s\S]*?(?=^#+ *(?:CHAPTER|Chapter|CAPÍTULO|Capítulo|Prologue|Prólogo)\b|$)/gmi,
     ];
     
     for (const pattern of styleGuidePatterns) {
-      cleaned = cleaned.replace(pattern, '');
+      const afterRemoval = cleaned.replace(pattern, '');
+      // Only apply if it leaves substantial content
+      if (afterRemoval.trim().length > 50) {
+        cleaned = afterRemoval;
+      }
     }
     
-    // Remove orphaned JSON fields that might appear at the end
+    // Remove orphaned JSON fields that might appear at the end - only at the very end
     cleaned = cleaned.replace(/,?\s*"(?:source_language|target_language|notes)"\s*:\s*"[^"]*"\s*}?\s*$/g, '');
     
-    // Remove any remaining raw JSON artifacts
+    // Remove any remaining raw JSON artifacts at start/end only
     cleaned = cleaned.replace(/^\s*\{\s*"translated_text"\s*:\s*"/m, '');
     cleaned = cleaned.replace(/"\s*,?\s*"notes"\s*:\s*"[^"]*"\s*\}\s*$/m, '');
     
