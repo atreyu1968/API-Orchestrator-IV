@@ -356,9 +356,9 @@ export default function ExportPage() {
     
     // Safety check: Don't auto-restart if the session is too old
     if (secondsAgo < 120) {
-      // NEVER restart if a translation already exists for this project (any status)
+      // NEVER restart if a translation already exists for this project WITH THE SAME TARGET LANGUAGE
       const translationExists = savedTranslations.some(
-        t => t.projectId === saved.projectId
+        t => t.projectId === saved.projectId && t.targetLanguage === saved.targetLanguage
       );
       
       if (translationExists) {
@@ -575,9 +575,9 @@ export default function ExportPage() {
 
   const selectedProject = completedProjects.find(p => p.id === selectedProjectId);
 
-  // Check if selected project already has a translation (any status)
+  // Check if selected project already has a translation TO THE SAME TARGET LANGUAGE
   const existingTranslation = selectedProjectId 
-    ? savedTranslations.find(t => t.projectId === selectedProjectId)
+    ? savedTranslations.find(t => t.projectId === selectedProjectId && t.targetLanguage === targetLanguage)
     : null;
   const hasExistingTranslation = !!existingTranslation;
   const isTranslationInProgress = existingTranslation?.status === "translating";
@@ -833,11 +833,11 @@ export default function ExportPage() {
                       {isTranslationInProgress ? (
                         <p className="text-muted-foreground">
                           <Loader2 className="h-4 w-4 inline mr-2 animate-spin" />
-                          Traducción en progreso...
+                          Traducción a {getLangName(targetLanguage)} en progreso...
                         </p>
                       ) : (
                         <p className="text-muted-foreground">
-                          Ya existe una traducción de este proyecto. Elimínala del repositorio si deseas volver a traducir.
+                          Ya existe una traducción a {getLangName(targetLanguage)}. Elimínala del repositorio si deseas volver a traducir, o selecciona otro idioma.
                         </p>
                       )}
                     </div>
