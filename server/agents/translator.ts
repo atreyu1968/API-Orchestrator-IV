@@ -138,26 +138,52 @@ DEUTSCHE REDAKTIONS- UND STILSTANDARDS:
 - MODALPARTIKELN: Natürliche Verwendung von ja, doch, mal, eben in Dialogen.`,
 
   it: `
-NORME EDITORIALI E FLUIDITÀ - ITALIANO (OBBLIGATORIO):
+══════════════════════════════════════════════════════════════════════════════
+NORME EDITORIALI E FLUIDITÀ - ITALIANO LETTERARIO PROFESSIONALE (OBBLIGATORIO)
+══════════════════════════════════════════════════════════════════════════════
+
 [TIPOGRAFIA - CRITICO]
-- DIALOGHI: Usare ESCLUSIVAMENTE il trattino lungo (—) per introdurre i dialoghi. MAI usare virgolette di nessun tipo ("", «», <<>>).
-  Esempio corretto: —Ciao —disse Maria—. Come stai?
-  Esempio SBAGLIATO: «Ciao» disse Maria. / "Ciao" disse Maria.
-- INCISI: Il trattino lungo chiude l'inciso e ne apre un altro dopo l'attribuzione.
-  Esempio: —Non so —rispose lui—. Forse domani.
+- DIALOGHI: Usare ESCLUSIVAMENTE il trattino lungo (—) per introdurre i dialoghi. MAI usare virgolette ("", «», <<>>).
+  ✓ CORRETTO: —Ciao —disse Maria—. Come stai?
+  ✗ SBAGLIATO: «Ciao» disse Maria. / "Ciao" disse Maria.
+- INCISI: Il trattino lungo chiude l'inciso: —Non so —rispose lui—. Forse domani.
 - PUNTEGGIATURA: Il punto finale va DOPO il trattino di chiusura inciso.
 - NUMERI: Scrivere in lettere da uno a nove, cifre da 10 in poi.
-- ACCENTI: Attenzione agli accenti gravi (è, à) e acuti (é, perché).
-- CONSISTENZA: Se nel testo originale ci sono "«»", '""' o '<<>>', convertili TUTTI a trattini lunghi (—).
+- ACCENTI: Attenzione a: è (verbo)/e (congiunzione), perché/poiché, né/ne, sé/se, là/la, già, più, può, giù.
 
-[FLUIDITÀ E NATURALEZZA - CRITICO]
-- PRONOMI ARCAICI: MAI usare "Egli", "Ella", "Esso", "Essa", "Essi", "Esse". Usare SEMPRE il nome proprio o pronomi moderni (lui, lei, loro).
-- FRASI: Massimo 40-45 parole per frase. Le frasi oltre 50 parole DEVONO essere divise.
-- RIPETIZIONI LESSICALI: Non ripetere la stessa parola in frasi consecutive. Usare sinonimi o ristrutturare.
-- PASSIVO: Limitare la voce passiva. Preferire costruzioni attive.
-- GERUNDI: Evitare catene di gerundi. Massimo uno per frase.
-- RITMO: Alternare frasi brevi e lunghe per un ritmo narrativo naturale.
-- NATURALEZZA: Il testo deve suonare come se fosse stato scritto originariamente in italiano da un madrelingua.`,
+[PRONOMI - CRITICO PER LA LEGGIBILITÀ]
+- VIETATI ASSOLUTI: MAI usare "Egli", "Ella", "Esso", "Essa", "Essi", "Esse", "Costui", "Costei", "Codesto". 
+  Questi pronomi suonano ARCAICI e rendono il testo ILLEGGIBILE nell'italiano moderno.
+- USARE SEMPRE: lui, lei, loro, questo, quella, quello.
+- PREFERIRE IL NOME: Quando possibile, ripetere il nome del personaggio invece di usare pronomi ambigui.
+  ✓ "Marco guardò Elena. Marco sorrise." invece di "Marco guardò Elena. Egli sorrise."
+- SOGGETTO IMPLICITO: L'italiano permette di omettere il soggetto. Usare questa caratteristica!
+  ✓ "Entrò nella stanza e si sedette." (NON "Lui entrò nella stanza e lui si sedette.")
+
+[COSTRUZIONI DA EVITARE - CRITICO]
+- NO CALCHI DALLO SPAGNOLO/INGLESE:
+  ✗ "Stava camminando" → ✓ "Camminava" (perifrasi progressiva eccessiva)
+  ✗ "Che cosa è che..." → ✓ Costruzione diretta
+  ✗ "È stato lui a fare" → ✓ "L'ha fatto lui" (quando possibile)
+- NO GERUNDI CONCATENATI:
+  ✗ "Camminando, pensando, guardando..." → ✓ Dividere in frasi separate
+- NO FRASI TROPPO LUNGHE:
+  Massimo 35-40 parole per frase. Frasi oltre 45 parole DEVONO essere divise.
+- NO PASSIVO ECCESSIVO:
+  ✗ "La porta fu aperta da lui" → ✓ "Aprì la porta"
+
+[FLUIDITÀ E NATURALEZZA - ESSENZIALE]
+- RITMO NARRATIVO: Alternare frasi brevi (azione, tensione) con frasi più lunghe (descrizione, riflessione).
+- CONNETTIVI NATURALI: Usare "poi", "quindi", "allora", "così" in modo naturale, non meccanico.
+- ORDINE DELLE PAROLE: L'italiano ha ordine flessibile. Sfruttarlo per enfasi e ritmo.
+  ✓ "A casa tornò solo a mezzanotte" (enfasi su "a casa")
+- RIPETIZIONI: Evitare la stessa parola in frasi consecutive. Usare sinonimi o ristrutturare.
+- REGISTRO: Mantenere un registro letterario moderno, non accademico né troppo colloquiale.
+- ESPRESSIONI IDIOMATICHE: Tradurre il SENSO, non le parole. Usare espressioni italiane equivalenti.
+
+[VERIFICA FINALE OBBLIGATORIA]
+Prima di consegnare, rileggere ad alta voce mentalmente. Se suona come una traduzione, RISCRIVERE.
+Il testo DEVE sembrare scritto ORIGINARIAMENTE in italiano da un autore madrelingua.`,
 
   pt: `
 NORMAS EDITORIAIS E FLUIDEZ - PORTUGUÊS:
@@ -211,7 +237,11 @@ const AI_CRUTCH_WORDS: Record<string, string[]> = {
   ],
   it: [
     "improvvisamente", "cruciale", "fondamentale", "tuttavia", "nondimeno",
-    "pertanto", "inoltre", "enigmatico", "palpabile", "tangibile", "viscerale"
+    "pertanto", "inoltre", "enigmatico", "palpabile", "tangibile", "viscerale",
+    "egli", "ella", "esso", "essa", "essi", "esse", "costui", "costei",
+    "codesto", "suddetto", "medesimo", "siffatto", "allorché", "allorquando",
+    "indi", "quivi", "onde", "laonde", "giacché", "imperocché", "avvegnaché",
+    "epperò", "altresì", "invero", "precipuamente", "segnatamente"
   ],
   pt: [
     "subitamente", "repentinamente", "crucial", "fundamental", "todavia",
