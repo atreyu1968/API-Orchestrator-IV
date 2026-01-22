@@ -50,12 +50,26 @@ export type GeminiModel = "gemini-3-pro-preview" | "gemini-2.5-flash" | "gemini-
 export type DeepSeekModel = "deepseek-reasoner" | "deepseek-chat";
 
 // Map Gemini models to DeepSeek equivalents
-// Using deepseek-chat (V3) for all tasks - more stable and faster for long prompts
-// R1 (reasoner) can hang on prompts > 10k tokens
+// Default to V3 for stability, but allow override per agent
 function mapGeminiToDeepSeek(geminiModel: GeminiModel): DeepSeekModel {
-  // Force V3 for stability - R1 times out on large prompts like Architect's 20k char system prompt
-  return "deepseek-chat";
+  return "deepseek-chat"; // Default fallback
 }
+
+// Agent-specific DeepSeek model recommendations:
+// - Ghostwriter: deepseek-chat (V3) - fluent creative prose
+// - Editor: deepseek-reasoner (R1) - deep analysis for continuity issues
+// - Final Reviewer: deepseek-reasoner (R1) - critical evaluation
+// - Copyeditor: deepseek-chat (V3) - fast corrections
+export const AGENT_DEEPSEEK_MODELS: Record<string, DeepSeekModel> = {
+  "ghostwriter": "deepseek-chat",      // V3 for fluent prose
+  "editor": "deepseek-reasoner",        // R1 for deep analysis
+  "final-reviewer": "deepseek-reasoner", // R1 for critical evaluation
+  "copyeditor": "deepseek-chat",        // V3 for fast corrections
+  "continuity-validator": "deepseek-reasoner", // R1 for detecting issues
+  "chapter-expansion-analyzer": "deepseek-chat", // V3 for analysis
+  "chapter-expander": "deepseek-chat",  // V3 for prose expansion
+  "new-chapter-generator": "deepseek-chat", // V3 for prose generation
+};
 
 export interface AgentConfig {
   name: string;
@@ -212,8 +226,11 @@ export abstract class BaseAgent {
     let rateLimitAttempts = 0;
     
     const maxAttempts = MAX_RETRIES + RATE_LIMIT_MAX_RETRIES + 1;
-    const geminiModel = this.config.model || "gemini-3-pro-preview";
-    const deepseekModel = mapGeminiToDeepSeek(geminiModel);
+    
+    // Use agent-specific DeepSeek model if configured, otherwise fallback to V3
+    const agentName = this.config.name.toLowerCase();
+    const deepseekModel = AGENT_DEEPSEEK_MODELS[agentName] || "deepseek-chat";
+    console.log(`[${this.config.name}] Using DeepSeek model: ${deepseekModel} (agent-specific selection)`);
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (projectId && isProjectCancelled(projectId)) {
