@@ -195,6 +195,12 @@ export default function ExportPage() {
   });
 
   const startTranslation = useCallback((projectId: number, srcLang: string, tgtLang: string, projectTitle?: string, source: "original" | "reedit" = "original") => {
+    // Close any existing EventSource to prevent duplicate translations
+    if (eventSourceRef) {
+      eventSourceRef.close();
+      setEventSourceRef(null);
+    }
+    
     const title = projectTitle || completedProjects.find(p => p.id === projectId)?.title || "Proyecto";
     
     setTranslationProgress({
@@ -358,7 +364,7 @@ export default function ExportPage() {
         variant: "destructive",
       });
     };
-  }, [toast, completedProjects]);
+  }, [toast, completedProjects, eventSourceRef]);
 
   useEffect(() => {
     // Only restart if we don't already have an active event source
@@ -486,6 +492,12 @@ export default function ExportPage() {
   });
 
   const resumeTranslation = useCallback((translationId: number, projectTitle: string) => {
+    // Close any existing EventSource to prevent duplicate translations
+    if (eventSourceRef) {
+      eventSourceRef.close();
+      setEventSourceRef(null);
+    }
+    
     setTranslationProgress({
       isTranslating: true,
       currentChapter: 0,
@@ -588,7 +600,7 @@ export default function ExportPage() {
         outputTokens: 0,
       });
     };
-  }, [toast]);
+  }, [toast, eventSourceRef]);
 
   const selectedProject = completedProjects.find(p => p.id === selectedProjectId);
 
