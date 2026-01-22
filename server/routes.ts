@@ -720,16 +720,21 @@ export async function registerRoutes(
         });
       }
 
+      // Check if World Bible exists - if not, we need to start from scratch
+      const worldBible = await storage.getWorldBibleByProject(id);
+      const hasWorldBible = !!worldBible;
+      console.log(`[Resume] Project ${id} has World Bible: ${hasWorldBible}`);
+
       console.log(`[Resume] Updating project ${id} status to generating`);
       await storage.updateProject(id, { status: "generating" });
 
       for (const agentName of ["architect", "ghostwriter", "editor", "copyeditor", "final-reviewer"]) {
-        await storage.updateAgentStatus(id, agentName, { status: "idle", currentTask: "Preparando reanudación..." });
+        await storage.updateAgentStatus(id, agentName, { status: "idle", currentTask: hasWorldBible ? "Preparando reanudación..." : "Preparando generación desde cero..." });
       }
       console.log(`[Resume] Agent statuses updated for project ${id}`);
 
-      res.json({ message: "Resume started", projectId: id });
-      console.log(`[Resume] Response sent, starting orchestrator for project ${id}`);
+      res.json({ message: hasWorldBible ? "Resume started" : "Generation started from scratch", projectId: id, fromScratch: !hasWorldBible });
+      console.log(`[Resume] Response sent, starting orchestrator for project ${id} (fromScratch: ${!hasWorldBible})`);
 
       const sendToStreams = (data: any) => {
         const streams = activeStreams.get(id);
@@ -774,7 +779,15 @@ export async function registerRoutes(
         },
       });
 
-      orchestrator.resumeNovel(project).catch(console.error);
+      // If no World Bible exists, start from scratch with generateNovel
+      // Otherwise, resume from where it left off with resumeNovel
+      if (hasWorldBible) {
+        console.log(`[Resume] Resuming project ${id} with resumeNovel`);
+        orchestrator.resumeNovel(project).catch(console.error);
+      } else {
+        console.log(`[Resume] Starting project ${id} from scratch with generateNovel (no World Bible found)`);
+        orchestrator.generateNovel(project).catch(console.error);
+      }
 
     } catch (error) {
       console.error("Error resuming generation:", error);
