@@ -251,7 +251,8 @@ export abstract class BaseAgent {
           requestParams.max_completion_tokens = 16000;
         } else {
           // V3 uses max_tokens and supports temperature
-          requestParams.max_tokens = 8192;
+          // Increased from 8192 to 16384 for World Bible generation with 35+ chapters
+          requestParams.max_tokens = 16384;
           requestParams.temperature = Math.min(temperature, 2.0);
         }
         
