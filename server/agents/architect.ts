@@ -505,7 +505,13 @@ Responde con JSON:
 
     console.log(`[Architect] FASE 1A: Generating characters (${fase1aPrompt.length} chars)...`);
     const fase1aResponse = await this.generateContent(fase1aPrompt);
-    console.log(`[Architect] FASE 1A: Response received`);
+    console.log(`[Architect] FASE 1A: Response received - content length: ${fase1aResponse.content?.length || 0}`);
+    console.log(`[Architect] FASE 1A: Raw content (first 2000 chars): ${fase1aResponse.content?.substring(0, 2000) || 'EMPTY'}`);
+    
+    if (fase1aResponse.error) {
+      console.error(`[Architect] FASE 1A: API Error: ${fase1aResponse.error}`);
+      return { content: JSON.stringify({ error: fase1aResponse.error }), tokenUsage: fase1aResponse.tokenUsage };
+    }
     
     let personajes: any[] = [];
     let premisa = ideaInicial;
@@ -513,17 +519,32 @@ Responde con JSON:
     try {
       const jsonMatch = fase1aResponse.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const data = JSON.parse(jsonMatch[0]);
+        console.log(`[Architect] FASE 1A: JSON match found, length: ${jsonMatch[0].length}`);
+        let cleanedJson = jsonMatch[0]
+          .replace(/,\s*\/\/[^\n]*/g, ',')
+          .replace(/:\s*([^,\n"{\[]+)\s*\/\/[^\n]*/g, ': $1')
+          .replace(/\/\/[^\n]*/g, '')
+          .replace(/,\s*}/g, '}')
+          .replace(/,\s*]/g, ']');
+        console.log(`[Architect] FASE 1A: Cleaned JSON (first 500 chars): ${cleanedJson.substring(0, 500)}`);
+        const data = JSON.parse(cleanedJson);
         personajes = data.personajes || [];
         premisa = data.premisa || ideaInicial;
         console.log(`[Architect] FASE 1A: Parsed ${personajes.length} personajes`);
+        if (personajes.length > 0) {
+          console.log(`[Architect] FASE 1A: First character: ${JSON.stringify(personajes[0]).substring(0, 200)}`);
+        }
+      } else {
+        console.error(`[Architect] FASE 1A: No JSON object found in response`);
       }
-    } catch (e) {
-      console.error("[Architect] FASE 1A: Failed to parse JSON:", e);
+    } catch (e: any) {
+      console.error("[Architect] FASE 1A: Failed to parse JSON:", e.message);
+      console.error("[Architect] FASE 1A: Content that failed to parse:", fase1aResponse.content?.substring(0, 1000));
     }
     
     if (personajes.length === 0) {
       console.error("[Architect] FASE 1A: No characters generated - aborting");
+      console.error("[Architect] FASE 1A: Full response content:", fase1aResponse.content);
       return { content: JSON.stringify({ error: "No se generaron personajes" }), tokenUsage: fase1aResponse.tokenUsage };
     }
     
@@ -584,7 +605,13 @@ Responde con JSON:
     try {
       const jsonMatch = fase1bResponse.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        worldElements = JSON.parse(jsonMatch[0]);
+        let cleanedJson = jsonMatch[0]
+          .replace(/,\s*\/\/[^\n]*/g, ',')
+          .replace(/:\s*([^,\n"{\[]+)\s*\/\/[^\n]*/g, ': $1')
+          .replace(/\/\/[^\n]*/g, '')
+          .replace(/,\s*}/g, '}')
+          .replace(/,\s*]/g, ']');
+        worldElements = JSON.parse(cleanedJson);
         console.log(`[Architect] FASE 1B: Parsed ${worldElements.lugares?.length || 0} lugares`);
       }
     } catch (e) {
@@ -648,7 +675,13 @@ Responde con JSON:
     try {
       const jsonMatch = fase1cResponse.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        narrativeStructure = JSON.parse(jsonMatch[0]);
+        let cleanedJson = jsonMatch[0]
+          .replace(/,\s*\/\/[^\n]*/g, ',')
+          .replace(/:\s*([^,\n"{\[]+)\s*\/\/[^\n]*/g, ': $1')
+          .replace(/\/\/[^\n]*/g, '')
+          .replace(/,\s*}/g, '}')
+          .replace(/,\s*]/g, ']');
+        narrativeStructure = JSON.parse(cleanedJson);
         console.log(`[Architect] FASE 1C: Parsed estructura_tres_actos: ${!!narrativeStructure.estructura_tres_actos}`);
       }
     } catch (e) {
@@ -745,7 +778,13 @@ Responde con JSON:
       try {
         const jsonMatch = fase2Response.content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          const batchData = JSON.parse(jsonMatch[0]);
+          let cleanedJson = jsonMatch[0]
+            .replace(/,\s*\/\/[^\n]*/g, ',')
+            .replace(/:\s*([^,\n"{\[]+)\s*\/\/[^\n]*/g, ': $1')
+            .replace(/\/\/[^\n]*/g, '')
+            .replace(/,\s*}/g, '}')
+            .replace(/,\s*]/g, ']');
+          const batchData = JSON.parse(cleanedJson);
           if (batchData.escaleta_capitulos && Array.isArray(batchData.escaleta_capitulos)) {
             allEscaleta = allEscaleta.concat(batchData.escaleta_capitulos);
             console.log(`[Architect] FASE 2 (batch ${batch + 1}/${batches}): Added ${batchData.escaleta_capitulos.length} chapters (total: ${allEscaleta.length})`);

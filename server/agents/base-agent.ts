@@ -256,6 +256,19 @@ export abstract class BaseAgent {
           requestParams.temperature = Math.min(temperature, 2.0);
         }
         
+        // CRITICAL DEBUG: Log the exact parameters being sent to DeepSeek
+        const systemPromptLength = this.config.systemPrompt?.length || 0;
+        const userPromptLength = prompt?.length || 0;
+        console.log(`[${this.config.name}] DEBUG REQUEST PARAMS:`);
+        console.log(`  - model: ${requestParams.model}`);
+        console.log(`  - max_tokens: ${requestParams.max_tokens || 'N/A'}`);
+        console.log(`  - max_completion_tokens: ${requestParams.max_completion_tokens || 'N/A'}`);
+        console.log(`  - temperature: ${requestParams.temperature || 'N/A'}`);
+        console.log(`  - stream: ${requestParams.stream}`);
+        console.log(`  - systemPrompt length: ${systemPromptLength} chars`);
+        console.log(`  - userPrompt length: ${userPromptLength} chars`);
+        console.log(`  - total prompt chars: ${systemPromptLength + userPromptLength}`);
+        
         const generatePromise = deepseek.chat.completions.create(requestParams);
 
         console.log(`[${this.config.name}] DeepSeek request created, awaiting response (timeout: ${this.timeoutMs}ms)...`);
@@ -268,6 +281,13 @@ export abstract class BaseAgent {
         
         const elapsedMs = Date.now() - startTime;
         console.log(`[${this.config.name}] DeepSeek API call completed in ${Math.round(elapsedMs / 1000)}s`);
+        
+        // CRITICAL DEBUG: Log the raw response structure
+        console.log(`[${this.config.name}] DEBUG RAW RESPONSE:`);
+        console.log(`  - response.id: ${response.id || 'N/A'}`);
+        console.log(`  - response.model: ${response.model || 'N/A'}`);
+        console.log(`  - response.choices length: ${response.choices?.length || 0}`);
+        console.log(`  - response.usage: ${JSON.stringify(response.usage || {})}`);
 
         const choice = response.choices?.[0];
         let content = choice?.message?.content || "";
@@ -280,6 +300,18 @@ export abstract class BaseAgent {
         
         // DEBUG: Log content length and preview for architect debugging
         console.log(`[${this.config.name}] DeepSeek response - content length: ${content.length}, reasoning length: ${thoughtSignature.length}`);
+        
+        // CRITICAL DEBUG: Log finish_reason
+        console.log(`[${this.config.name}] DEBUG finish_reason: ${choice?.finish_reason || 'N/A'}`);
+        
+        // If content is empty, log more details
+        if (content.length === 0) {
+          console.log(`[${this.config.name}] WARNING: Empty content received!`);
+          console.log(`  - choice.message: ${JSON.stringify(choice?.message || {}).substring(0, 500)}`);
+          if (thoughtSignature.length > 0) {
+            console.log(`  - reasoning_content preview (first 500): ${thoughtSignature.substring(0, 500)}`);
+          }
+        }
         if (content.length > 0) {
           console.log(`[${this.config.name}] DeepSeek content preview (first 500): ${content.substring(0, 500)}`);
         } else if (thoughtSignature.length > 0) {
