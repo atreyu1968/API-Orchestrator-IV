@@ -35,9 +35,16 @@ ENGLISH EDITORIAL STANDARDS:
 - CONTRACTIONS: Preserve natural contractions (don't, can't, won't) in dialogue.`,
 
   fr: `
-NORMES ÉDITORIALES FRANÇAIS:
-- DIALOGUES: Utiliser les guillemets français « » avec espaces insécables. Tiret cadratin (—) pour les incises.
-- PONCTUATION: Espace insécable avant : ; ! ? et après « et avant ».
+NORMES ÉDITORIALES FRANÇAIS (OBLIGATOIRE):
+- DIALOGUES: EXCLUSIVEMENT tiret cadratin (—) pour introduire les dialogues. JAMAIS de guillemets.
+  ✓ — Bonjour, dit Marie.
+  ✓ — Comment vas-tu ? demanda-t-il.
+  ✗ « Bonjour » (guillemets réservés aux citations/pensées)
+  ✗ - Bonjour (tiret court interdit)
+- GUILLEMETS « »: UNIQUEMENT pour citations textuelles ou pensées intérieures.
+- PONCTUATION FRANÇAISE: Espace insécable AVANT : ; ! ? et APRÈS « et AVANT ».
+  ✓ Comment vas-tu ? (espace avant ?)
+  ✓ Attention : voici (espace avant :)
 - NOMBRES: Écrire en lettres de un à neuf, chiffres à partir de 10.
 - MAJUSCULES: Les noms de langues, nationalités s'écrivent en minuscules (français, anglais).`,
 

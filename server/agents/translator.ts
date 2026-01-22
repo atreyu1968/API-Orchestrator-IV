@@ -216,11 +216,29 @@ The text MUST read as if ORIGINALLY WRITTEN by a British author.`,
 NORMES ÉDITORIALES ET FLUIDITÉ - FRANÇAIS LITTÉRAIRE PROFESSIONNEL (OBLIGATOIRE)
 ══════════════════════════════════════════════════════════════════════════════
 
-[TYPOGRAPHIE - CRITIQUE]
-- DIALOGUES: Guillemets français « » avec espaces insécables OU tiret cadratin (—).
-  ✓ CORRECT: « Bonjour », dit Marie. « Comment vas-tu ? »
-  ✓ CORRECT: — Bonjour, dit Marie. Comment vas-tu ?
-- PONCTUATION: Espace insécable AVANT : ; ! ? et APRÈS « et AVANT ».
+[TYPOGRAPHIE - CRITIQUE - OBLIGATOIRE]
+- DIALOGUES: EXCLUSIVEMENT tiret cadratin (—) au début de chaque réplique. JAMAIS de guillemets pour les dialogues.
+  ✓ CORRECT: — Bonjour, dit Marie.
+  ✓ CORRECT: — Comment vas-tu ? demanda-t-il.
+  ✓ CORRECT: — Je ne sais pas, répondit-elle. Peut-être demain.
+  ✗ INCORRECT: « Bonjour », dit Marie. (réservé aux citations/pensées)
+  ✗ INCORRECT: - Bonjour (tiret court interdit)
+  ✗ INCORRECT: -- Bonjour (double tiret interdit)
+- INCISES DIALOGUÉES: Virgule AVANT l'incise, point APRÈS si fin de phrase.
+  ✓ — Je viendrai, dit-il.
+  ✓ — Je viendrai, dit-il, mais tard.
+  ✓ — Je viendrai, dit-il. Mais pas avant midi.
+- GUILLEMETS « »: UNIQUEMENT pour citations textuelles ou pensées intérieures.
+  ✓ Il pensa : « Quelle erreur ! »
+  ✓ Le panneau indiquait : « Entrée interdite ».
+- PONCTUATION FRANÇAISE (OBLIGATOIRE):
+  • Espace insécable AVANT : ; ! ? (espace fine ou insécable)
+  • Espace insécable APRÈS « et AVANT »
+  ✓ CORRECT: Comment vas-tu ?  (espace avant ?)
+  ✓ CORRECT: Attention : voici la suite.  (espace avant :)
+  ✓ CORRECT: Quelle surprise !  (espace avant !)
+  ✓ CORRECT: Oui ; peut-être.  (espace avant ;)
+  ✗ INCORRECT: Comment vas-tu? (pas d'espace)
 - NOMBRES: Lettres de un à neuf, chiffres à partir de 10.
 - MAJUSCULES: Langues et nationalités en minuscules (français, anglais).
 
@@ -568,7 +586,40 @@ export class TranslatorAgent extends BaseAgent {
     });
   }
 
-  private cleanTranslatedText(content: string): string {
+  private applyFrenchTypography(text: string): string {
+    let result = text;
+    
+    // 1. Normalize dialogue dashes: convert short dashes and double dashes to em dash
+    // At line start after optional whitespace
+    result = result.replace(/^(\s*)(?:--|[-–])(\s*)/gm, '$1— ');
+    
+    // 2. Ensure em dash at dialogue start has single space after
+    result = result.replace(/^(\s*)—\s*/gm, '$1— ');
+    
+    // 3. French punctuation: add non-breaking space BEFORE : ; ? !
+    // First remove any existing spaces before these marks, then add proper spacing
+    result = result.replace(/\s*([;:?!])/g, '\u00A0$1');
+    
+    // 4. French guillemets: space AFTER « and BEFORE »
+    result = result.replace(/«\s*/g, '« ');
+    result = result.replace(/\s*»/g, ' »');
+    
+    // 5. Convert dialogue guillemets to em dashes at line start
+    // Pattern: line starts with « followed by dialogue
+    result = result.replace(/^(\s*)«\s*([^»]+?)\s*»\s*,?\s*(dit|répondit|demanda|murmura|cria|chuchota|s'exclama|ajouta|reprit|interrompit|souffla|gémit|hurla|supplia)/gm, 
+      '$1— $2, $3');
+    
+    // 6. Fix double spaces
+    result = result.replace(/  +/g, ' ');
+    
+    // 7. Fix spacing after em dash at start (ensure exactly one space)
+    result = result.replace(/^—\s{2,}/gm, '— ');
+    
+    console.log(`[Translator] Applied French typography rules`);
+    return result;
+  }
+
+  private cleanTranslatedText(content: string, targetLanguage?: string): string {
     let cleaned = content.trim();
     
     // Strip markdown code block wrappers (```json ... ``` or ```markdown ... ```)
@@ -585,7 +636,7 @@ export class TranslatorAgent extends BaseAgent {
       try {
         const parsed = JSON.parse(cleaned);
         if (parsed.translated_text) {
-          cleaned = this.cleanTranslatedText(parsed.translated_text);
+          cleaned = this.cleanTranslatedText(parsed.translated_text, targetLanguage);
         }
       } catch {
         // Not valid JSON, try to extract translated_text using regex
@@ -617,6 +668,11 @@ export class TranslatorAgent extends BaseAgent {
     // Remove any remaining raw JSON artifacts at start/end only
     cleaned = cleaned.replace(/^\s*\{\s*"translated_text"\s*:\s*"/m, '');
     cleaned = cleaned.replace(/"\s*,?\s*"notes"\s*:\s*"[^"]*"\s*\}\s*$/m, '');
+    
+    // Apply language-specific typography rules
+    if (targetLanguage === 'fr') {
+      cleaned = this.applyFrenchTypography(cleaned);
+    }
     
     return cleaned.trim();
   }
@@ -707,8 +763,8 @@ RESPOND WITH JSON ONLY, no additional text.
       const jsonMatch = contentToParse.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const result = JSON.parse(jsonMatch[0]) as TranslatorResult;
-        // CRITICAL: Clean the translated text to remove any code artifacts
-        const cleanedText = this.cleanTranslatedText(result.translated_text);
+        // CRITICAL: Clean the translated text to remove any code artifacts + apply language-specific typography
+        const cleanedText = this.cleanTranslatedText(result.translated_text, input.targetLanguage);
         console.log(`[Translator] Successfully parsed and cleaned translation result`);
         return { 
           ...response, 
@@ -722,8 +778,8 @@ RESPOND WITH JSON ONLY, no additional text.
       console.error("[Translator] Failed to parse JSON response:", e);
     }
 
-    // Fallback: clean the raw content before returning
-    const cleanedFallback = this.cleanTranslatedText(response.content);
+    // Fallback: clean the raw content before returning + apply language-specific typography
+    const cleanedFallback = this.cleanTranslatedText(response.content, input.targetLanguage);
     console.log(`[Translator] Using cleaned fallback content`);
     
     return {
