@@ -333,6 +333,8 @@ export class FinalReviewerAgent extends BaseAgent {
       name: "El Revisor Final",
       role: "final-reviewer",
       systemPrompt: SYSTEM_PROMPT,
+      model: "deepseek-reasoner",
+      useThinking: false,
     });
   }
 

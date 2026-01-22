@@ -90,6 +90,8 @@ export const AGENT_DEEPSEEK_MODELS: Record<string, DeepSeekModel> = {
   "italian-reviewer": "deepseek-reasoner", // R1 for Italian review
   "chapter_expander": "deepseek-chat", // V3 for chapter expansion
   "new_chapter_generator": "deepseek-chat", // V3 for new chapter generation
+  "ghostwriter": "deepseek-chat", // V3 for creative writing
+  "final-reviewer": "deepseek-reasoner", // R1 for final review analysis
 };
 
 export type AIModel = GeminiModel | DeepSeekModel;
