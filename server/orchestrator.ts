@@ -572,9 +572,17 @@ ${chapterSummaries || "Sin capítulos disponibles"}
 
       const savedWorldBible = await storage.getWorldBibleByProject(project.id);
       const savedChapters = await storage.getChaptersByProject(project.id);
+      
+      // plotOutline can be an object with 'escaleta' array or directly an array
+      const plotOutlineData = savedWorldBible?.plotOutline as any;
+      const hasPlotOutline = plotOutlineData && (
+        Array.isArray(plotOutlineData) ? plotOutlineData.length > 0 :
+        (plotOutlineData.escaleta && Array.isArray(plotOutlineData.escaleta) && plotOutlineData.escaleta.length > 0)
+      );
+      
       const hasValidWorldBible = savedWorldBible && 
         (savedWorldBible.characters as any[])?.length > 0 && 
-        (savedWorldBible.plotOutline as any[])?.length > 0;
+        (hasPlotOutline || savedChapters.length > 0);
       
       let worldBibleData: ParsedWorldBible | null = null;
       

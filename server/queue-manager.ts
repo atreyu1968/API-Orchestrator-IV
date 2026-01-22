@@ -161,6 +161,14 @@ export class QueueManager {
             startedAt: null,
           });
         }
+        
+        // Mark project as "paused" so processProject uses resumeNovel instead of generateNovel
+        // This prevents re-generating the World Bible from scratch on each server restart
+        if (project && project.status === "generating") {
+          await storage.updateProject(project.id, { status: "paused" });
+          console.log(`[QueueManager] Project ${project.id} marked as paused for resume`);
+        }
+        
         await storage.updateQueueState({ currentProjectId: null, status: "running" });
         console.log("[QueueManager] Reset incomplete project. AUTO-RESTARTING queue...");
         
@@ -175,30 +183,32 @@ export class QueueManager {
         }
       }
       
-      // AUTO-START after short delay
+      // AUTO-START IMMEDIATELY (not after delay to avoid server restart killing the timer)
       this.isRunning = false;
       this.isPaused = false;
-      setTimeout(async () => {
+      // Use setImmediate to let the server finish initialization first
+      setImmediate(async () => {
         try {
-          console.log("[QueueManager] Auto-starting queue after server restart");
+          console.log("[QueueManager] Auto-starting queue after server restart (immediate)");
           await this.start();
         } catch (e) {
           console.error("[QueueManager] Failed to auto-start after server restart:", e);
         }
-      }, 5000);
+      });
     } else if (state.status === "running") {
       // Queue was marked running but no current project - continue processing
       console.log("[QueueManager] Queue was running with no project. AUTO-RESTARTING to process queue...");
       this.isRunning = false;
       this.isPaused = false;
-      setTimeout(async () => {
+      // Use setImmediate to let the server finish initialization first
+      setImmediate(async () => {
         try {
-          console.log("[QueueManager] Auto-starting queue (was running with no project)");
+          console.log("[QueueManager] Auto-starting queue (was running with no project) (immediate)");
           await this.start();
         } catch (e) {
           console.error("[QueueManager] Failed to auto-start:", e);
         }
-      }, 3000);
+      });
     } else if (state.status === "paused") {
       this.isPaused = true;
       console.log("[QueueManager] Queue is paused, waiting for manual resume");
@@ -475,6 +485,8 @@ export class QueueManager {
   }
 
   private async processQueue(): Promise<void> {
+    console.log(`[QueueManager] processQueue() called - isRunning=${this.isRunning}, isPaused=${this.isPaused}, currentProjectId=${this.currentProjectId}, lock=${this.processingLock}`);
+    
     // Guard: Check if queue should process
     if (!this.isRunning || this.isPaused) {
       console.log("[QueueManager] processQueue skipped - queue not running or paused");
@@ -526,9 +538,11 @@ export class QueueManager {
       // If no pending retry or retry failed, get next in queue normally
       if (!nextItem) {
         nextItem = await storage.getNextInQueue();
+        console.log(`[QueueManager] getNextInQueue returned: ${nextItem ? `item ${nextItem.id} for project ${nextItem.projectId}` : 'null'}`);
       }
       
       if (!nextItem) {
+        console.log("[QueueManager] No items in queue - emitting queue_empty");
         this.emit({ type: "queue_empty", message: "No projects in queue" });
         
         if (state.autoAdvance) {
