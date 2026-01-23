@@ -2597,6 +2597,43 @@ ${series.seriesGuide.substring(0, 50000)}`;
     }
   });
 
+  // Endpoint to reset a chapter to pending status for pipeline re-processing
+  app.post("/api/projects/:projectId/chapters/:chapterNumber/reset-to-pending", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      const chapterNumber = parseInt(req.params.chapterNumber);
+      
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      
+      const chapters = await storage.getChaptersByProject(projectId);
+      const chapter = chapters.find(c => c.chapterNumber === chapterNumber);
+      if (!chapter) {
+        return res.status(404).json({ error: "Chapter not found" });
+      }
+      
+      // Reset chapter to pending with empty content
+      await storage.updateChapter(chapter.id, {
+        status: "pending",
+        content: "",
+        wordCount: 0,
+      });
+      
+      console.log(`[ResetChapter] Chapter ${chapterNumber} of project ${projectId} reset to pending`);
+      
+      res.json({ 
+        success: true,
+        message: `Chapter ${chapterNumber} reset to pending`,
+        chapterId: chapter.id,
+      });
+    } catch (error: any) {
+      console.error("Error resetting chapter:", error);
+      res.status(500).json({ error: error.message || "Failed to reset chapter" });
+    }
+  });
+
   // Endpoint to rewrite a specific chapter with improvement instructions
   const rewriteChapterSchema = z.object({
     instructions: z.string().min(10, "Instructions must be at least 10 characters"),

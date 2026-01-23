@@ -1,15 +1,15 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileText, CheckCircle, Loader2, Clock, RefreshCw, AlertTriangle } from "lucide-react";
+import { FileText, CheckCircle, Loader2, Clock, RotateCcw, AlertTriangle } from "lucide-react";
 import type { Chapter } from "@shared/schema";
 
 interface ChapterListProps {
   chapters: Chapter[];
   selectedChapterId?: number;
   onSelectChapter: (chapter: Chapter) => void;
-  onRegenerateChapter?: (chapter: Chapter) => void;
-  regeneratingChapterId?: number;
+  onResetChapter?: (chapter: Chapter) => void;
+  resettingChapterId?: number;
 }
 
 const statusConfig = {
@@ -19,7 +19,7 @@ const statusConfig = {
   completed: { icon: CheckCircle, color: "bg-green-500/20 text-green-600 dark:text-green-400", label: "Completado" },
 };
 
-export function ChapterList({ chapters, selectedChapterId, onSelectChapter, onRegenerateChapter, regeneratingChapterId }: ChapterListProps) {
+export function ChapterList({ chapters, selectedChapterId, onSelectChapter, onResetChapter, resettingChapterId }: ChapterListProps) {
   if (chapters.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -48,7 +48,7 @@ export function ChapterList({ chapters, selectedChapterId, onSelectChapter, onRe
           const isSelected = selectedChapterId === chapter.id;
           const isLoading = chapter.status === "writing" || chapter.status === "editing";
           const isEmpty = isChapterEmpty(chapter);
-          const isRegenerating = regeneratingChapterId === chapter.id;
+          const isResetting = resettingChapterId === chapter.id;
 
           return (
             <div
@@ -99,27 +99,27 @@ export function ChapterList({ chapters, selectedChapterId, onSelectChapter, onRe
                 )}
               </button>
               
-              {isEmpty && onRegenerateChapter && (
+              {isEmpty && onResetChapter && (
                 <Button
                   size="sm"
-                  variant="destructive"
+                  variant="outline"
                   className="w-full mt-2"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onRegenerateChapter(chapter);
+                    onResetChapter(chapter);
                   }}
-                  disabled={isRegenerating}
-                  data-testid={`button-regenerate-chapter-${chapter.id}`}
+                  disabled={isResetting}
+                  data-testid={`button-reset-chapter-${chapter.id}`}
                 >
-                  {isRegenerating ? (
+                  {isResetting ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Regenerando...
+                      Marcando pendiente...
                     </>
                   ) : (
                     <>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Regenerar capítulo
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      Marcar como pendiente
                     </>
                   )}
                 </Button>

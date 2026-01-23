@@ -31,7 +31,7 @@ export default function ManuscriptPage() {
   const [agentType, setAgentType] = useState<"architect" | "reeditor">("architect");
   const [showAutoEditDialog, setShowAutoEditDialog] = useState(false);
   const [autoEditInstructions, setAutoEditInstructions] = useState("");
-  const [regeneratingChapterId, setRegeneratingChapterId] = useState<number | undefined>();
+  const [resettingChapterId, setResettingChapterId] = useState<number | undefined>();
   const { currentProject, isLoading: projectsLoading } = useProject();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -41,33 +41,33 @@ export default function ManuscriptPage() {
     reeditor: "Re-editor",
   };
 
-  const regenerateChapterMutation = useMutation({
+  const resetChapterMutation = useMutation({
     mutationFn: async (params: { projectId: number; chapterNumber: number; chapterId: number }) => {
-      setRegeneratingChapterId(params.chapterId);
-      const res = await apiRequest("POST", `/api/projects/${params.projectId}/regenerate-chapter/${params.chapterNumber}`);
+      setResettingChapterId(params.chapterId);
+      const res = await apiRequest("POST", `/api/projects/${params.projectId}/chapters/${params.chapterNumber}/reset-to-pending`);
       return res.json();
     },
-    onSuccess: (data) => {
-      setRegeneratingChapterId(undefined);
+    onSuccess: () => {
+      setResettingChapterId(undefined);
       toast({
-        title: "Capítulo regenerado",
-        description: `El capítulo se ha regenerado con ${data.wordCount || 0} palabras.`,
+        title: "Capítulo marcado como pendiente",
+        description: "El pipeline lo detectará y continuará con la generación.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/projects", currentProject?.id, "chapters"] });
     },
     onError: (error: any) => {
-      setRegeneratingChapterId(undefined);
+      setResettingChapterId(undefined);
       toast({
-        title: "Error al regenerar",
-        description: error.message || "No se pudo regenerar el capítulo",
+        title: "Error",
+        description: error.message || "No se pudo marcar el capítulo como pendiente",
         variant: "destructive",
       });
     },
   });
 
-  const handleRegenerateChapter = (chapter: Chapter) => {
+  const handleResetChapter = (chapter: Chapter) => {
     if (!currentProject) return;
-    regenerateChapterMutation.mutate({
+    resetChapterMutation.mutate({
       projectId: currentProject.id,
       chapterNumber: chapter.chapterNumber,
       chapterId: chapter.id,
@@ -371,8 +371,8 @@ export default function ManuscriptPage() {
               chapters={sortChaptersForDisplay(chapters)}
               selectedChapterId={selectedChapter?.id}
               onSelectChapter={setSelectedChapter}
-              onRegenerateChapter={handleRegenerateChapter}
-              regeneratingChapterId={regeneratingChapterId}
+              onResetChapter={handleResetChapter}
+              resettingChapterId={resettingChapterId}
             />
           </CardContent>
         </Card>
