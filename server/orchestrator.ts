@@ -2351,6 +2351,28 @@ ${chapterSummaries || "Sin capítulos disponibles"}
             }
           } else {
             consecutiveHighScores = 0;
+            
+            // Detectar estancamiento: múltiples evaluaciones sin issues y sin alcanzar 9
+            const recentScores = previousScores.slice(-3);
+            const isStagnant = recentScores.length >= 3 && 
+              recentScores.every(s => s >= 7 && s < this.minAcceptableScore);
+            
+            if (isStagnant) {
+              const avgScore = (recentScores.reduce((a, b) => a + b, 0) / recentScores.length).toFixed(1);
+              this.callbacks.onAgentStatus("final-reviewer", "paused", 
+                `ESTANCAMIENTO: 3 evaluaciones consecutivas con ~${avgScore}/10 sin issues específicos. El manuscrito está bien pero no alcanza el 9. Pausando para instrucciones del usuario.`
+              );
+              
+              await storage.updateProject(project.id, {
+                status: "awaiting_instructions",
+                pauseReason: `El manuscrito mantiene una puntuación de ${avgScore}/10 pero el revisor no encuentra problemas específicos para mejorar. Por favor, proporciona instrucciones sobre cómo proceder: ¿aprobar con esta puntuación, o dar indicaciones específicas para mejorar?`,
+                currentActivity: `Estancamiento en revisión final: puntuación ~${avgScore}/10 sin issues detectados`,
+                bestsellerScore: currentScore
+              });
+              
+              return false;
+            }
+            
             this.callbacks.onAgentStatus("final-reviewer", "reviewing", 
               `Sin problemas específicos pero puntuación ${currentScore}/10 < ${this.minAcceptableScore}. Continuando refinamiento...`
             );
