@@ -71,50 +71,50 @@ export interface AgentResponse {
 }
 
 export type GeminiModel = "gemini-3-pro-preview" | "gemini-2.5-flash" | "gemini-2.0-flash";
-export type DeepSeekModel = "deepseek-reasoner" | "deepseek-v3.2";
+export type DeepSeekModel = "deepseek-reasoner" | "deepseek-chat";
 
 // Map Gemini models to DeepSeek equivalents
-// Default to V3.2 for stability, but allow override per agent
+// Default to V3 for stability, but allow override per agent
 function mapGeminiToDeepSeek(geminiModel: GeminiModel): DeepSeekModel {
-  return "deepseek-v3.2"; // Default fallback
+  return "deepseek-chat"; // Default fallback
 }
 
 // Agent-specific DeepSeek model recommendations:
-// - Ghostwriter: deepseek-v3.2 (V3.2) - fluent creative prose
+// - Ghostwriter: deepseek-chat (V3) - fluent creative prose
 // - Editor: deepseek-reasoner (R1) - deep analysis for continuity issues
 // - Final Reviewer: deepseek-reasoner (R1) - critical evaluation
-// - Copyeditor: deepseek-v3.2 (V3.2) - fast corrections
+// - Copyeditor: deepseek-chat (V3) - fast corrections
 export const AGENT_DEEPSEEK_MODELS: Record<string, DeepSeekModel> = {
-  "ghostwriter": "deepseek-v3.2",      // V3.2 for fluent prose
+  "ghostwriter": "deepseek-chat",      // V3 for fluent prose
   "editor": "deepseek-reasoner",        // R1 for deep analysis
   "final-reviewer": "deepseek-reasoner", // R1 for critical evaluation
   "final_reviewer": "deepseek-reasoner", // R1 for reedit final reviewer
-  "copyeditor": "deepseek-v3.2",        // V3.2 for fast corrections
+  "copyeditor": "deepseek-chat",        // V3 for fast corrections
   "continuity-validator": "deepseek-reasoner", // R1 for detecting issues
-  "chapter-expansion-analyzer": "deepseek-v3.2", // V3.2 for analysis
-  "chapter-expander": "deepseek-v3.2",  // V3.2 for prose expansion
-  "new-chapter-generator": "deepseek-v3.2", // V3.2 for prose generation
+  "chapter-expansion-analyzer": "deepseek-chat", // V3 for analysis
+  "chapter-expander": "deepseek-chat",  // V3 for prose expansion
+  "new-chapter-generator": "deepseek-chat", // V3 for prose generation
   "qa_continuity": "deepseek-reasoner", // R1 for continuity analysis
   "qa_voice": "deepseek-reasoner",      // R1 for voice/rhythm analysis
   "qa_semantic": "deepseek-reasoner",   // R1 for semantic analysis
   "qa_anachronism": "deepseek-reasoner", // R1 for anachronism detection
-  "world_bible_extractor": "deepseek-v3.2", // V3.2 for extraction
-  "narrative_rewriter": "deepseek-v3.2", // V3.2 for rewriting
+  "world_bible_extractor": "deepseek-chat", // V3 for extraction
+  "narrative_rewriter": "deepseek-chat", // V3 for rewriting
   "manuscript-analyzer": "deepseek-reasoner", // R1 for deep manuscript analysis
   "arc-validator": "deepseek-reasoner", // R1 for series arc validation
-  "series-thread-fixer": "deepseek-v3.2", // V3.2 for series thread fixes
+  "series-thread-fixer": "deepseek-chat", // V3 for series thread fixes
   "editor": "deepseek-reasoner", // R1 for editorial analysis
-  "copyeditor": "deepseek-v3.2", // V3.2 for creative polish
+  "copyeditor": "deepseek-chat", // V3 for creative polish
   "continuity-sentinel": "deepseek-reasoner", // R1 for continuity analysis
   "voice-rhythm-auditor": "deepseek-reasoner", // R1 for voice/rhythm analysis
   "semantic-repetition-detector": "deepseek-reasoner", // R1 for semantic analysis
   "restructurer": "deepseek-reasoner", // R1 for structural analysis
   "expansion_analyzer": "deepseek-reasoner", // R1 for expansion analysis
-  "translator": "deepseek-v3.2", // V3.2 for translation
+  "translator": "deepseek-chat", // V3 for translation
   "italian-reviewer": "deepseek-reasoner", // R1 for Italian review
-  "chapter_expander": "deepseek-v3.2", // V3.2 for chapter expansion
-  "new_chapter_generator": "deepseek-v3.2", // V3.2 for new chapter generation
-  "ghostwriter": "deepseek-v3.2", // V3.2 for creative writing
+  "chapter_expander": "deepseek-chat", // V3 for chapter expansion
+  "new_chapter_generator": "deepseek-chat", // V3 for new chapter generation
+  "ghostwriter": "deepseek-chat", // V3 for creative writing
   "final-reviewer": "deepseek-reasoner", // R1 for final review analysis
 };
 
@@ -292,9 +292,9 @@ export abstract class BaseAgent {
     
     const maxAttempts = MAX_RETRIES + RATE_LIMIT_MAX_RETRIES + 1;
     
-    // Use agent-specific DeepSeek model if configured, otherwise fallback to V3.2
+    // Use agent-specific DeepSeek model if configured, otherwise fallback to V3
     const agentName = this.config.name.toLowerCase();
-    const deepseekModel = AGENT_DEEPSEEK_MODELS[agentName] || "deepseek-v3.2";
+    const deepseekModel = AGENT_DEEPSEEK_MODELS[agentName] || "deepseek-chat";
     console.log(`[${this.config.name}] Using DeepSeek model: ${deepseekModel} (agent-specific selection)`);
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {

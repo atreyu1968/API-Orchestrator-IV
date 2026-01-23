@@ -5075,9 +5075,9 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
             fast: "gemini-2.0-flash",
           },
           deepseek: {
-            creative: "deepseek-v3.2 (V3.2)",
+            creative: "deepseek-chat (V3)",
             analysis: "deepseek-reasoner (R1)",
-            fast: "deepseek-v3.2 (V3.2)",
+            fast: "deepseek-chat (V3)",
           },
         },
         pricing: {
