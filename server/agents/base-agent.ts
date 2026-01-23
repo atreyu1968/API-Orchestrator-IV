@@ -13,10 +13,11 @@ export function getAIProvider(): AIProvider {
   return "deepseek"; // Default to DeepSeek (more cost-effective)
 }
 
-// Gemini client
+// Gemini client - Use user's own API key if provided, otherwise fall back to Replit integration
+const userGeminiApiKey = process.env.GEMINI_API_KEY;
 const geminiClient = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
+  apiKey: userGeminiApiKey || process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+  httpOptions: userGeminiApiKey ? undefined : {
     apiVersion: "",
     baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
   },
