@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Download, BookOpen, MessageSquare, PenTool, ChevronDown, Wand2, Loader2 } from "lucide-react";
 import { useProject } from "@/lib/project-context";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Project, Chapter } from "@shared/schema";
 
@@ -31,6 +31,7 @@ export default function ManuscriptPage() {
   const [agentType, setAgentType] = useState<"architect" | "reeditor">("architect");
   const [showAutoEditDialog, setShowAutoEditDialog] = useState(false);
   const [autoEditInstructions, setAutoEditInstructions] = useState("");
+  const [regeneratingChapterId, setRegeneratingChapterId] = useState<number | undefined>();
   const { currentProject, isLoading: projectsLoading } = useProject();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -38,6 +39,39 @@ export default function ManuscriptPage() {
   const agentLabels = {
     architect: "Arquitecto",
     reeditor: "Re-editor",
+  };
+
+  const regenerateChapterMutation = useMutation({
+    mutationFn: async (params: { projectId: number; chapterNumber: number; chapterId: number }) => {
+      setRegeneratingChapterId(params.chapterId);
+      const res = await apiRequest("POST", `/api/projects/${params.projectId}/regenerate-chapter/${params.chapterNumber}`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setRegeneratingChapterId(undefined);
+      toast({
+        title: "Capítulo regenerado",
+        description: `El capítulo se ha regenerado con ${data.wordCount || 0} palabras.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", currentProject?.id, "chapters"] });
+    },
+    onError: (error: any) => {
+      setRegeneratingChapterId(undefined);
+      toast({
+        title: "Error al regenerar",
+        description: error.message || "No se pudo regenerar el capítulo",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleRegenerateChapter = (chapter: Chapter) => {
+    if (!currentProject) return;
+    regenerateChapterMutation.mutate({
+      projectId: currentProject.id,
+      chapterNumber: chapter.chapterNumber,
+      chapterId: chapter.id,
+    });
   };
 
   const cloneToReeditMutation = useMutation({
@@ -337,6 +371,8 @@ export default function ManuscriptPage() {
               chapters={sortChaptersForDisplay(chapters)}
               selectedChapterId={selectedChapter?.id}
               onSelectChapter={setSelectedChapter}
+              onRegenerateChapter={handleRegenerateChapter}
+              regeneratingChapterId={regeneratingChapterId}
             />
           </CardContent>
         </Card>
