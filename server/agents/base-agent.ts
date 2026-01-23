@@ -32,6 +32,19 @@ function getDeepSeekClient(): OpenAI | null {
   });
 }
 
+// DeepSeek client for Translator (separate API key for parallel operations)
+function getDeepSeekTranslatorClient(): OpenAI | null {
+  // Use dedicated translator key if available, fallback to main key
+  const apiKey = process.env.DEEPSEEK_TRANSLATOR_API_KEY || process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) return null;
+  return new OpenAI({
+    apiKey,
+    baseURL: "https://api.deepseek.com",
+  });
+}
+
+export { getDeepSeekTranslatorClient };
+
 export interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
@@ -102,6 +115,7 @@ export interface AgentConfig {
   systemPrompt: string;
   model?: AIModel;
   useThinking?: boolean;
+  useTranslatorClient?: boolean; // Use dedicated DeepSeek API key for translator
 }
 
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes for DeepSeek R1
@@ -237,11 +251,16 @@ export abstract class BaseAgent {
   }
 
   private async generateWithDeepSeek(prompt: string, projectId?: number, options?: { temperature?: number }): Promise<AgentResponse> {
-    const deepseek = getDeepSeekClient();
+    // Use dedicated translator client if configured
+    const deepseek = this.config.useTranslatorClient 
+      ? getDeepSeekTranslatorClient() 
+      : getDeepSeekClient();
+    
     if (!deepseek) {
+      const keyName = this.config.useTranslatorClient ? "DEEPSEEK_TRANSLATOR_API_KEY" : "DEEPSEEK_API_KEY";
       return {
         content: "",
-        error: "DeepSeek API key not configured. Please add DEEPSEEK_API_KEY.",
+        error: `DeepSeek API key not configured. Please add ${keyName}.`,
         timedOut: false,
       };
     }

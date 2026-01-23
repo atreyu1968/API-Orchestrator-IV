@@ -749,6 +749,7 @@ export class TranslatorAgent extends BaseAgent {
       systemPrompt: SYSTEM_PROMPT,
       model: "deepseek-chat",
       useThinking: false,
+      useTranslatorClient: true, // Use dedicated API key for parallel translation
     });
   }
 
