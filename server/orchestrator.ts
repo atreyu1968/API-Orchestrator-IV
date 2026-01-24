@@ -598,74 +598,12 @@ ${chapterSummaries || "Sin capítulos disponibles"}
         
         worldBibleData = this.reconstructWorldBibleData(savedWorldBible!, project);
         
-        const resumeSections = this.buildSectionsListFromChapters(savedChapters, worldBibleData);
+        // Check if there are pending chapters - if so, delegate to resumeNovel
         const pendingChapters = savedChapters.filter(ch => ch.status === "pending" || ch.status === "writing");
         
         if (pendingChapters.length > 0) {
-          console.log(`[Orchestrator] Found ${pendingChapters.length} pending chapters to write`);
-          
-          const characterStates = this.initializeCharacterStates(worldBibleData);
-          
-          for (const section of resumeSections) {
-            if (this.isCancelling) {
-              console.log(`[Orchestrator] Cancellation detected during resume`);
-              break;
-            }
-            
-            const chapter = savedChapters.find(ch => ch.chapterNumber === section.numero);
-            if (!chapter || (chapter.status !== "pending" && chapter.status !== "writing")) {
-              if (chapter?.status === "completed" && chapter.content) {
-                this.updateCharacterStatesFromContent(characterStates, chapter.content, worldBibleData.world_bible);
-              }
-              continue;
-            }
-            
-            await storage.updateChapter(chapter.id, { status: "writing" });
-            this.callbacks.onChapterStatusChange(section.numero, "writing");
-            this.callbacks.onAgentStatus("ghostwriter", "writing", `Escribiendo ${section.titulo}...`);
-            
-            const previousChaptersContent = savedChapters
-              .filter(ch => ch.chapterNumber < section.numero && ch.status === "completed" && ch.content)
-              .sort((a, b) => a.chapterNumber - b.chapterNumber)
-              .map(ch => ch.content)
-              .join("\n\n---\n\n");
-            
-            const writeResult = await this.ghostwriter.execute({
-              title: project.title,
-              chapterNumber: section.numero,
-              chapterTitle: section.titulo,
-              premise: project.premise || "",
-              summary: section.resumen,
-              tone: project.tone,
-              previousChapters: previousChaptersContent,
-              worldBible: worldBibleData.world_bible,
-              styleGuide: styleGuideContent,
-              minWordsPerChapter: project.minWordsPerChapter || 1500,
-              maxWordsPerChapter: project.maxWordsPerChapter || 3500,
-              characterStates,
-            });
-            
-            if (writeResult.error || !writeResult.content) {
-              console.error(`[Orchestrator] Failed to write chapter ${section.numero}: ${writeResult.error}`);
-              continue;
-            }
-            
-            const wordCount = writeResult.content.split(/\s+/).length;
-            await storage.updateChapter(chapter.id, {
-              content: writeResult.content,
-              originalContent: writeResult.content,
-              wordCount,
-              status: "completed",
-            });
-            
-            await this.trackTokenUsage(project.id, writeResult.tokenUsage, "Narrador", "deepseek-chat", section.numero, "chapter_writing");
-            this.updateCharacterStatesFromContent(characterStates, writeResult.content, worldBibleData.world_bible);
-            
-            console.log(`[Orchestrator] Completed chapter ${section.numero}: ${section.titulo} (${wordCount} words)`);
-          }
-          
-          await this.runFinalReview(project, worldBibleData);
-          return;
+          console.log(`[Orchestrator] Found ${pendingChapters.length} pending chapters - delegating to resumeNovel`);
+          return this.resumeNovel(project);
         }
       }
 
@@ -2390,9 +2328,8 @@ ${chapterSummaries || "Sin capítulos disponibles"}
               
               await storage.updateProject(project.id, {
                 status: "awaiting_instructions",
-                pauseReason: `El manuscrito mantiene una puntuación de ${avgScore}/10 pero el revisor no encuentra problemas específicos para mejorar. Por favor, proporciona instrucciones sobre cómo proceder: ¿aprobar con esta puntuación, o dar indicaciones específicas para mejorar?`,
-                currentActivity: `Estancamiento en revisión final: puntuación ~${avgScore}/10 sin issues detectados`,
-                bestsellerScore: currentScore
+                architectInstructions: `[PAUSA] El manuscrito mantiene una puntuación de ${avgScore}/10 pero el revisor no encuentra problemas específicos para mejorar. Por favor, proporciona instrucciones sobre cómo proceder.`,
+                finalScore: currentScore
               });
               
               return false;
