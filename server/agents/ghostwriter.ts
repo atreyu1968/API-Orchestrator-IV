@@ -294,6 +294,12 @@ export class GhostwriterAgent extends BaseAgent {
   }
 
   async execute(input: GhostwriterInput): Promise<AgentResponse> {
+    // SPECIAL HANDLING: Author's Note (Chapter -2)
+    // This is NOT narrative fiction - it's a personal text from the author to readers
+    if (input.chapterNumber === -2) {
+      return this.executeAuthorNote(input);
+    }
+    
     let prompt = `
     CONTEXTO DEL MUNDO (World Bible): ${JSON.stringify(input.worldBible)}
     GUÍA DE ESTILO: ${input.guiaEstilo}
@@ -647,5 +653,121 @@ export class GhostwriterAgent extends BaseAgent {
       }
       return { cleanContent: content, continuityState: null };
     }
+  }
+
+  /**
+   * Special method for generating Author's Note (Chapter -2)
+   * This is NOT narrative fiction - it's a personal text from the author to readers
+   */
+  private async executeAuthorNote(input: GhostwriterInput): Promise<AgentResponse> {
+    const authorName = input.authorName || "El Autor";
+    const worldBible = input.worldBible;
+    const title = worldBible?.titulo || "esta novela";
+    const genre = worldBible?.genero || "ficción";
+    const premise = worldBible?.premisa || "";
+    const setting = worldBible?.ambientacion?.epoca || "";
+    const location = worldBible?.ambientacion?.ubicacion || "";
+    
+    const authorNotePrompt = `
+═══════════════════════════════════════════════════════════════════
+⚠️ INSTRUCCIONES ESPECIALES: NOTA DEL AUTOR (NO ES NARRATIVA)
+═══════════════════════════════════════════════════════════════════
+
+IMPORTANTE: Esto NO es un capítulo de ficción. Es una NOTA DEL AUTOR - un texto 
+personal y sincero dirigido directamente a los lectores, escrito en primera 
+persona desde la perspectiva del autor "${authorName}".
+
+═══════════════════════════════════════════════════════════════════
+INFORMACIÓN DEL PROYECTO
+═══════════════════════════════════════════════════════════════════
+- Título de la novela: ${title}
+- Género: ${genre}
+- Premisa: ${premise}
+- Época/Ambientación: ${setting}
+- Ubicación: ${location}
+
+═══════════════════════════════════════════════════════════════════
+ESTRUCTURA DE LA NOTA DEL AUTOR
+═══════════════════════════════════════════════════════════════════
+
+La Nota del Autor debe incluir estos elementos (en el orden que prefieras):
+
+1. SALUDO PERSONAL AL LECTOR
+   - Agradece al lector por haber llegado hasta el final
+   - Reconoce el tiempo que han dedicado a la historia
+
+2. GÉNESIS DE LA HISTORIA
+   - ¿Qué inspiró esta novela? (puede ser ficticio pero creíble)
+   - ¿Qué pregunta o inquietud quería explorar el autor?
+   - Menciona alguna anécdota sobre cómo surgió la idea
+
+3. PROCESO DE INVESTIGACIÓN (si aplica al género)
+   - Para novela histórica: menciona fuentes, viajes, expertos consultados
+   - Para thriller: aspectos técnicos investigados
+   - Para cualquier género: el trabajo detrás de la ambientación
+
+4. REFLEXIÓN PERSONAL
+   - ¿Qué significan los personajes para el autor?
+   - ¿Qué mensaje o emoción espera transmitir?
+   - Conexión emocional con la historia
+
+5. AGRADECIMIENTOS BREVES
+   - A la familia por su paciencia
+   - Al equipo editorial (mencionado de forma genérica)
+   - A los lectores fieles
+
+6. CIERRE CÁLIDO
+   - Invitación a conectar (redes sociales genéricas)
+   - Despedida personal y cálida
+   - Posible mención del próximo proyecto (opcional)
+
+═══════════════════════════════════════════════════════════════════
+TONO Y ESTILO
+═══════════════════════════════════════════════════════════════════
+
+- PRIMERA PERSONA: Escribe como "${authorName}" hablando directamente al lector
+- TONO ÍNTIMO Y CERCANO: Como si hablaras con un amigo
+- SINCERIDAD: Transmite pasión genuina por el oficio de escribir
+- HUMILDAD: Sin arrogancia, con gratitud
+- CALIDEZ: El lector debe sentirse valorado
+
+PROHIBIDO:
+- NO escribas narrativa ficticia (escenas, diálogos de personajes)
+- NO incluyas spoilers de la trama
+- NO uses el tono formal de la novela
+- NO hagas referencias a IA o generación automática
+- NO incluyas elementos meta-textuales sobre el proceso de escritura técnico
+
+═══════════════════════════════════════════════════════════════════
+EXTENSIÓN
+═══════════════════════════════════════════════════════════════════
+
+Escribe entre 800 y 1200 palabras. Es un texto breve pero significativo.
+
+═══════════════════════════════════════════════════════════════════
+FORMATO DE SALIDA
+═══════════════════════════════════════════════════════════════════
+
+Escribe SOLO el texto de la Nota del Autor, sin encabezados ni marcadores.
+Comienza directamente con el texto, como si fuera la página de la nota
+en un libro impreso.
+
+Firma al final con:
+${authorName}
+[Mes y año ficticios coherentes]
+`;
+
+    console.log(`[Ghostwriter] Generating Author's Note for "${title}" by ${authorName}`);
+    
+    const response = await this.callModel(authorNotePrompt);
+    
+    return {
+      content: response.content,
+      agentType: "ghostwriter",
+      thinking: response.thinking,
+      inputTokens: response.inputTokens,
+      outputTokens: response.outputTokens,
+      thinkingTokens: response.thinkingTokens,
+    };
   }
 }
