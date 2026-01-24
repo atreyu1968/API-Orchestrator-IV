@@ -2746,13 +2746,26 @@ export class ReeditOrchestrator {
         return;
       }
 
-      await storage.updateReeditProject(projectId, { currentStage: "qa" });
+      // Skip QA if already past this stage (resume support)
+      const skipQa = resumeStageIndex > stageOrder.indexOf("qa");
+      
+      if (skipQa) {
+        console.log(`[ReeditOrchestrator] Skipping STAGE 4.5 (QA) - already completed (currentStage: ${resumeStage})`);
+        this.emitProgress({
+          projectId,
+          stage: "qa",
+          currentChapter: 0,
+          totalChapters: 0,
+          message: "Saltando etapa QA (ya completada)...",
+        });
+      } else {
+        await storage.updateReeditProject(projectId, { currentStage: "qa" });
 
-      // Clean up previous QA reports to avoid duplicates on restarts
-      await storage.deleteReeditAuditReportsByType(projectId, "continuity");
-      await storage.deleteReeditAuditReportsByType(projectId, "voice_rhythm");
-      await storage.deleteReeditAuditReportsByType(projectId, "semantic_repetition");
-      await storage.deleteReeditAuditReportsByType(projectId, "anachronism");
+        // Clean up previous QA reports to avoid duplicates on restarts
+        await storage.deleteReeditAuditReportsByType(projectId, "continuity");
+        await storage.deleteReeditAuditReportsByType(projectId, "voice_rhythm");
+        await storage.deleteReeditAuditReportsByType(projectId, "semantic_repetition");
+        await storage.deleteReeditAuditReportsByType(projectId, "anachronism");
 
       // 4.5a: Continuity Sentinel - every 5 chapters
       const chapterBlocks5 = [];
@@ -2897,10 +2910,25 @@ export class ReeditOrchestrator {
       completedQaOps++;
       await this.updateHeartbeat(projectId, validChapters.length);
       console.log(`[ReeditOrchestrator] QA stage completed: ${completedQaOps}/${totalQaOps} operations`);
+      } // End of skipQa else block
 
       // === STAGE 5: CONSOLIDATED NARRATIVE REWRITING (Architect + QA problems in ONE pass) ===
-      // CRITICAL: Update stage IMMEDIATELY after QA completes to prevent re-running QA on resume
-      await storage.updateReeditProject(projectId, { currentStage: "narrative_rewriting" });
+      // Skip if already past this stage (resume support)
+      const skipNarrativeRewriting = resumeStageIndex > stageOrder.indexOf("narrative_rewriting");
+      
+      if (skipNarrativeRewriting) {
+        console.log(`[ReeditOrchestrator] Skipping STAGE 5 (narrative_rewriting) - already completed (currentStage: ${resumeStage})`);
+        this.emitProgress({
+          projectId,
+          stage: "narrative_rewriting",
+          currentChapter: 0,
+          totalChapters: 0,
+          message: "Saltando etapa de reescritura (ya completada)...",
+        });
+      } else {
+        // CRITICAL: Update stage IMMEDIATELY after QA completes to prevent re-running QA on resume
+        await storage.updateReeditProject(projectId, { currentStage: "narrative_rewriting" });
+      }
       
       // Collect all problems from Architect
       const architectProblems = this.collectArchitectProblems(architectResult);
@@ -2922,7 +2950,7 @@ export class ReeditOrchestrator {
       // Get user instructions for rewriting (architectInstructions from project creation)
       const userRewriteInstructions = project.architectInstructions || "";
       
-      if (consolidatedProblems.size > 0 && !narrativeRewriteCompleted) {
+      if (consolidatedProblems.size > 0 && !narrativeRewriteCompleted && !skipNarrativeRewriting) {
         const totalProblemsCount = Array.from(consolidatedProblems.values()).reduce((sum, p) => sum + p.length, 0);
         console.log(`[ReeditOrchestrator] OPTIMIZED: Consolidating ${totalProblemsCount} problems (Architect + QA) in ${consolidatedProblems.size} chapters for SINGLE rewriting pass`);
         
@@ -3070,23 +3098,36 @@ export class ReeditOrchestrator {
       }
 
       // === STAGE 6: COPY EDITING (OPTIMIZED - only chapters NOT rewritten) ===
-      const chaptersNeedingCopyEdit = validChapters.filter(c => !rewrittenChapters.has(c.chapterNumber));
-      const skippedCount = validChapters.length - chaptersNeedingCopyEdit.length;
+      // Skip if already past this stage (resume support)
+      const skipCopyEditing = resumeStageIndex > stageOrder.indexOf("copyediting");
       
-      console.log(`[ReeditOrchestrator] OPTIMIZED CopyEditor: Processing ${chaptersNeedingCopyEdit.length} chapters (skipping ${skippedCount} already rewritten)`);
-      
-      this.emitProgress({
-        projectId,
-        stage: "copyediting",
-        currentChapter: 0,
-        totalChapters: chaptersNeedingCopyEdit.length,
-        message: `Corrección de estilo: ${chaptersNeedingCopyEdit.length} capítulos (${skippedCount} ya procesados)...`,
-      });
+      if (skipCopyEditing) {
+        console.log(`[ReeditOrchestrator] Skipping STAGE 6 (copyediting) - already completed (currentStage: ${resumeStage})`);
+        this.emitProgress({
+          projectId,
+          stage: "copyediting",
+          currentChapter: 0,
+          totalChapters: 0,
+          message: "Saltando etapa de corrección de estilo (ya completada)...",
+        });
+      } else {
+        const chaptersNeedingCopyEdit = validChapters.filter(c => !rewrittenChapters.has(c.chapterNumber));
+        const skippedCount = validChapters.length - chaptersNeedingCopyEdit.length;
+        
+        console.log(`[ReeditOrchestrator] OPTIMIZED CopyEditor: Processing ${chaptersNeedingCopyEdit.length} chapters (skipping ${skippedCount} already rewritten)`);
+        
+        this.emitProgress({
+          projectId,
+          stage: "copyediting",
+          currentChapter: 0,
+          totalChapters: chaptersNeedingCopyEdit.length,
+          message: `Corrección de estilo: ${chaptersNeedingCopyEdit.length} capítulos (${skippedCount} ya procesados)...`,
+        });
 
-      await storage.updateReeditProject(projectId, { currentStage: "copyediting" });
-      await this.updateHeartbeat(projectId);
+        await storage.updateReeditProject(projectId, { currentStage: "copyediting" });
+        await this.updateHeartbeat(projectId);
 
-      for (let i = 0; i < chaptersNeedingCopyEdit.length; i++) {
+        for (let i = 0; i < chaptersNeedingCopyEdit.length; i++) {
         if (await this.checkCancellation(projectId)) {
           console.log(`[ReeditOrchestrator] Processing cancelled at copyediting stage, chapter ${i + 1}`);
           return;
@@ -3140,6 +3181,7 @@ export class ReeditOrchestrator {
       }
       
       console.log(`[ReeditOrchestrator] CopyEditor stage complete: ${chaptersNeedingCopyEdit.length} chapters processed, ${skippedCount} skipped (already rewritten)`)
+      } // End of skipCopyEditing else block
 
       // === STAGE 7: FINAL REVIEW (with 10/10 twice consecutive logic using full content reviewer) ===
       await storage.updateReeditProject(projectId, { currentStage: "reviewing" });
