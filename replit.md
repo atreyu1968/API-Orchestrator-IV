@@ -41,9 +41,15 @@ Preferred communication style: Simple, everyday language.
 - **Key Tables**: `projects`, `chapters`, `worldBibles`, `thoughtLogs`, `agentStatuses`, `series`, `continuitySnapshots`, `importedManuscripts`, `importedChapters`. These tables store project metadata, chapter content, world-building elements, AI process logs, real-time status, series information, continuity summaries, and details on imported manuscripts.
 
 ### AI Integration
-- **Model**: Gemini 3 Pro Preview, accessed via Replit AI Integrations.
-- **Configuration**: Uses `thinkingBudget: 10000` for deep reasoning and `temperature: 1.0`, `topP: 0.95` for creative output.
-- **Client Setup**: Utilizes the `@google/genai` SDK with Replit's proxy, eliminating the need for an external API key.
+- **Default Provider**: DeepSeek (cost-efficient), with Gemini as optional high-speed alternative.
+- **DeepSeek Models**:
+  - `deepseek-chat` (V3): Fast model (10-60s response), used for prose generation, editing, translation, and QA checks.
+  - `deepseek-reasoner` (R1): Slow reasoning model (5-15min), reserved only for Final Review.
+- **Gemini Models**: `gemini-3-pro-preview` for creative, `gemini-2.5-flash` for analysis.
+- **Provider Switching**: Users can switch between DeepSeek (economic) and Gemini (fast) via the sidebar selector.
+- **Performance Optimization**: Most agents now use V3 (fast) instead of R1 (slow) to reduce processing time from hours to minutes.
+- **Configuration**: Uses `temperature: 1.0` for creative output.
+- **Client Setup**: Utilizes the `@google/genai` SDK for Gemini or OpenAI-compatible API for DeepSeek.
 
 ### Build System
 - **Development**: `tsx` for TypeScript execution with hot reload.
@@ -72,8 +78,9 @@ Preferred communication style: Simple, everyday language.
 ## External Dependencies
 
 ### AI Services
+- **DeepSeek**: Primary AI provider for cost efficiency. Uses `DEEPSEEK_API_KEY` environment variable. Optional separate keys: `DEEPSEEK_TRANSLATOR_API_KEY`, `DEEPSEEK_REEDITOR_API_KEY`.
 - **Replit AI Integrations**: Provides access to the Gemini API using `AI_INTEGRATIONS_GEMINI_API_KEY` and `AI_INTEGRATIONS_GEMINI_BASE_URL` environment variables.
-- **Models**: `gemini-3-pro-preview` for text generation, `gemini-2.5-flash-image` for image generation.
+- **Models**: `deepseek-chat` (V3) and `deepseek-reasoner` (R1) for DeepSeek; `gemini-3-pro-preview` for text generation, `gemini-2.5-flash-image` for image generation.
 
 ### Database
 - **PostgreSQL**: Accessed via the `DATABASE_URL` environment variable.

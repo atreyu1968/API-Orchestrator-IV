@@ -80,39 +80,53 @@ function mapGeminiToDeepSeek(geminiModel: GeminiModel): DeepSeekModel {
   return "deepseek-chat"; // Default fallback
 }
 
-// Agent-specific DeepSeek model recommendations:
-// - Ghostwriter: deepseek-chat (V3) - fluent creative prose
-// - Editor: deepseek-reasoner (R1) - deep analysis for continuity issues
-// - Final Reviewer: deepseek-reasoner (R1) - critical evaluation
-// - Copyeditor: deepseek-chat (V3) - fast corrections
+// OPTIMIZED Agent-specific DeepSeek model selection:
+// V3 (deepseek-chat): FAST (10-60s), good for creative tasks, corrections, translations
+// R1 (deepseek-reasoner): SLOW (5-15min), only for critical analysis where reasoning matters
+// 
+// PERFORMANCE OPTIMIZATION: Use V3 by default, R1 only when absolutely necessary
+// This reduces processing time from hours to minutes.
 export const AGENT_DEEPSEEK_MODELS: Record<string, DeepSeekModel> = {
-  "ghostwriter": "deepseek-chat",      // V3 for fluent prose
-  "editor": "deepseek-reasoner",        // R1 for deep analysis
-  "final-reviewer": "deepseek-reasoner", // R1 for critical evaluation
-  "final_reviewer": "deepseek-reasoner", // R1 for reedit final reviewer
-  "copyeditor": "deepseek-chat",        // V3 for fast corrections
-  "continuity-validator": "deepseek-reasoner", // R1 for detecting issues
-  "chapter-expansion-analyzer": "deepseek-chat", // V3 for analysis
-  "chapter-expander": "deepseek-chat",  // V3 for prose expansion
-  "new-chapter-generator": "deepseek-chat", // V3 for prose generation
-  "qa_continuity": "deepseek-reasoner", // R1 for continuity analysis
-  "qa_voice": "deepseek-reasoner",      // R1 for voice/rhythm analysis
-  "qa_semantic": "deepseek-reasoner",   // R1 for semantic analysis
-  "qa_anachronism": "deepseek-reasoner", // R1 for anachronism detection
-  "world_bible_extractor": "deepseek-chat", // V3 for extraction
-  "narrative_rewriter": "deepseek-reasoner", // R1 for deep rewriting
-  "manuscript-analyzer": "deepseek-reasoner", // R1 for deep manuscript analysis
-  "arc-validator": "deepseek-reasoner", // R1 for series arc validation
-  "series-thread-fixer": "deepseek-chat", // V3 for series thread fixes
-  "continuity-sentinel": "deepseek-reasoner", // R1 for continuity analysis
-  "voice-rhythm-auditor": "deepseek-reasoner", // R1 for voice/rhythm analysis
-  "semantic-repetition-detector": "deepseek-reasoner", // R1 for semantic analysis
-  "restructurer": "deepseek-reasoner", // R1 for structural analysis
-  "expansion_analyzer": "deepseek-reasoner", // R1 for expansion analysis
-  "translator": "deepseek-chat", // V3 for translation
-  "italian-reviewer": "deepseek-reasoner", // R1 for Italian review
-  "chapter_expander": "deepseek-chat", // V3 for chapter expansion
-  "new_chapter_generator": "deepseek-chat", // V3 for new chapter generation
+  // === PROSE GENERATION (V3 - need speed and fluency) ===
+  "ghostwriter": "deepseek-chat",       // V3: fluent creative prose
+  "chapter-expander": "deepseek-chat",  // V3: prose expansion
+  "new-chapter-generator": "deepseek-chat", // V3: prose generation
+  "chapter_expander": "deepseek-chat",  // V3: chapter expansion
+  "new_chapter_generator": "deepseek-chat", // V3: new chapter generation
+  "narrative_rewriter": "deepseek-chat", // V3: fast rewrites (was R1 - too slow)
+  "series-thread-fixer": "deepseek-chat", // V3: series thread fixes
+  
+  // === EDITING & CORRECTIONS (V3 - need speed) ===
+  "editor": "deepseek-chat",            // V3: fast edits (was R1 - bottleneck)
+  "copyeditor": "deepseek-chat",        // V3: fast corrections
+  
+  // === TRANSLATION (V3 - need fluency) ===
+  "translator": "deepseek-chat",        // V3: translation
+  
+  // === EXTRACTION (V3 - structured output) ===
+  "world_bible_extractor": "deepseek-chat", // V3: extraction
+  "chapter-expansion-analyzer": "deepseek-chat", // V3: analysis
+  
+  // === FINAL REVIEW ONLY (R1 - critical evaluation, run once per project) ===
+  "final-reviewer": "deepseek-reasoner", // R1: critical final evaluation
+  "final_reviewer": "deepseek-reasoner", // R1: reedit final reviewer
+  
+  // === QA AGENTS (V3 - run many times, need speed) ===
+  "qa_continuity": "deepseek-chat",     // V3: fast continuity check (was R1)
+  "qa_voice": "deepseek-chat",          // V3: fast voice check (was R1)
+  "qa_semantic": "deepseek-chat",       // V3: fast semantic check (was R1)
+  "qa_anachronism": "deepseek-chat",    // V3: fast anachronism check (was R1)
+  "continuity-validator": "deepseek-chat", // V3: fast validation (was R1)
+  "continuity-sentinel": "deepseek-chat", // V3: fast continuity (was R1)
+  "voice-rhythm-auditor": "deepseek-chat", // V3: fast voice (was R1)
+  "semantic-repetition-detector": "deepseek-chat", // V3: fast semantic (was R1)
+  
+  // === STRUCTURAL ANALYSIS (V3 - good enough, much faster) ===
+  "manuscript-analyzer": "deepseek-chat", // V3: fast analysis (was R1)
+  "arc-validator": "deepseek-chat",     // V3: fast arc validation (was R1)
+  "restructurer": "deepseek-chat",      // V3: fast restructuring (was R1)
+  "expansion_analyzer": "deepseek-chat", // V3: fast expansion analysis (was R1)
+  "italian-reviewer": "deepseek-chat",  // V3: fast Italian review (was R1)
 };
 
 export type AIModel = GeminiModel | DeepSeekModel;
@@ -127,9 +141,14 @@ export interface AgentConfig {
   useReeditorClient?: boolean; // Use dedicated DeepSeek API key for re-editor
 }
 
-const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes for DeepSeek R1
-const MAX_RETRIES = 4; // Increased retries for production stability
-const RETRY_DELAY_MS = 8000; // Longer delay between retries
+// Timeouts optimized for DeepSeek model types:
+// V3 (deepseek-chat): Fast model, 3 minute timeout is generous
+// R1 (deepseek-reasoner): Slow reasoning model, needs 15 minutes
+const TIMEOUT_V3_MS = 3 * 60 * 1000; // 3 minutes for V3 (fast model)
+const TIMEOUT_R1_MS = 15 * 60 * 1000; // 15 minutes for R1 (slow reasoning model)
+const DEFAULT_TIMEOUT_MS = TIMEOUT_V3_MS; // Default to fast timeout
+const MAX_RETRIES = 3; // Reduced from 4 - V3 is reliable
+const RETRY_DELAY_MS = 5000; // Reduced from 8000 - V3 recovers faster
 
 const RATE_LIMIT_MAX_RETRIES = 5;
 const RATE_LIMIT_DELAYS_MS = [30000, 60000, 90000, 120000, 180000];
@@ -293,7 +312,11 @@ export abstract class BaseAgent {
     // Note: Use role (e.g. "final-reviewer") not name (e.g. "El Revisor Final") for model lookup
     const agentRole = this.config.role?.toLowerCase() || this.config.name.toLowerCase();
     const deepseekModel = AGENT_DEEPSEEK_MODELS[agentRole] || "deepseek-chat";
-    console.log(`[${this.config.name}] Using DeepSeek model: ${deepseekModel} (role: ${agentRole})`);
+    
+    // Set timeout based on model - R1 is slow and needs more time
+    const isReasonerModel = deepseekModel === "deepseek-reasoner";
+    const effectiveTimeout = isReasonerModel ? TIMEOUT_R1_MS : TIMEOUT_V3_MS;
+    console.log(`[${this.config.name}] Using DeepSeek model: ${deepseekModel} (role: ${agentRole}, timeout: ${effectiveTimeout/1000}s)`);
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (projectId && isProjectCancelled(projectId)) {
@@ -318,7 +341,7 @@ export abstract class BaseAgent {
         // DeepSeek R1 (reasoner) uses different parameters than V3 (chat)
         // R1: max_completion_tokens (16000 limit), no temperature support
         // V3: max_tokens (8192 limit), temperature 0-2
-        const isReasonerModel = deepseekModel === "deepseek-reasoner";
+        // Note: isReasonerModel already defined above for timeout selection
         
         const requestParams: any = {
           model: deepseekModel,
@@ -351,11 +374,11 @@ export abstract class BaseAgent {
         
         const generatePromise = deepseek.chat.completions.create(requestParams);
 
-        console.log(`[${this.config.name}] DeepSeek request created, awaiting response (timeout: ${this.timeoutMs}ms)...`);
+        console.log(`[${this.config.name}] DeepSeek request created, awaiting response (timeout: ${effectiveTimeout/1000}s)...`);
 
         const response = await withTimeout(
           generatePromise,
-          this.timeoutMs,
+          effectiveTimeout,
           `${this.config.name} DeepSeek generation`
         );
         
