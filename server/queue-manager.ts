@@ -237,6 +237,30 @@ export class QueueManager {
   
   private async checkForFrozenProjects(): Promise<void> {
     try {
+      // FIRST: Check if queue is paused but there are projects waiting - auto-resume
+      const queueState = await storage.getQueueState();
+      if (queueState?.status === "paused" && !this.currentProjectId) {
+        const allQueueItems = await storage.getQueueItems();
+        const waitingItems = allQueueItems.filter(item => item.status === "waiting");
+        if (waitingItems.length > 0) {
+          console.log(`[QueueManager] AUTO-RECOVERY: Queue is paused but has waiting projects. Auto-resuming...`);
+          this.isPaused = false;
+          this.isRunning = false;
+          await storage.updateQueueState({ status: "running", currentProjectId: null });
+          this.emit({ type: "queue_started", message: "Auto-recovery: Queue auto-resumed" });
+          
+          setImmediate(async () => {
+            try {
+              await this.start();
+              console.log(`[QueueManager] AUTO-RECOVERY: Queue resumed. currentProjectId=${this.currentProjectId}`);
+            } catch (e) {
+              console.error("[QueueManager] AUTO-RECOVERY: Failed to auto-resume queue:", e);
+            }
+          });
+          return; // Don't check for frozen projects if we just resumed
+        }
+      }
+      
       // Get all projects in active processing states that might freeze
       const projects = await storage.getAllProjects();
       // Extended list: include all states where generation could be happening
@@ -245,7 +269,7 @@ export class QueueManager {
       
       // Debug log every 5 minutes (every 5th check)
       if (Date.now() % (5 * 60 * 1000) < 60 * 1000) {
-        console.log(`[QueueManager] Frozen monitor: ${generatingProjects.length} projects in monitored states (${monitoredStatuses.join(", ")})`);
+        console.log(`[QueueManager] Frozen monitor: ${generatingProjects.length} projects in monitored states (${monitoredStatuses.join(", ")}). Queue status: ${queueState?.status}, isPaused: ${this.isPaused}`);
       }
       
       for (const project of generatingProjects) {
@@ -318,6 +342,10 @@ export class QueueManager {
               currentProjectId: null, 
               status: "running" 
             });
+            
+            // CRITICAL: Emit event so frontend updates immediately
+            this.emit({ type: "queue_started", message: "Auto-recovery: Queue restarted automatically" });
+            console.log(`[QueueManager] AUTO-RECOVERY: Emitted queue_started event for UI update`);
             
             // Small delay then restart - use setImmediate pattern to avoid blocking
             setTimeout(() => {

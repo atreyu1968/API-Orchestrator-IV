@@ -759,15 +759,6 @@ ${authorName}
 
     console.log(`[Ghostwriter] Generating Author's Note for "${title}" by ${authorName}`);
     
-    const response = await this.callModel(authorNotePrompt);
-    
-    return {
-      content: response.content,
-      agentType: "ghostwriter",
-      thinking: response.thinking,
-      inputTokens: response.inputTokens,
-      outputTokens: response.outputTokens,
-      thinkingTokens: response.thinkingTokens,
-    };
+    return this.generateContent(authorNotePrompt);
   }
 }
