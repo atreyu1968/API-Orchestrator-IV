@@ -587,6 +587,9 @@ export const reeditProjects = pgTable("reedit_projects", {
   resolvedIssueHashes: jsonb("resolved_issue_hashes").default([]), // Array of hashes for resolved issues
   // Per-chapter correction counts to prevent infinite loops - persisted across restarts
   chapterCorrectionCounts: jsonb("chapter_correction_counts").default({}), // {chapterNumber: correctionCount}
+  // Per-chapter change history for intelligent resolution detection
+  // Format: { "chapterNum": [{ issue: "desc", fix: "what changed", timestamp: "date" }] }
+  chapterChangeHistory: jsonb("chapter_change_history").default({}),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

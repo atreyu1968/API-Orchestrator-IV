@@ -12,6 +12,7 @@ import {
   type FinalReviewerResult, 
   type FinalReviewIssue 
 } from "../agents/final-reviewer";
+import { IssueResolutionValidatorAgent } from "../agents/issue-resolution-validator";
 
 function getChapterSortOrder(chapterNumber: number): number {
   if (chapterNumber === 0) return -1000;
@@ -3226,12 +3227,19 @@ export class ReeditOrchestrator {
       let localResolvedHashes: string[] = (project.resolvedIssueHashes as string[]) || [];
       
       // Track chapters corrected - PERSISTED across restarts to prevent infinite loops
-      // Map: chapterNumber -> number of times corrected
       const MAX_CORRECTIONS_PER_CHAPTER = 2; // Max times a chapter can be corrected before pausing
       const loadedCounts = (savedProject?.chapterCorrectionCounts as Record<string, number>) || {};
       const chapterCorrectionCounts: Map<number, number> = new Map(
         Object.entries(loadedCounts).map(([k, v]) => [parseInt(k), v])
       );
+      
+      // Load change history for intelligent resolution validation
+      type ChangeEntry = { issue: string; fix: string; timestamp: string };
+      const loadedHistory = (savedProject?.chapterChangeHistory as Record<string, ChangeEntry[]>) || {};
+      const chapterChangeHistory: Map<number, ChangeEntry[]> = new Map(
+        Object.entries(loadedHistory).map(([k, v]) => [parseInt(k), v])
+      );
+      const issueValidator = new IssueResolutionValidatorAgent();
       
       while (revisionCycle < this.maxFinalReviewCycles) {
         // Check for cancellation at start of each cycle
@@ -3498,9 +3506,36 @@ export class ReeditOrchestrator {
             const chapter = chaptersNeedingFix[i];
             
             // Get issues specific to this chapter
-            const chapterIssues = issues.filter(iss => 
+            let chapterIssues = issues.filter(iss => 
               iss.capitulos_afectados?.includes(chapter.chapterNumber)
             );
+
+            // INTELLIGENT VALIDATION: Check if issues were already resolved based on change history
+            const chapterHistory = chapterChangeHistory.get(chapter.chapterNumber) || [];
+            if (chapterHistory.length > 0 && chapterIssues.length > 0) {
+              const validatedIssues: typeof chapterIssues = [];
+              for (const issue of chapterIssues) {
+                try {
+                  const validation = await issueValidator.validateResolution(
+                    { tipo: issue.categoria || "otro", descripcion: issue.descripcion, severidad: issue.severidad },
+                    chapterHistory,
+                    chapter.chapterNumber
+                  );
+                  if (validation.isResolved && validation.confidence >= 0.7) {
+                    console.log(`[ReeditOrchestrator] Issue already resolved (confidence: ${validation.confidence}): ${issue.descripcion.substring(0, 80)}...`);
+                    await this.markIssuesResolved(projectId, [issue]); // Mark as resolved
+                  } else {
+                    validatedIssues.push(issue);
+                  }
+                } catch (e) {
+                  validatedIssues.push(issue); // On error, keep issue for correction
+                }
+              }
+              if (validatedIssues.length < chapterIssues.length) {
+                console.log(`[ReeditOrchestrator] Chapter ${chapter.chapterNumber}: ${chapterIssues.length - validatedIssues.length} issues validated as already resolved`);
+              }
+              chapterIssues = validatedIssues;
+            }
 
             if (chapterIssues.length === 0 && !chaptersToRewrite.includes(chapter.chapterNumber)) {
               continue;
@@ -3556,9 +3591,23 @@ export class ReeditOrchestrator {
                 chapterCorrectionCounts.set(chapter.chapterNumber, currentCount + 1);
                 console.log(`[ReeditOrchestrator] Chapter ${chapter.chapterNumber} corrected (count: ${currentCount + 1}/${MAX_CORRECTIONS_PER_CHAPTER})`);
                 
-                // PERSIST correction counts to database after each successful correction
+                // SAVE CHANGE HISTORY for intelligent resolution validation (max 10 entries per chapter)
+                const issuesSummary = chapterIssues.map(i => i.descripcion.substring(0, 300)).join("; ");
+                const changesSummary = (rewriteResult.cambiosRealizados?.join("; ") || "Contenido reescrito").substring(0, 500);
+                let existingHistory = chapterChangeHistory.get(chapter.chapterNumber) || [];
+                existingHistory.push({
+                  issue: issuesSummary,
+                  fix: changesSummary,
+                  timestamp: new Date().toISOString()
+                });
+                // Keep only last 10 entries to prevent bloat
+                if (existingHistory.length > 10) existingHistory = existingHistory.slice(-10);
+                chapterChangeHistory.set(chapter.chapterNumber, existingHistory);
+                
+                // PERSIST correction counts AND change history to database
                 await storage.updateReeditProject(projectId, {
                   chapterCorrectionCounts: Object.fromEntries(chapterCorrectionCounts) as any,
+                  chapterChangeHistory: Object.fromEntries(chapterChangeHistory) as any,
                 });
                 
                 // Track corrected issues so FinalReviewer doesn't report them again
@@ -3855,6 +3904,14 @@ export class ReeditOrchestrator {
       Object.entries(loadedCountsFRO).map(([k, v]) => [parseInt(k), v])
     );
     
+    // Load change history for intelligent resolution validation
+    type ChangeEntryFRO = { issue: string; fix: string; timestamp: string };
+    const loadedHistoryFRO = (project?.chapterChangeHistory as Record<string, ChangeEntryFRO[]>) || {};
+    const chapterChangeHistoryFRO: Map<number, ChangeEntryFRO[]> = new Map(
+      Object.entries(loadedHistoryFRO).map(([k, v]) => [parseInt(k), v])
+    );
+    const issueValidatorFRO = new IssueResolutionValidatorAgent();
+    
     while (revisionCycle < this.maxFinalReviewCycles) {
       // Check for cancellation at start of each cycle
       if (await this.checkCancellation(projectId)) {
@@ -4077,11 +4134,38 @@ export class ReeditOrchestrator {
           const chapter = chaptersNeedingFix[i];
           
           // Get issues specific to this chapter
-          const chapterIssues = issues.filter(iss => 
+          let chapterIssuesFRO = issues.filter(iss => 
             iss.capitulos_afectados?.includes(chapter.chapterNumber)
           );
 
-          if (chapterIssues.length === 0 && !chaptersToRewrite.includes(chapter.chapterNumber)) {
+          // INTELLIGENT VALIDATION: Check if issues were already resolved based on change history
+          const chapterHistoryFRO = chapterChangeHistoryFRO.get(chapter.chapterNumber) || [];
+          if (chapterHistoryFRO.length > 0 && chapterIssuesFRO.length > 0) {
+            const validatedIssuesFRO: typeof chapterIssuesFRO = [];
+            for (const issue of chapterIssuesFRO) {
+              try {
+                const validation = await issueValidatorFRO.validateResolution(
+                  { tipo: issue.categoria || "otro", descripcion: issue.descripcion, severidad: issue.severidad },
+                  chapterHistoryFRO,
+                  chapter.chapterNumber
+                );
+                if (validation.isResolved && validation.confidence >= 0.7) {
+                  console.log(`[ReeditOrchestrator] FRO: Issue already resolved (confidence: ${validation.confidence}): ${issue.descripcion.substring(0, 80)}...`);
+                  await this.markIssuesResolved(projectId, [issue]);
+                } else {
+                  validatedIssuesFRO.push(issue);
+                }
+              } catch (e) {
+                validatedIssuesFRO.push(issue);
+              }
+            }
+            if (validatedIssuesFRO.length < chapterIssuesFRO.length) {
+              console.log(`[ReeditOrchestrator] FRO: Chapter ${chapter.chapterNumber}: ${chapterIssuesFRO.length - validatedIssuesFRO.length} issues validated as already resolved`);
+            }
+            chapterIssuesFRO = validatedIssuesFRO;
+          }
+
+          if (chapterIssuesFRO.length === 0 && !chaptersToRewrite.includes(chapter.chapterNumber)) {
             continue;
           }
 
@@ -4090,12 +4174,12 @@ export class ReeditOrchestrator {
             stage: "fixing",
             currentChapter: i + 1,
             totalChapters: chaptersNeedingFix.length,
-            message: `Corrigiendo capítulo ${chapter.chapterNumber}: ${chapterIssues.length} issue(s) específicos...`,
+            message: `Corrigiendo capítulo ${chapter.chapterNumber}: ${chapterIssuesFRO.length} issue(s) específicos...`,
           });
 
           try {
             // Convert FinalReviewIssues to problem format for NarrativeRewriter
-            const problems = chapterIssues.map((issue, idx) => ({
+            const problems = chapterIssuesFRO.map((issue, idx) => ({
               id: `issue-${idx}`,
               tipo: issue.categoria || "otro",
               descripcion: issue.descripcion,
@@ -4135,16 +4219,30 @@ export class ReeditOrchestrator {
               chapterCorrectionCountsFRO.set(chapter.chapterNumber, currentCountFRO + 1);
               console.log(`[ReeditOrchestrator] FRO: Chapter ${chapter.chapterNumber} corrected (count: ${currentCountFRO + 1}/${MAX_CORRECTIONS_PER_CHAPTER_FRO})`);
               
-              // PERSIST correction counts to database after each successful correction
+              // SAVE CHANGE HISTORY for intelligent resolution validation (max 10 entries per chapter)
+              const issuesSummaryFRO = chapterIssuesFRO.map(i => i.descripcion.substring(0, 300)).join("; ");
+              const changesSummaryFRO = (rewriteResult.cambiosRealizados?.join("; ") || "Contenido reescrito").substring(0, 500);
+              let existingHistoryFRO = chapterChangeHistoryFRO.get(chapter.chapterNumber) || [];
+              existingHistoryFRO.push({
+                issue: issuesSummaryFRO,
+                fix: changesSummaryFRO,
+                timestamp: new Date().toISOString()
+              });
+              // Keep only last 10 entries to prevent bloat
+              if (existingHistoryFRO.length > 10) existingHistoryFRO = existingHistoryFRO.slice(-10);
+              chapterChangeHistoryFRO.set(chapter.chapterNumber, existingHistoryFRO);
+              
+              // PERSIST correction counts AND change history to database
               await storage.updateReeditProject(projectId, {
                 chapterCorrectionCounts: Object.fromEntries(chapterCorrectionCountsFRO) as any,
+                chapterChangeHistory: Object.fromEntries(chapterChangeHistoryFRO) as any,
               });
               
               // Mark these issues as resolved with hash tracking
-              await this.markIssuesResolved(projectId, chapterIssues);
+              await this.markIssuesResolved(projectId, chapterIssuesFRO);
               
               // Track corrected issues so FinalReviewer doesn't report them again
-              for (const issue of chapterIssues) {
+              for (const issue of chapterIssuesFRO) {
                 correctedIssueDescriptions.push(issue.descripcion);
               }
             }
