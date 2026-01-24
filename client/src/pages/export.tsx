@@ -346,10 +346,10 @@ export default function ExportPage() {
     });
 
     eventSource.addEventListener("error", (event) => {
-      let errorMessage = "Error en la traducción";
+      let errorMessage = "";
       try {
         const data = JSON.parse((event as MessageEvent).data);
-        errorMessage = data.error || errorMessage;
+        errorMessage = data.error || "";
       } catch {}
       
       eventSource.close();
@@ -365,32 +365,32 @@ export default function ExportPage() {
         outputTokens: 0,
       });
 
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      // Only show toast if there's an actual error message from the server
+      if (errorMessage) {
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
     });
 
     eventSource.onerror = () => {
-      eventSource.close();
-      setEventSourceRef(null);
-      saveTranslationState(null);
-      
-      setTranslationProgress({
-        isTranslating: false,
-        currentChapter: 0,
-        totalChapters: 0,
-        chapterTitle: "",
-        inputTokens: 0,
-        outputTokens: 0,
-      });
-
-      toast({
-        title: "Conexión perdida",
-        description: "Se perdió la conexión con el servidor. Intenta de nuevo.",
-        variant: "destructive",
-      });
+      // Only handle if connection was active - avoid spurious errors on page navigation
+      if (eventSource.readyState !== EventSource.CLOSED) {
+        eventSource.close();
+        setEventSourceRef(null);
+        saveTranslationState(null);
+        
+        setTranslationProgress({
+          isTranslating: false,
+          currentChapter: 0,
+          totalChapters: 0,
+          chapterTitle: "",
+          inputTokens: 0,
+          outputTokens: 0,
+        });
+      }
     };
   }, [toast, completedProjects, eventSourceRef]);
 
@@ -605,10 +605,10 @@ export default function ExportPage() {
     });
 
     eventSource.addEventListener("error", (event) => {
-      let errorMessage = "Error desconocido";
+      let errorMessage = "";
       try {
         const data = JSON.parse((event as MessageEvent).data);
-        errorMessage = data.error || errorMessage;
+        errorMessage = data.error || "";
       } catch {}
       eventSource.close();
       setEventSourceRef(null);
@@ -621,25 +621,31 @@ export default function ExportPage() {
         inputTokens: 0,
         outputTokens: 0,
       });
-      toast({
-        title: "Error al reanudar",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      // Only show toast if there's an actual error message from the server
+      if (errorMessage) {
+        toast({
+          title: "Error al reanudar",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
     });
 
     eventSource.onerror = () => {
-      eventSource.close();
-      setEventSourceRef(null);
-      clearTranslationState();
-      setTranslationProgress({
-        isTranslating: false,
-        currentChapter: 0,
-        totalChapters: 0,
-        chapterTitle: "",
-        inputTokens: 0,
-        outputTokens: 0,
-      });
+      // Only handle if connection was active - avoid spurious errors on page navigation
+      if (eventSource.readyState !== EventSource.CLOSED) {
+        eventSource.close();
+        setEventSourceRef(null);
+        clearTranslationState();
+        setTranslationProgress({
+          isTranslating: false,
+          currentChapter: 0,
+          totalChapters: 0,
+          chapterTitle: "",
+          inputTokens: 0,
+          outputTokens: 0,
+        });
+      }
     };
   }, [toast, eventSourceRef]);
 
