@@ -585,6 +585,8 @@ export const reeditProjects = pgTable("reedit_projects", {
   architectInstructions: text("architect_instructions"), // Initial user instructions from import
   // Tracking de issues resueltos - evita que el revisor re-reporte problemas ya corregidos
   resolvedIssueHashes: jsonb("resolved_issue_hashes").default([]), // Array of hashes for resolved issues
+  // Per-chapter correction counts to prevent infinite loops - persisted across restarts
+  chapterCorrectionCounts: jsonb("chapter_correction_counts").default({}), // {chapterNumber: correctionCount}
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

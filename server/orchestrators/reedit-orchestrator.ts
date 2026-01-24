@@ -3225,6 +3225,14 @@ export class ReeditOrchestrator {
       // Track resolved hashes locally to avoid stale data from project object
       let localResolvedHashes: string[] = (project.resolvedIssueHashes as string[]) || [];
       
+      // Track chapters corrected - PERSISTED across restarts to prevent infinite loops
+      // Map: chapterNumber -> number of times corrected
+      const MAX_CORRECTIONS_PER_CHAPTER = 2; // Max times a chapter can be corrected before pausing
+      const loadedCounts = (savedProject?.chapterCorrectionCounts as Record<string, number>) || {};
+      const chapterCorrectionCounts: Map<number, number> = new Map(
+        Object.entries(loadedCounts).map(([k, v]) => [parseInt(k), v])
+      );
+      
       while (revisionCycle < this.maxFinalReviewCycles) {
         // Check for cancellation at start of each cycle
         if (await this.checkCancellation(projectId)) {
@@ -3443,9 +3451,42 @@ export class ReeditOrchestrator {
           const editableChapters = chaptersToFix.filter(c => c.editedContent);
           
           // Only fix chapters specifically mentioned, limit to 5 per cycle
+          // ALSO filter out chapters that have been corrected too many times to prevent infinite loops
           const chaptersNeedingFix = editableChapters
             .filter(c => chapterNumbersToFix.has(c.chapterNumber))
+            .filter(c => {
+              const correctionCount = chapterCorrectionCounts.get(c.chapterNumber) || 0;
+              if (correctionCount >= MAX_CORRECTIONS_PER_CHAPTER) {
+                console.log(`[ReeditOrchestrator] Skipping chapter ${c.chapterNumber}: already corrected ${correctionCount} times (max: ${MAX_CORRECTIONS_PER_CHAPTER})`);
+                return false;
+              }
+              return true;
+            })
             .slice(0, 5);
+          
+          if (chaptersNeedingFix.length === 0 && chapterNumbersToFix.size > 0) {
+            // PAUSE for user intervention instead of auto-resolving
+            const skippedChapters = Array.from(chapterNumbersToFix).join(", ");
+            const pauseReason = `Los capítulos ${skippedChapters} han sido corregidos ${MAX_CORRECTIONS_PER_CHAPTER} veces sin resolver los problemas detectados. Por favor, revisa manualmente estos capítulos o proporciona instrucciones específicas para continuar.`;
+            console.log(`[ReeditOrchestrator] PAUSING: All ${chapterNumbersToFix.size} chapters have reached max corrections`);
+            
+            await storage.updateReeditProject(projectId, {
+              status: "awaiting_instructions",
+              currentStage: "reviewing",
+              pauseReason,
+              chapterCorrectionCounts: Object.fromEntries(chapterCorrectionCounts) as any,
+            });
+            
+            this.emitProgress({
+              projectId,
+              stage: "paused",
+              currentChapter: 0,
+              totalChapters: validChapters.length,
+              message: pauseReason,
+            });
+            
+            return; // Exit and wait for user instructions
+          }
           
           for (let i = 0; i < chaptersNeedingFix.length; i++) {
             // Check cancellation before each chapter fix
@@ -3508,6 +3549,16 @@ export class ReeditOrchestrator {
                 await storage.updateReeditChapter(chapter.id, {
                   editedContent: rewriteResult.capituloReescrito,
                   wordCount,
+                });
+                
+                // Increment correction count for this chapter to prevent infinite loops
+                const currentCount = chapterCorrectionCounts.get(chapter.chapterNumber) || 0;
+                chapterCorrectionCounts.set(chapter.chapterNumber, currentCount + 1);
+                console.log(`[ReeditOrchestrator] Chapter ${chapter.chapterNumber} corrected (count: ${currentCount + 1}/${MAX_CORRECTIONS_PER_CHAPTER})`);
+                
+                // PERSIST correction counts to database after each successful correction
+                await storage.updateReeditProject(projectId, {
+                  chapterCorrectionCounts: Object.fromEntries(chapterCorrectionCounts) as any,
                 });
                 
                 // Track corrected issues so FinalReviewer doesn't report them again
@@ -3797,6 +3848,13 @@ export class ReeditOrchestrator {
     // Track resolved hashes locally to avoid stale data from project object
     let localResolvedHashesFRO: string[] = (project.resolvedIssueHashes as string[]) || [];
     
+    // Track chapters corrected - PERSISTED across restarts to prevent infinite loops
+    const MAX_CORRECTIONS_PER_CHAPTER_FRO = 2; // Max times a chapter can be corrected before pausing
+    const loadedCountsFRO = (project?.chapterCorrectionCounts as Record<string, number>) || {};
+    const chapterCorrectionCountsFRO: Map<number, number> = new Map(
+      Object.entries(loadedCountsFRO).map(([k, v]) => [parseInt(k), v])
+    );
+    
     while (revisionCycle < this.maxFinalReviewCycles) {
       // Check for cancellation at start of each cycle
       if (await this.checkCancellation(projectId)) {
@@ -3972,9 +4030,42 @@ export class ReeditOrchestrator {
         }
 
         // Only fix chapters specifically mentioned, limit to 5 per cycle
+        // ALSO filter out chapters that have been corrected too many times to prevent infinite loops
         const chaptersNeedingFix = validChapters
           .filter(c => chapterNumbersToFix.has(c.chapterNumber))
+          .filter(c => {
+            const correctionCount = chapterCorrectionCountsFRO.get(c.chapterNumber) || 0;
+            if (correctionCount >= MAX_CORRECTIONS_PER_CHAPTER_FRO) {
+              console.log(`[ReeditOrchestrator] FRO: Skipping chapter ${c.chapterNumber}: already corrected ${correctionCount} times (max: ${MAX_CORRECTIONS_PER_CHAPTER_FRO})`);
+              return false;
+            }
+            return true;
+          })
           .slice(0, 5);
+        
+        if (chaptersNeedingFix.length === 0 && chapterNumbersToFix.size > 0) {
+          // PAUSE for user intervention instead of auto-resolving
+          const skippedChaptersFRO = Array.from(chapterNumbersToFix).join(", ");
+          const pauseReasonFRO = `Los capítulos ${skippedChaptersFRO} han sido corregidos ${MAX_CORRECTIONS_PER_CHAPTER_FRO} veces sin resolver los problemas detectados. Por favor, revisa manualmente estos capítulos o proporciona instrucciones específicas para continuar.`;
+          console.log(`[ReeditOrchestrator] FRO PAUSING: All ${chapterNumbersToFix.size} chapters have reached max corrections`);
+          
+          await storage.updateReeditProject(projectId, {
+            status: "awaiting_instructions",
+            currentStage: "reviewing",
+            pauseReason: pauseReasonFRO,
+            chapterCorrectionCounts: Object.fromEntries(chapterCorrectionCountsFRO) as any,
+          });
+          
+          this.emitProgress({
+            projectId,
+            stage: "paused",
+            currentChapter: 0,
+            totalChapters: validChapters.length,
+            message: pauseReasonFRO,
+          });
+          
+          return; // Exit and wait for user instructions
+        }
         
         for (let i = 0; i < chaptersNeedingFix.length; i++) {
           // Check cancellation before each chapter fix
@@ -4037,6 +4128,16 @@ export class ReeditOrchestrator {
               await storage.updateReeditChapter(chapter.id, {
                 editedContent: rewriteResult.capituloReescrito,
                 wordCount,
+              });
+              
+              // Increment correction count for this chapter to prevent infinite loops
+              const currentCountFRO = chapterCorrectionCountsFRO.get(chapter.chapterNumber) || 0;
+              chapterCorrectionCountsFRO.set(chapter.chapterNumber, currentCountFRO + 1);
+              console.log(`[ReeditOrchestrator] FRO: Chapter ${chapter.chapterNumber} corrected (count: ${currentCountFRO + 1}/${MAX_CORRECTIONS_PER_CHAPTER_FRO})`);
+              
+              // PERSIST correction counts to database after each successful correction
+              await storage.updateReeditProject(projectId, {
+                chapterCorrectionCounts: Object.fromEntries(chapterCorrectionCountsFRO) as any,
               });
               
               // Mark these issues as resolved with hash tracking
