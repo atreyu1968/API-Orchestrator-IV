@@ -1,0 +1,454 @@
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Faudit-reports' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/audit-reports') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Faudit-reports:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects' (redirected from 'https://escritorasd.replit.app/api/reedit-projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fworld-bible' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/world-bible') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fworld-bible:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Faudit-reports' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/audit-reports') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Faudit-reports:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects' (redirected from 'https://escritorasd.replit.app/api/reedit-projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Faudit-reports' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/audit-reports') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Faudit-reports:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects' (redirected from 'https://escritorasd.replit.app/api/reedit-projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fworld-bible' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/world-bible') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fworld-bible:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Faudit-reports' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17/audit-reports') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17%2Faudit-reports:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17' (redirected from 'https://escritorasd.replit.app/api/reedit-projects/17') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects%2F17:1  Failed to load resource: net::ERR_FAILED
+/reedit:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects' (redirected from 'https://escritorasd.replit.app/api/reedit-projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Freedit-projects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2Fduplicate-chapters' (redirected from 'https://escritorasd.replit.app/api/projects/duplicate-chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2Fduplicate-chapters:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/projects/144/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Factivity-logs%3Flimit%3D200' (redirected from 'https://escritorasd.replit.app/api/projects/144/activity-logs?limit=200') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Factivity-logs%3Flimit%3D200:1  Failed to load resource: net::ERR_FAILED
+TypeError: Failed to fetch
+    at re (index-BAwbdi1d.js:71:2077)
+    at index-BAwbdi1d.js:71:2409
+    at sc (index-BAwbdi1d.js:8:24518)
+    at Xa (index-BAwbdi1d.js:8:42987)
+    at TE (index-BAwbdi1d.js:8:41732)
+    at ta (index-BAwbdi1d.js:8:40758)
+    at Xg (index-BAwbdi1d.js:8:37294)
+    at ms (index-BAwbdi1d.js:6:3273)
+    at index-BAwbdi1d.js:8:34646
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fresume' (redirected from 'https://escritorasd.replit.app/api/projects/144/resume') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fresume:1  Failed to load resource: net::ERR_FAILED
+index-BAwbdi1d.js:71 [Resume] Error: TypeError: Failed to fetch
+    at Fe (index-BAwbdi1d.js:8:96646)
+    at Object.mutationFn (index-BAwbdi1d.js:71:5984)
+    at Object.fn (index-BAwbdi1d.js:8:76818)
+    at b (index-BAwbdi1d.js:8:68387)
+    at Object.start (index-BAwbdi1d.js:8:68815)
+    at Rk.execute (index-BAwbdi1d.js:8:77467)
+onError @ index-BAwbdi1d.js:71
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F138%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/projects/138/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F138%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F138%2Factivity-logs%3Flimit%3D200' (redirected from 'https://escritorasd.replit.app/api/projects/138/activity-logs?limit=200') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F138%2Factivity-logs%3Flimit%3D200:1  Failed to load resource: net::ERR_FAILED
+TypeError: Failed to fetch
+    at re (index-BAwbdi1d.js:71:2077)
+    at index-BAwbdi1d.js:71:2409
+    at sc (index-BAwbdi1d.js:8:24518)
+    at Xa (index-BAwbdi1d.js:8:42987)
+    at TE (index-BAwbdi1d.js:8:41732)
+    at ta (index-BAwbdi1d.js:8:40758)
+    at Xg (index-BAwbdi1d.js:8:37294)
+    at ms (index-BAwbdi1d.js:6:3273)
+    at index-BAwbdi1d.js:8:34646
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Factivity-logs%3Flimit%3D200' (redirected from 'https://escritorasd.replit.app/api/projects/144/activity-logs?limit=200') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Factivity-logs%3Flimit%3D200:1  Failed to load resource: net::ERR_FAILED
+
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/projects/144/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fresume' (redirected from 'https://escritorasd.replit.app/api/projects/144/resume') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fresume:1  Failed to load resource: net::ERR_FAILED
+index-BAwbdi1d.js:71 [Resume] Error: TypeError: Failed to fetch
+    at Fe (index-BAwbdi1d.js:8:96646)
+    at Object.mutationFn (index-BAwbdi1d.js:71:5984)
+    at Object.fn (index-BAwbdi1d.js:8:76818)
+    at b (index-BAwbdi1d.js:8:68387)
+    at Object.start (index-BAwbdi1d.js:8:68815)
+    at Rk.execute (index-BAwbdi1d.js:8:77467)
+onError @ index-BAwbdi1d.js:71
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+/manuscript:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/projects/144/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+/manuscript:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/manuscript:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/manuscript:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/manuscript:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/manuscript:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/manuscript:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/projects/144/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2Fduplicate-chapters' (redirected from 'https://escritorasd.replit.app/api/projects/duplicate-chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2Fduplicate-chapters:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Factivity-logs%3Flimit%3D200' (redirected from 'https://escritorasd.replit.app/api/projects/144/activity-logs?limit=200') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Factivity-logs%3Flimit%3D200:1  Failed to load resource: net::ERR_FAILED
+TypeError: Failed to fetch
+    at re (index-BAwbdi1d.js:71:2077)
+    at index-BAwbdi1d.js:71:2409
+    at sc (index-BAwbdi1d.js:8:24518)
+    at Xa (index-BAwbdi1d.js:8:42987)
+    at TE (index-BAwbdi1d.js:8:41732)
+    at ta (index-BAwbdi1d.js:8:40758)
+    at Xg (index-BAwbdi1d.js:8:37294)
+    at ms (index-BAwbdi1d.js:6:3273)
+    at index-BAwbdi1d.js:8:34646
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fduplicate' (redirected from 'https://escritorasd.replit.app/api/projects/144/duplicate') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fduplicate:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+/config:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/config:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fseries' (redirected from 'https://escritorasd.replit.app/api/series') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fseries:1  Failed to load resource: net::ERR_FAILED
+/config:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fpseudonyms' (redirected from 'https://escritorasd.replit.app/api/pseudonyms') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fpseudonyms:1  Failed to load resource: net::ERR_FAILED
+/config:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fextended-guides' (redirected from 'https://escritorasd.replit.app/api/extended-guides') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fextended-guides:1  Failed to load resource: net::ERR_FAILED
+/config:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/manuscript:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/projects/144/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+/manuscript:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/manuscript:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/config:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fpseudonyms' (redirected from 'https://escritorasd.replit.app/api/pseudonyms') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fpseudonyms:1  Failed to load resource: net::ERR_FAILED
+/config:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fextended-guides' (redirected from 'https://escritorasd.replit.app/api/extended-guides') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fextended-guides:1  Failed to load resource: net::ERR_FAILED
+/config:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fseries' (redirected from 'https://escritorasd.replit.app/api/series') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fseries:1  Failed to load resource: net::ERR_FAILED
+/config:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/config:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+/config:1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2Fduplicate-chapters' (redirected from 'https://escritorasd.replit.app/api/projects/duplicate-chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2Fduplicate-chapters:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters' (redirected from 'https://escritorasd.replit.app/api/projects/144/chapters') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fchapters:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Factivity-logs%3Flimit%3D200' (redirected from 'https://escritorasd.replit.app/api/projects/144/activity-logs?limit=200') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Factivity-logs%3Flimit%3D200:1  Failed to load resource: net::ERR_FAILED
+TypeError: Failed to fetch
+    at re (index-BAwbdi1d.js:71:2077)
+    at index-BAwbdi1d.js:71:2409
+    at sc (index-BAwbdi1d.js:8:24518)
+    at Xa (index-BAwbdi1d.js:8:42987)
+    at TE (index-BAwbdi1d.js:8:41732)
+    at ta (index-BAwbdi1d.js:8:40758)
+    at Xg (index-BAwbdi1d.js:8:37294)
+    at ms (index-BAwbdi1d.js:6:3273)
+    at index-BAwbdi1d.js:8:34646
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fresume' (redirected from 'https://escritorasd.replit.app/api/projects/144/resume') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fresume:1  Failed to load resource: net::ERR_FAILED
+index-BAwbdi1d.js:71 [Resume] Error: TypeError: Failed to fetch
+    at Fe (index-BAwbdi1d.js:8:96646)
+    at Object.mutationFn (index-BAwbdi1d.js:71:5984)
+    at Object.fn (index-BAwbdi1d.js:8:76818)
+    at b (index-BAwbdi1d.js:8:68387)
+    at Object.start (index-BAwbdi1d.js:8:68815)
+    at Rk.execute (index-BAwbdi1d.js:8:77467)
+onError @ index-BAwbdi1d.js:71
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+(índice):1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+(índice):1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+(índice):1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+(índice):1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+(índice):1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+(índice):1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fresume' (redirected from 'https://escritorasd.replit.app/api/projects/144/resume') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects%2F144%2Fresume:1  Failed to load resource: net::ERR_FAILED
+index-BAwbdi1d.js:71 [Resume] Error: TypeError: Failed to fetch
+    at Fe (index-BAwbdi1d.js:8:96646)
+    at Object.mutationFn (index-BAwbdi1d.js:71:5984)
+    at Object.fn (index-BAwbdi1d.js:8:76818)
+    at b (index-BAwbdi1d.js:8:68387)
+    at Object.start (index-BAwbdi1d.js:8:68815)
+    at Rk.execute (index-BAwbdi1d.js:8:77467)
+onError @ index-BAwbdi1d.js:71
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects:1  Failed to load resource: net::ERR_FAILED
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+index-BAwbdi1d.js:8  GET https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses net::ERR_FAILED 302 (Found)
+(anónimo) @ index-BAwbdi1d.js:8
+i @ index-BAwbdi1d.js:8
+b @ index-BAwbdi1d.js:8
+start @ index-BAwbdi1d.js:8
+fetch @ index-BAwbdi1d.js:8
+#u @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+index-BAwbdi1d.js:8  GET https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses net::ERR_FAILED 302 (Found)
+(anónimo) @ index-BAwbdi1d.js:8
+i @ index-BAwbdi1d.js:8
+b @ index-BAwbdi1d.js:8
+start @ index-BAwbdi1d.js:8
+fetch @ index-BAwbdi1d.js:8
+#u @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+setInterval
+#v @ index-BAwbdi1d.js:8
+#y @ index-BAwbdi1d.js:8
+onQueryUpdate @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+batch @ index-BAwbdi1d.js:8
+#s @ index-BAwbdi1d.js:8
+d @ index-BAwbdi1d.js:8
+w @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+Promise.catch
+b @ index-BAwbdi1d.js:8
+start @ index-BAwbdi1d.js:8
+fetch @ index-BAwbdi1d.js:8
+#u @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects' (redirected from 'https://escritorasd.replit.app/api/projects') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+index-BAwbdi1d.js:8  GET https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fprojects net::ERR_FAILED 302 (Found)
+(anónimo) @ index-BAwbdi1d.js:8
+i @ index-BAwbdi1d.js:8
+b @ index-BAwbdi1d.js:8
+start @ index-BAwbdi1d.js:8
+fetch @ index-BAwbdi1d.js:8
+#u @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+setInterval
+#v @ index-BAwbdi1d.js:8
+#y @ index-BAwbdi1d.js:8
+onQueryUpdate @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+batch @ index-BAwbdi1d.js:8
+#s @ index-BAwbdi1d.js:8
+d @ index-BAwbdi1d.js:8
+w @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+(índice):1 Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses' (redirected from 'https://escritorasd.replit.app/api/agent-statuses') from origin 'https://escritorasd.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+index-BAwbdi1d.js:8  GET https://replit.com/__replshield?redirect=https%3A%2F%2Fescritorasd.replit.app%2Fapi%2Fagent-statuses net::ERR_FAILED 302 (Found)
+(anónimo) @ index-BAwbdi1d.js:8
+i @ index-BAwbdi1d.js:8
+b @ index-BAwbdi1d.js:8
+start @ index-BAwbdi1d.js:8
+fetch @ index-BAwbdi1d.js:8
+#u @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+setInterval
+#v @ index-BAwbdi1d.js:8
+#y @ index-BAwbdi1d.js:8
+onQueryUpdate @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+batch @ index-BAwbdi1d.js:8
+#s @ index-BAwbdi1d.js:8
+d @ index-BAwbdi1d.js:8
+w @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+Promise.catch
+b @ index-BAwbdi1d.js:8
+start @ index-BAwbdi1d.js:8
+fetch @ index-BAwbdi1d.js:8
+#u @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+setInterval
+#v @ index-BAwbdi1d.js:8
+#y @ index-BAwbdi1d.js:8
+onQueryUpdate @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+batch @ index-BAwbdi1d.js:8
+#s @ index-BAwbdi1d.js:8
+d @ index-BAwbdi1d.js:8
+w @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
+Promise.catch
+b @ index-BAwbdi1d.js:8
+start @ index-BAwbdi1d.js:8
+fetch @ index-BAwbdi1d.js:8
+#u @ index-BAwbdi1d.js:8
+(anónimo) @ index-BAwbdi1d.js:8
