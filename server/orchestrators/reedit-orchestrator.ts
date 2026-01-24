@@ -3810,117 +3810,17 @@ export class ReeditOrchestrator {
     if (skipCorrectionsForConsecutive) {
       console.log(`[ReeditOrchestrator] Previous review was 10/10 with no issues. Proceeding directly to confirmation review.`);
     } else if (hasIssuesToFix) {
-      console.log(`[ReeditOrchestrator] Applying corrections from existing finalReviewResult before re-review...`);
+      // NOTE: Pre-corrections are now handled INSIDE the main loop below with proper limits
+      // This section only logs and clears user instructions if any
+      console.log(`[ReeditOrchestrator] Issues to fix detected. Will apply corrections in main loop with proper limits.`);
       
-      const issues = existingFinalReview.issues || [];
-      const chaptersToRewrite = existingFinalReview.capitulos_para_reescribir || [];
-      
-      // Get unique chapter numbers that need fixes
-      const chapterNumbersToFix = new Set<number>(chaptersToRewrite);
-      for (const issue of issues) {
-        if (issue.capitulos_afectados) {
-          for (const chNum of issue.capitulos_afectados) {
-            chapterNumbersToFix.add(chNum);
-          }
-        }
-      }
-      
-      if (chapterNumbersToFix.size > 0) {
-        const chaptersNeedingFix = validChapters.filter(c => chapterNumbersToFix.has(c.chapterNumber));
-        
-        this.emitProgress({
-          projectId,
-          stage: "fixing",
-          currentChapter: 0,
-          totalChapters: chaptersNeedingFix.length,
-          message: `Aplicando correcciones a ${chaptersNeedingFix.length} capítulos según revisión anterior + instrucciones del usuario...`,
+      // Clear user instructions upfront since they'll be passed to the main loop
+      if (userInstructions) {
+        await storage.updateReeditProject(projectId, { 
+          pendingUserInstructions: null,
+          pauseReason: null,
         });
-        
-        for (let i = 0; i < chaptersNeedingFix.length; i++) {
-          // Check cancellation before each chapter fix
-          if (await this.checkCancellation(projectId)) {
-            console.log(`[ReeditOrchestrator] Cancelled during pre-correction (resumeFinalReview) ${i + 1}/${chaptersNeedingFix.length}`);
-            return;
-          }
-          
-          const chapter = chaptersNeedingFix[i];
-          
-          // Get issues specific to this chapter
-          const chapterIssues = issues.filter((iss: any) => 
-            iss.capitulos_afectados?.includes(chapter.chapterNumber)
-          );
-          
-          this.emitProgress({
-            projectId,
-            stage: "fixing",
-            currentChapter: i + 1,
-            totalChapters: chaptersNeedingFix.length,
-            message: `Corrigiendo capítulo ${chapter.chapterNumber}: ${chapterIssues.length} issue(s)...`,
-          });
-          
-          try {
-            // Convert FinalReviewIssues to problem format for NarrativeRewriter
-            const problems = chapterIssues.map((issue: any, idx: number) => ({
-              id: `issue-${idx}`,
-              tipo: issue.categoria || "otro",
-              descripcion: issue.descripcion + (userInstructions ? `\n\nINSTRUCCIONES ADICIONALES: ${userInstructions}` : ""),
-              severidad: issue.severidad || "media",
-              accionSugerida: issue.instrucciones_correccion || "Corregir según indicación"
-            }));
-            
-            // Build adjacent context
-            const prevChapter = validChapters.find(c => c.chapterNumber === chapter.chapterNumber - 1);
-            const nextChapter = validChapters.find(c => c.chapterNumber === chapter.chapterNumber + 1);
-            const adjacentContext = {
-              previousChapter: prevChapter?.editedContent?.substring(0, 2000),
-              nextChapter: nextChapter?.editedContent?.substring(0, 2000),
-            };
-            
-            const rewriteResult = await this.narrativeRewriter.rewriteChapter(
-              chapter.editedContent || chapter.originalContent,
-              chapter.chapterNumber,
-              problems,
-              worldBibleForReview || {},
-              adjacentContext,
-              "español",
-              userInstructions || undefined
-            );
-            this.trackTokens(rewriteResult);
-            await this.updateHeartbeat(projectId);
-            
-            if (rewriteResult.capituloReescrito) {
-              const wordCount = rewriteResult.capituloReescrito.split(/\s+/).filter((w: string) => w.length > 0).length;
-              await storage.updateReeditChapter(chapter.id, {
-                editedContent: rewriteResult.capituloReescrito,
-                wordCount,
-              });
-              
-              // Track corrected issues
-              for (const issue of chapterIssues) {
-                correctedIssueDescriptions.push(issue.descripcion);
-              }
-              
-              // Update local validChapters array
-              const localIdx = validChapters.findIndex(c => c.id === chapter.id);
-              if (localIdx !== -1) {
-                validChapters[localIdx].editedContent = rewriteResult.capituloReescrito;
-              }
-            }
-          } catch (err) {
-            console.error(`[ReeditOrchestrator] Error fixing chapter ${chapter.chapterNumber}:`, err);
-          }
-        }
-        
-        console.log(`[ReeditOrchestrator] Pre-corrections applied. Now running final review...`);
-        
-        // Clear user instructions AFTER corrections are applied successfully
-        if (userInstructions) {
-          await storage.updateReeditProject(projectId, { 
-            pendingUserInstructions: null,
-            pauseReason: null,
-          });
-          console.log(`[ReeditOrchestrator] User instructions cleared after successful application`);
-        }
+        console.log(`[ReeditOrchestrator] User instructions cleared (will be applied in main correction loop)`);
       }
     }
 
