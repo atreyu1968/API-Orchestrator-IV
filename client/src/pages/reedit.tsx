@@ -619,6 +619,258 @@ function WorldBibleDisplay({ worldBible }: { worldBible: any }) {
   );
 }
 
+// Real-time progress report component - shows statistics, issues found, and before/after comparison
+function ProgressReportDisplay({ 
+  project, 
+  chapters 
+}: { 
+  project: ReeditProject; 
+  chapters: ReeditChapter[];
+}) {
+  // Calculate statistics
+  const completedChapters = chapters.filter(c => c.status === "completed" || c.editedContent);
+  const pendingChapters = chapters.filter(c => c.status === "pending");
+  const processingChapters = chapters.filter(c => c.status === "analyzing" || c.status === "editing");
+  
+  const originalWordCount = chapters.reduce((sum, c) => {
+    const content = c.originalContent || "";
+    return sum + content.split(/\s+/).filter(w => w.length > 0).length;
+  }, 0);
+  
+  const editedWordCount = chapters.reduce((sum, c) => {
+    const content = c.editedContent || c.originalContent || "";
+    return sum + content.split(/\s+/).filter(w => w.length > 0).length;
+  }, 0);
+  
+  const wordCountDiff = editedWordCount - originalWordCount;
+  const wordCountPercent = originalWordCount > 0 ? ((wordCountDiff / originalWordCount) * 100).toFixed(1) : "0";
+  
+  // Safe JSON parsing helper
+  const safeParseJson = (data: any): any => {
+    if (!data) return null;
+    if (typeof data === 'object') return data;
+    try {
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  };
+  
+  // Collect all issues found across chapters
+  const allIssues: Array<{chapter: number, title: string | null, issues: any[]}> = [];
+  chapters.forEach(ch => {
+    const issues: any[] = [];
+    const narr = safeParseJson(ch.narrativeIssues);
+    if (narr) {
+      if (Array.isArray(narr.plotHoles)) issues.push(...narr.plotHoles.map((i: string) => ({ type: "trama", text: String(i) })));
+      if (Array.isArray(narr.continuityErrors)) issues.push(...narr.continuityErrors.map((i: string) => ({ type: "continuidad", text: String(i) })));
+      if (Array.isArray(narr.pacing)) issues.push(...narr.pacing.map((i: string) => ({ type: "ritmo", text: String(i) })));
+    }
+    const fb = safeParseJson(ch.editorFeedback);
+    if (fb && Array.isArray(fb.issues)) {
+      issues.push(...fb.issues.map((i: string) => ({ type: "editor", text: String(i) })));
+    }
+    if (issues.length > 0) {
+      allIssues.push({ chapter: ch.chapterNumber, title: ch.title, issues });
+    }
+  });
+  
+  // Collect changes (before/after comparisons)
+  const chaptersWithChanges = chapters.filter(c => c.editedContent && c.editedContent !== c.originalContent);
+  
+  const getIssueTypeBadge = (type: string) => {
+    const colors: Record<string, string> = {
+      trama: "bg-red-600",
+      continuidad: "bg-orange-600",
+      ritmo: "bg-blue-600",
+      editor: "bg-purple-600",
+    };
+    const labels: Record<string, string> = {
+      trama: "Trama",
+      continuidad: "Continuidad",
+      ritmo: "Ritmo",
+      editor: "Editorial",
+    };
+    return <Badge className={colors[type] || "bg-gray-600"}>{labels[type] || type}</Badge>;
+  };
+
+  return (
+    <div className="space-y-6" data-testid="display-progress-report">
+      {/* Statistics Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card>
+          <CardContent className="pt-4 pb-3 text-center">
+            <TrendingUp className="h-5 w-5 mx-auto mb-1 text-blue-500" />
+            <p className="text-2xl font-bold">{completedChapters.length}/{chapters.length}</p>
+            <p className="text-xs text-muted-foreground">Capítulos Procesados</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 text-center">
+            <FileText className="h-5 w-5 mx-auto mb-1 text-green-500" />
+            <p className="text-2xl font-bold">{originalWordCount.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Palabras Originales</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 text-center">
+            <Zap className="h-5 w-5 mx-auto mb-1 text-yellow-500" />
+            <p className="text-2xl font-bold">{editedWordCount.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Palabras Editadas</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 text-center">
+            <TrendingUp className={`h-5 w-5 mx-auto mb-1 ${wordCountDiff >= 0 ? 'text-green-500' : 'text-red-500'}`} />
+            <p className="text-2xl font-bold">{wordCountDiff >= 0 ? '+' : ''}{wordCountPercent}%</p>
+            <p className="text-xs text-muted-foreground">Cambio de Longitud</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Processing Status */}
+      {processingChapters.length > 0 && (
+        <Card className="border-blue-500/50">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              En Proceso ({processingChapters.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="py-2">
+            <div className="flex flex-wrap gap-2">
+              {processingChapters.map(ch => (
+                <Badge key={ch.id} variant="outline" className="animate-pulse">
+                  {getChapterBadgeLabel(ch.chapterNumber)}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Issues Found */}
+      <Card>
+        <CardHeader className="py-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-orange-500" />
+            Problemas Detectados ({allIssues.reduce((sum, i) => sum + i.issues.length, 0)})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="py-2">
+          {allIssues.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-2">
+              {completedChapters.length === 0 
+                ? "Los problemas aparecerán aquí durante el análisis" 
+                : "No se han detectado problemas significativos"}
+            </p>
+          ) : (
+            <ScrollArea className="h-[200px]">
+              <div className="space-y-3">
+                {allIssues.slice(0, 10).map((item, idx) => (
+                  <div key={idx} className="border-l-2 border-muted pl-3">
+                    <p className="text-xs font-medium mb-1">
+                      {getChapterLabel(item.chapter, item.title)}
+                    </p>
+                    <div className="space-y-1">
+                      {item.issues.slice(0, 3).map((issue, i) => (
+                        <div key={i} className="flex items-start gap-2 text-xs">
+                          {getIssueTypeBadge(issue.type)}
+                          <span className="text-muted-foreground">{issue.text}</span>
+                        </div>
+                      ))}
+                      {item.issues.length > 3 && (
+                        <p className="text-xs text-muted-foreground">+{item.issues.length - 3} más...</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {allIssues.length > 10 && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    +{allIssues.length - 10} capítulos más con problemas
+                  </p>
+                )}
+              </div>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Chapters with Changes */}
+      <Card>
+        <CardHeader className="py-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <CheckCircle className="h-4 w-4 text-green-500" />
+            Capítulos Editados ({chaptersWithChanges.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="py-2">
+          {chaptersWithChanges.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-2">
+              Los cambios aparecerán aquí cuando se procesen los capítulos
+            </p>
+          ) : (
+            <ScrollArea className="h-[200px]">
+              <div className="space-y-2">
+                {chaptersWithChanges.slice(0, 15).map(ch => {
+                  const origWords = (ch.originalContent || "").split(/\s+/).filter(w => w.length > 0).length;
+                  const editWords = (ch.editedContent || "").split(/\s+/).filter(w => w.length > 0).length;
+                  const diff = editWords - origWords;
+                  return (
+                    <div key={ch.id} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
+                      <span className="font-medium">{getChapterLabel(ch.chapterNumber, ch.title)}</span>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-muted-foreground">{origWords} → {editWords}</span>
+                        <Badge variant={diff >= 0 ? "default" : "secondary"} className="text-xs">
+                          {diff >= 0 ? '+' : ''}{diff}
+                        </Badge>
+                        {ch.editorScore && (
+                          <Badge variant="outline" className="text-xs">
+                            ★ {ch.editorScore}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {chaptersWithChanges.length > 15 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    +{chaptersWithChanges.length - 15} capítulos más editados
+                  </p>
+                )}
+              </div>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Pending Chapters */}
+      {pendingChapters.length > 0 && (
+        <Card className="border-muted">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              Pendientes ({pendingChapters.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="py-2">
+            <div className="flex flex-wrap gap-1">
+              {pendingChapters.slice(0, 20).map(ch => (
+                <Badge key={ch.id} variant="outline" className="text-xs opacity-60">
+                  {getChapterBadgeLabel(ch.chapterNumber)}
+                </Badge>
+              ))}
+              {pendingChapters.length > 20 && (
+                <Badge variant="outline" className="text-xs opacity-60">+{pendingChapters.length - 20}</Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function AuditReportsDisplay({ reports }: { reports: any[] }) {
   if (!reports || reports.length === 0) {
     return <p className="text-muted-foreground text-center py-4">No hay informes de auditoría disponibles</p>;
@@ -1260,14 +1512,31 @@ export default function ReeditPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="progress">
+                <Tabs defaultValue="live-report">
                   <TabsList className="flex-wrap h-auto">
-                    <TabsTrigger value="progress" data-testid="tab-trigger-progress">Progreso</TabsTrigger>
+                    <TabsTrigger value="live-report" data-testid="tab-trigger-live-report">Informe Progreso</TabsTrigger>
+                    <TabsTrigger value="progress" data-testid="tab-trigger-progress">Estado</TabsTrigger>
                     <TabsTrigger value="chapters" data-testid="tab-trigger-chapters">Capítulos</TabsTrigger>
                     <TabsTrigger value="worldbible" data-testid="tab-trigger-worldbible">Biblia del Mundo</TabsTrigger>
                     <TabsTrigger value="audits" data-testid="tab-trigger-audits">Auditorías QA</TabsTrigger>
                     <TabsTrigger value="report" data-testid="tab-trigger-report">Informe Final</TabsTrigger>
                   </TabsList>
+
+                  <TabsContent value="live-report">
+                    <ScrollArea className="h-[500px] mt-4 pr-4">
+                      {chapters.length > 0 ? (
+                        <ProgressReportDisplay 
+                          project={selectedProjectData} 
+                          chapters={chapters} 
+                        />
+                      ) : (
+                        <div className="text-center text-muted-foreground py-12">
+                          <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                          <p>El informe de progreso aparecerá cuando se carguen los capítulos</p>
+                        </div>
+                      )}
+                    </ScrollArea>
+                  </TabsContent>
 
                   <TabsContent value="progress" className="space-y-4">
                     <div className="grid grid-cols-2 gap-4 mt-4">
