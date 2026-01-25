@@ -2394,31 +2394,33 @@ ${chapterSummaries || "Sin capítulos disponibles"}
         consecutiveHighScores = 0; // Reset counter if score drops below 9
       }
       
-      // NUEVO: Verificar si hay issues críticos o mayores que DEBEN corregirse
-      const criticalOrMajorIssues = (result?.issues || []).filter(
-        issue => issue.severidad === "critica" || issue.severidad === "mayor"
-      );
-      const hasCriticalOrMajorIssues = criticalOrMajorIssues.length > 0;
+      // Verificar si hay CUALQUIER issue que deba corregirse
+      const allIssues = result?.issues || [];
+      const hasAnyIssues = allIssues.length > 0;
       
-      // APROBADO: Puntuación >= 9 por N veces consecutivas Y SIN issues críticos/mayores
-      if (consecutiveHighScores >= this.requiredConsecutiveHighScores && !hasCriticalOrMajorIssues) {
+      // APROBADO: Puntuación >= 9 por N veces consecutivas Y SIN NINGÚN issue
+      if (consecutiveHighScores >= this.requiredConsecutiveHighScores && !hasAnyIssues) {
         const recentScores = previousScores.slice(-this.requiredConsecutiveHighScores).join(", ");
         const mensaje = result?.veredicto === "APROBADO_CON_RESERVAS"
           ? `Manuscrito APROBADO CON RESERVAS. Puntuaciones consecutivas: ${recentScores}/10.`
-          : `Manuscrito APROBADO. Puntuaciones consecutivas: ${recentScores}/10. Calidad bestseller confirmada.`;
+          : `Manuscrito APROBADO. Puntuaciones consecutivas: ${recentScores}/10. CERO issues pendientes. Calidad bestseller confirmada.`;
         this.callbacks.onAgentStatus("final-reviewer", "completed", mensaje);
         return true;
       }
       
-      // NUEVO: Si hay issues críticos/mayores, FORZAR corrección antes de aprobar
-      if (hasCriticalOrMajorIssues) {
+      // Si hay CUALQUIER issue (crítico, mayor o menor), FORZAR corrección antes de aprobar
+      if (hasAnyIssues) {
+        const criticalCount = allIssues.filter(i => i.severidad === "critica").length;
+        const majorCount = allIssues.filter(i => i.severidad === "mayor").length;
+        const minorCount = allIssues.filter(i => i.severidad === "menor").length;
+        
         this.callbacks.onAgentStatus("final-reviewer", "editing", 
-          `Puntuación ${currentScore}/10 pero hay ${criticalOrMajorIssues.length} issues CRÍTICOS/MAYORES que deben corregirse antes de aprobar.`
+          `Puntuación ${currentScore}/10. Corrigiendo ${allIssues.length} issues detectados (${criticalCount} críticos, ${majorCount} mayores, ${minorCount} menores) antes de poder aprobar.`
         );
-        // No hacer continue - dejar que fluya hacia la sección de reescritura
-        // Asegurar que los capítulos afectados están en la lista
+        
+        // Asegurar que TODOS los capítulos afectados por CUALQUIER issue están en la lista
         const chaptersToRewrite = result?.capitulos_para_reescribir || [];
-        criticalOrMajorIssues.forEach(issue => {
+        allIssues.forEach(issue => {
           issue.capitulos_afectados.forEach(ch => {
             if (!chaptersToRewrite.includes(ch)) {
               chaptersToRewrite.push(ch);
@@ -2431,9 +2433,9 @@ ${chapterSummaries || "Sin capítulos disponibles"}
         }
         // Continuar hacia la sección de reescritura (no hacer continue aquí)
       } else if (currentScore >= this.minAcceptableScore && consecutiveHighScores < this.requiredConsecutiveHighScores) {
-        // Puntuación >= 9 pero aún no suficientes consecutivas, Y sin issues críticos/mayores
+        // Puntuación >= 9 pero aún no suficientes consecutivas, Y sin issues
         this.callbacks.onAgentStatus("final-reviewer", "reviewing", 
-          `Puntuación ${currentScore}/10. Necesita ${this.requiredConsecutiveHighScores - consecutiveHighScores} evaluación(es) más con 9+ para confirmar.`
+          `Puntuación ${currentScore}/10 sin issues. Necesita ${this.requiredConsecutiveHighScores - consecutiveHighScores} evaluación(es) más con 9+ para confirmar.`
         );
         revisionCycle++;
         continue; // Re-evaluate without rewriting
@@ -2463,19 +2465,19 @@ ${chapterSummaries || "Sin capítulos disponibles"}
           ? (previousScores.reduce((a, b) => a + b, 0) / previousScores.length).toFixed(1)
           : currentScore;
         
-        // NUEVO: No aprobar si hay issues críticos/mayores sin resolver
-        if (currentScore >= this.minAcceptableScore && !hasCriticalOrMajorIssues) {
+        // No aprobar si hay CUALQUIER issue sin resolver
+        if (currentScore >= this.minAcceptableScore && !hasAnyIssues) {
           this.callbacks.onAgentStatus("final-reviewer", "completed", 
-            `Límite de ${this.maxFinalReviewCycles} ciclos alcanzado. Puntuación final: ${currentScore}/10 (promedio: ${avgScore}). APROBADO.`
+            `Límite de ${this.maxFinalReviewCycles} ciclos alcanzado. Puntuación final: ${currentScore}/10 (promedio: ${avgScore}). CERO issues. APROBADO.`
           );
           return true;
-        } else if (hasCriticalOrMajorIssues) {
+        } else if (hasAnyIssues) {
           this.callbacks.onAgentStatus("final-reviewer", "error", 
-            `Límite de ${this.maxFinalReviewCycles} ciclos alcanzado con ${criticalOrMajorIssues.length} issues CRÍTICOS/MAYORES sin resolver. Proyecto pausado para revisión manual.`
+            `Límite de ${this.maxFinalReviewCycles} ciclos alcanzado con ${allIssues.length} issues sin resolver. Proyecto pausado para revisión manual.`
           );
           await storage.updateProject(project.id, {
             status: "awaiting_instructions",
-            architectInstructions: `[PAUSA] Límite de ciclos alcanzado con issues críticos/mayores pendientes:\n${criticalOrMajorIssues.map(i => `- [${i.severidad.toUpperCase()}] ${i.descripcion}`).join("\n")}`,
+            architectInstructions: `[PAUSA] Límite de ciclos alcanzado con ${allIssues.length} issues pendientes:\n${allIssues.map(i => `- [${i.severidad.toUpperCase()}] ${i.descripcion}`).join("\n")}`,
             finalScore: currentScore
           });
           return false;
