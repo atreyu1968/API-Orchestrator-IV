@@ -692,10 +692,38 @@ export class QueueManager {
       onAgentStatus: async (role, status, message) => {
         self.updateHeartbeat();
         console.log(`[Queue] ${project.title} - ${role}: ${status}`, message || "");
+        // Save activity log to database for UI visibility
+        if (message) {
+          try {
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: status === "error" ? "error" : "info",
+              agentRole: role,
+              message: message,
+            });
+          } catch (err) {
+            console.error(`[Queue] Failed to save activity log:`, err);
+          }
+        }
       },
       onChapterComplete: async (chapterNumber, wordCount, chapterTitle) => {
         self.updateHeartbeat();
         console.log(`[Queue] ${project.title} - Chapter ${chapterNumber} complete: ${wordCount} words`);
+        // Save chapter completion to activity log
+        const sectionName = chapterNumber === 0 ? "el Prólogo" : 
+                           chapterNumber === -1 ? "el Epílogo" : 
+                           chapterNumber === -2 ? "la Nota del Autor" :
+                           `el Capítulo ${chapterNumber}`;
+        try {
+          await storage.createActivityLog({
+            projectId: project.id,
+            level: "success",
+            agentRole: "ghostwriter",
+            message: `${sectionName} completado (${wordCount} palabras)`,
+          });
+        } catch (err) {
+          console.error(`[Queue] Failed to save chapter complete log:`, err);
+        }
       },
       onChapterRewrite: async () => {
         self.updateHeartbeat();
