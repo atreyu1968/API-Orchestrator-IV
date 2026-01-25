@@ -2767,6 +2767,154 @@ IMPORTANTE:
     }
   });
 
+  // Normalize chapter titles and headers for a project
+  app.post("/api/projects/:id/normalize-titles", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      
+      const chapters = await storage.getChaptersByProject(projectId);
+      const results: { chapterId: number; chapterNumber: number; oldTitle: string; newTitle: string; headerFixed: boolean }[] = [];
+      
+      // Helper function to normalize title case (first letter uppercase, rest lowercase for each word)
+      const toTitleCase = (str: string): string => {
+        return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+      };
+      
+      // Helper function to remove duplicate headers and normalize content
+      const normalizeContent = (content: string, chapterNumber: number, title: string, language: string = "es"): { normalized: string; headerFixed: boolean } => {
+        if (!content || content.trim() === '') return { normalized: content, headerFixed: false };
+        
+        let normalized = content.trim();
+        let headerFixed = false;
+        
+        // Pattern to match chapter/section headers (supports multiple languages and formats)
+        const headerPatterns = [
+          /^#+ *(CHAPTER|CAPÍTULO|CAP\.?|Capítulo|Chapter|PRÓLOGO|Prólogo|PROLOGUE|Prologue|EPÍLOGO|Epílogo|EPILOGUE|Epilogue|NOTA DEL AUTOR|Nota del Autor|AUTHOR'?S?\s*NOTE|Author'?s?\s*Note)[^\n]*\n+/gi,
+        ];
+        
+        // Remove ALL duplicate headers at the start (loop until no more found)
+        let prevLength = 0;
+        while (normalized.length !== prevLength) {
+          prevLength = normalized.length;
+          for (const pattern of headerPatterns) {
+            pattern.lastIndex = 0; // Reset regex state
+            const match = normalized.match(pattern);
+            if (match) {
+              normalized = normalized.replace(pattern, '');
+              headerFixed = true;
+            }
+          }
+          normalized = normalized.trim();
+        }
+        
+        // Determine the correct header based on chapter number
+        let header = '';
+        if (chapterNumber === 0) {
+          header = title && title !== 'Prólogo' ? `# Prólogo: ${title}` : '# Prólogo';
+        } else if (chapterNumber === -1) {
+          header = title && title !== 'Epílogo' ? `# Epílogo: ${title}` : '# Epílogo';
+        } else if (chapterNumber === -2) {
+          header = title && title !== 'Nota del Autor' ? `# Nota del Autor: ${title}` : '# Nota del Autor';
+        } else {
+          // Regular chapter - use title from database, ensure title case
+          const normalizedTitle = title ? toTitleCase(title.replace(/^Capítulo\s*\d+\s*:?\s*/i, '').trim()) : '';
+          if (normalizedTitle && normalizedTitle.toLowerCase() !== `capítulo ${chapterNumber}`.toLowerCase()) {
+            header = `# Capítulo ${chapterNumber}: ${normalizedTitle}`;
+          } else {
+            header = `# Capítulo ${chapterNumber}`;
+          }
+        }
+        
+        // Add the normalized header
+        normalized = `${header}\n\n${normalized}`;
+        
+        return { normalized, headerFixed };
+      };
+      
+      // Helper to extract a clean title from content if title is generic
+      const extractTitleFromContent = (content: string, chapterNumber: number): string | null => {
+        if (!content) return null;
+        
+        // Look for a header pattern in the content
+        const match = content.match(/^#+ *(?:CHAPTER|CAPÍTULO|CAP\.?|Capítulo|Chapter)\s*\d+\s*[:–—-]\s*([^\n]+)/mi);
+        if (match && match[1]) {
+          const extracted = match[1].trim();
+          // Make sure it's not just "Capítulo X" repeated
+          if (!extracted.match(/^Capítulo\s*\d+$/i) && extracted.length > 0) {
+            return extracted;
+          }
+        }
+        return null;
+      };
+      
+      for (const chapter of chapters) {
+        const oldTitle = chapter.title || '';
+        let newTitle = oldTitle;
+        
+        // Check if title is generic (just "Capítulo X" or empty)
+        const isGenericTitle = !oldTitle || 
+          oldTitle.match(/^Capítulo\s*\d+$/i) || 
+          oldTitle === 'Prólogo' || 
+          oldTitle === 'Epílogo' ||
+          oldTitle === 'Nota del Autor';
+        
+        // Try to extract a better title from the content if the current title is generic
+        if (isGenericTitle && chapter.content) {
+          const extractedTitle = extractTitleFromContent(chapter.content, chapter.chapterNumber);
+          if (extractedTitle) {
+            newTitle = extractedTitle;
+          }
+        }
+        
+        // Normalize the title case for non-special chapters
+        if (chapter.chapterNumber > 0 && newTitle && !newTitle.match(/^Capítulo\s*\d+$/i)) {
+          newTitle = toTitleCase(newTitle);
+        }
+        
+        // Normalize the content headers
+        const { normalized, headerFixed } = normalizeContent(
+          chapter.content || '', 
+          chapter.chapterNumber, 
+          newTitle
+        );
+        
+        // Update the chapter if there are changes
+        if (oldTitle !== newTitle || headerFixed) {
+          await storage.updateChapter(chapter.id, {
+            title: newTitle,
+            content: normalized,
+          });
+          
+          results.push({
+            chapterId: chapter.id,
+            chapterNumber: chapter.chapterNumber,
+            oldTitle,
+            newTitle,
+            headerFixed,
+          });
+        }
+      }
+      
+      res.json({
+        success: true,
+        projectId,
+        projectTitle: project.title,
+        chaptersUpdated: results.length,
+        totalChapters: chapters.length,
+        updates: results,
+      });
+      
+    } catch (error) {
+      console.error("Error normalizing chapter titles:", error);
+      res.status(500).json({ error: "Failed to normalize chapter titles" });
+    }
+  });
+
   // Extended Writing Guides endpoints
   app.get("/api/extended-guides", async (req: Request, res: Response) => {
     try {
