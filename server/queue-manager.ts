@@ -13,7 +13,7 @@ interface QueueEvent {
   error?: string;
 }
 
-const HEARTBEAT_TIMEOUT_MS = 8 * 60 * 1000; // 8 minutes without activity = frozen (reduced for faster recovery during generation)
+const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes without activity = frozen (reduced for faster recovery)
 const HEARTBEAT_CHECK_INTERVAL_MS = 30 * 1000; // Check every 30 seconds
 
 export class QueueManager {
@@ -79,6 +79,14 @@ export class QueueManager {
     const projectId = this.currentProjectId;
     
     console.log(`[QueueManager] Auto-recovery attempt #${this.autoRecoveryCount} for project ${projectId}`);
+    
+    // CRITICAL: Cancel any pending API connections for this project
+    try {
+      console.log(`[QueueManager] Aborting pending API connections for project ${projectId}...`);
+      cancelProject(projectId);
+    } catch (e) {
+      console.error("[QueueManager] Failed to cancel project connections:", e);
+    }
     
     // Log the recovery event
     try {
