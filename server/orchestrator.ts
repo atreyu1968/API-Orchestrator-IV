@@ -2608,85 +2608,59 @@ ${chapterSummaries || "Sin capítulos disponibles"}
           issuesSummary
         );
         
+        // MICROSURGERY MODE: Use CopyEditor for surgical corrections instead of full Ghostwriter rewrite
+        // Still report as ghostwriter for UI compatibility
         this.callbacks.onAgentStatus("ghostwriter", "writing", 
-          `Reescribiendo ${sectionLabel} (${rewriteIndex + 1}/${chaptersToRewrite.length}): ${issuesSummary}`
+          `Microcirugía ${sectionLabel} (${rewriteIndex + 1}/${chaptersToRewrite.length}): ${issuesSummary}`
         );
 
+        // Get continuity context for corrections
         const previousChapter = updatedChapters.find(c => c.chapterNumber === chapterNum - 1);
-        const previousContinuity = previousChapter?.content 
-          ? `Continuidad del capítulo anterior disponible.` 
+        const continuityContext = previousChapter?.content 
+          ? `\nCONTEXTO DE CONTINUIDAD (final del capítulo anterior):\n${previousChapter.content.slice(-1500)}\n` 
           : "";
 
-        // Use project's per-chapter settings, fallback to calculated from total
-        // SPECIAL: Author's Note has different word limits (800-1200 words)
-        const isAuthorNoteQA = sectionData.tipo === "author_note" || sectionData.numero === -2;
-        const totalChaptersQA = updatedChapters.length || project.chapterCount || 1;
-        const calculatedTargetQA = this.calculatePerChapterTarget((project as any).minWordCount, totalChaptersQA);
-        const perChapterMinQA = isAuthorNoteQA ? 800 : ((project as any).minWordsPerChapter || calculatedTargetQA);
-        const perChapterMaxQA = isAuthorNoteQA ? 1200 : ((project as any).maxWordsPerChapter || Math.round(perChapterMinQA * 1.15));
-        const originalChapterContent = chapter.content || "";
-        const writerResult = await this.ghostwriter.execute({
-          chapterNumber: sectionData.numero,
-          chapterData: sectionData,
-          worldBible: worldBibleData.world_bible,
-          guiaEstilo,
-          previousContinuity,
-          refinementInstructions: `CORRECCIONES DEL REVISOR FINAL:\n${revisionInstructions}`,
-          authorName,
-          minWordCount: perChapterMinQA,
-          maxWordCount: perChapterMaxQA,
-          extendedGuideContent: styleGuideContent || undefined,
-          previousChapterContent: originalChapterContent,
-          kindleUnlimitedOptimized: (project as any).kindleUnlimitedOptimized || false,
-        });
+        // Build targeted correction prompt for microsurgery
+        const microsurgeryPrompt = `
+CORRECCIONES DEL REVISOR FINAL - MODO MICROCIRUGÍA:
+${revisionInstructions}
+${continuityContext}
+INSTRUCCIONES CRÍTICAS:
+- Modifica SOLO las frases/párrafos específicos indicados en cada corrección
+- Preserva el 95% del texto original INTACTO
+- NO reescribas secciones que funcionan bien
+- Si la instrucción dice "BUSCAR X REEMPLAZAR POR Y", hazlo exactamente
+- Aplica cambios quirúrgicos mínimos
+- Mantén la continuidad con el capítulo anterior
 
-        let chapterContent = writerResult.content;
-        await this.trackTokenUsage(project.id, writerResult.tokenUsage, "El Narrador", "gemini-3-pro-preview", sectionData.numero, "qa_rewrite");
+Género: ${project.genre}, Tono: ${project.tone}
+${styleGuideContent ? `\nGUÍA DE ESTILO:\n${styleGuideContent}` : ""}`;
 
-        this.callbacks.onAgentStatus("editor", "editing", `El Editor está revisando ${sectionLabel}...`);
-
-        const editorResult = await this.editor.execute({
-          chapterNumber: sectionData.numero,
-          chapterContent,
-          chapterData: sectionData,
-          worldBible: worldBibleData.world_bible,
-          guiaEstilo: `Género: ${project.genre}, Tono: ${project.tone}`,
-        });
-
-        await this.trackTokenUsage(project.id, editorResult.tokenUsage, "El Editor", "gemini-3-pro-preview", sectionData.numero, "qa_edit");
-
-        if (!editorResult.result?.aprobado) {
-          const refinementInstructions = this.buildRefinementInstructions(editorResult.result);
-          const rewriteResult = await this.ghostwriter.execute({
-            chapterNumber: sectionData.numero,
-            chapterData: sectionData,
-            worldBible: worldBibleData.world_bible,
-            guiaEstilo,
-            previousContinuity,
-            refinementInstructions,
-            authorName,
-            minWordCount: perChapterMinQA,
-            maxWordCount: perChapterMaxQA,
-            extendedGuideContent: styleGuideContent || undefined,
-            previousChapterContent: chapterContent,
-            kindleUnlimitedOptimized: (project as any).kindleUnlimitedOptimized || false,
-          });
-          chapterContent = rewriteResult.content;
-          await this.trackTokenUsage(project.id, rewriteResult.tokenUsage, "El Narrador", "gemini-3-pro-preview", sectionData.numero, "qa_rewrite");
-        }
-
-        this.callbacks.onAgentStatus("copyeditor", "polishing", `El Estilista está puliendo ${sectionLabel}...`);
-
-        const polishResult = await this.copyeditor.execute({
-          chapterContent,
+        const copyEditResult = await this.copyeditor.execute({
+          chapterContent: chapter.content || "",
           chapterNumber: sectionData.numero,
           chapterTitle: sectionData.titulo,
-          guiaEstilo: styleGuideContent || undefined,
+          guiaEstilo: microsurgeryPrompt,
         });
-        await this.trackTokenUsage(project.id, polishResult.tokenUsage, "El Estilista", "gemini-3-pro-preview", sectionData.numero, "qa_polish");
 
-        const finalContent = polishResult.result?.texto_final || chapterContent;
-        const wordCount = finalContent.split(/\s+/).length;
+        await this.trackTokenUsage(project.id, copyEditResult.tokenUsage, "El Estilista", "gemini-3-pro-preview", sectionData.numero, "final_review_microsurgery");
+
+        let finalContent = copyEditResult.result?.texto_final || chapter.content || "";
+        
+        // Quick verification: ensure minimum changes were applied
+        const originalWordCount = (chapter.content || "").split(/\s+/).filter((w: string) => w.length > 0).length;
+        const newWordCount = finalContent.split(/\s+/).filter((w: string) => w.length > 0).length;
+        const wordDiff = Math.abs(newWordCount - originalWordCount);
+        const changeRatio = wordDiff / originalWordCount;
+        
+        // If microsurgery failed (no changes or too many changes), log warning
+        if (changeRatio === 0) {
+          console.warn(`[Orchestrator] Microsurgery applied no changes to chapter ${chapterNum}`);
+        } else if (changeRatio > 0.3) {
+          console.warn(`[Orchestrator] Microsurgery changed ${Math.round(changeRatio * 100)}% of chapter ${chapterNum} - may have over-corrected`);
+        }
+
+        const wordCount = newWordCount;
 
         await storage.updateChapter(chapter.id, {
           content: finalContent,
@@ -4461,48 +4435,47 @@ Responde SOLO con un JSON válido con la estructura:
     
     const sectionLabel = this.getSectionLabel(sectionData);
     
+    // Use CopyEditor for microsurgery instead of Ghostwriter for full rewrite
+    // Report as ghostwriter for UI compatibility
     this.callbacks.onAgentStatus("ghostwriter", "writing", 
-      `Reescribiendo ${sectionLabel} por ${qaLabels[qaSource]}`
+      `Microcirugía ${sectionLabel} por ${qaLabels[qaSource]}`
     );
 
+    // Get continuity context for corrections (especially important for continuity QA)
     const allChapters = await storage.getChaptersByProject(project.id);
     const previousChapter = allChapters.find(c => c.chapterNumber === chapter.chapterNumber - 1);
-    
-    let previousContinuity = "";
-    if (previousChapter?.continuityState) {
-      previousContinuity = `ESTADO DE CONTINUIDAD DEL CAPÍTULO ANTERIOR:\n${JSON.stringify(previousChapter.continuityState, null, 2)}`;
-    } else if (previousChapter?.content) {
-      const lastParagraphs = previousChapter.content.split("\n\n").slice(-3).join("\n\n");
-      previousContinuity = `FINAL DEL CAPÍTULO ANTERIOR:\n${lastParagraphs}`;
-    }
+    const continuityContext = previousChapter?.content 
+      ? `\nCONTEXTO DE CONTINUIDAD (final del capítulo anterior):\n${previousChapter.content.slice(-1500)}\n` 
+      : "";
 
-    // Use project's per-chapter settings for QA rewrites
-    // SPECIAL: Author's Note has different word limits (800-1200 words)
-    const isAuthorNoteRewrite = sectionData.numero === -2 || sectionData.tipo === "author_note";
-    const allChaptersCount = (await storage.getChaptersByProject(project.id)).length || project.chapterCount || 1;
-    const calculatedTargetRewrite = this.calculatePerChapterTarget((project as any).minWordCount, allChaptersCount);
-    const perChapterMinRewrite = isAuthorNoteRewrite ? 800 : ((project as any).minWordsPerChapter || calculatedTargetRewrite);
-    const perChapterMaxRewrite = isAuthorNoteRewrite ? 1200 : ((project as any).maxWordsPerChapter || Math.round(perChapterMinRewrite * 1.15));
-    
-    const writerResult = await this.ghostwriter.execute({
-      chapterNumber: sectionData.numero,
-      chapterData: sectionData,
-      worldBible: worldBibleData.world_bible,
-      guiaEstilo,
-      previousContinuity,
-      refinementInstructions: `CORRECCIONES DE ${qaLabels[qaSource].toUpperCase()}:\n${correctionInstructions}`,
-      minWordCount: perChapterMinRewrite,
-      maxWordCount: perChapterMaxRewrite,
-      kindleUnlimitedOptimized: (project as any).kindleUnlimitedOptimized || false,
+    // Build targeted correction prompt for CopyEditor
+    const correctionPrompt = `
+CORRECCIONES ESPECÍFICAS DE ${qaLabels[qaSource].toUpperCase()}:
+${correctionInstructions}
+${continuityContext}
+MODO MICROCIRUGÍA OBLIGATORIO:
+- Modifica SOLO las frases/párrafos que causan el problema
+- Preserva el 95% del texto original INTACTO
+- NO reescribas secciones que funcionan bien
+- Aplica cambios quirúrgicos mínimos
+- Mantén la continuidad con el capítulo anterior
+${guiaEstilo}`;
+
+    const copyEditResult = await this.copyeditor.execute({
+      chapterNumber: chapter.chapterNumber,
+      chapterTitle: chapter.title || `Capítulo ${chapter.chapterNumber}`,
+      chapterContent: chapter.content || "",
+      guiaEstilo: correctionPrompt,
     });
 
-    await this.trackTokenUsage(project.id, writerResult.tokenUsage, "El Narrador", "gemini-3-pro-preview", sectionData.numero, "qa_rewrite");
+    await this.trackTokenUsage(project.id, copyEditResult.tokenUsage, "El Estilista", "gemini-3-pro-preview", chapter.chapterNumber, "qa_microsurgery");
 
-    if (writerResult.content) {
-      const wordCount = writerResult.content.split(/\s+/).filter(w => w.length > 0).length;
+    const correctedContent = copyEditResult.result?.texto_final;
+    if (correctedContent) {
+      const wordCount = correctedContent.split(/\s+/).filter((w: string) => w.length > 0).length;
       
       await storage.updateChapter(chapter.id, {
-        content: writerResult.content,
+        content: correctedContent,
         status: "completed",
         wordCount,
         needsRevision: false,
@@ -4511,7 +4484,7 @@ Responde SOLO con un JSON válido con la estructura:
 
       this.callbacks.onChapterStatusChange(chapter.chapterNumber, "completed");
       this.callbacks.onAgentStatus("ghostwriter", "completed", 
-        `${sectionLabel} reescrito correctamente`
+        `${sectionLabel} corregido (microcirugía)`
       );
     }
   }
