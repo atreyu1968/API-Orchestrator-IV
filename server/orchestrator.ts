@@ -917,9 +917,33 @@ ${chapterSummaries || "Sin capítulos disponibles"}
             kindleUnlimitedOptimized: (project as any).kindleUnlimitedOptimized || false,
           });
 
+          // CRITICAL: Validate that content exists before processing
+          if (!writerResult.content || writerResult.content.trim().length === 0) {
+            console.error(`[Orchestrator] CRITICAL: Ghostwriter returned NULL/EMPTY content for ${sectionLabel}. Retrying...`);
+            this.callbacks.onAgentStatus("ghostwriter", "error", 
+              `${sectionLabel} vacío. La IA no devolvió contenido. Reintentando...`
+            );
+            refinementAttempts++;
+            refinementInstructions = `CRÍTICO: Tu respuesta anterior estaba VACÍA. DEBES escribir el capítulo COMPLETO. NO devuelvas una respuesta vacía.`;
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            continue;
+          }
+
           const { cleanContent, continuityState } = this.ghostwriter.extractContinuityState(writerResult.content);
           let currentContent = cleanContent;
           const currentContinuityState = continuityState;
+          
+          // CRITICAL: Double-check after extraction that content is not empty
+          if (!currentContent || currentContent.trim().length === 0) {
+            console.error(`[Orchestrator] CRITICAL: Content extraction resulted in EMPTY content for ${sectionLabel}. Retrying...`);
+            this.callbacks.onAgentStatus("ghostwriter", "error", 
+              `${sectionLabel} vacío tras extracción. Reintentando...`
+            );
+            refinementAttempts++;
+            refinementInstructions = `CRÍTICO: Tu respuesta contenía solo metadatos sin contenido narrativo. DEBES escribir el capítulo COMPLETO con prosa narrativa.`;
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            continue;
+          }
           
           // Validate word count with user-defined min/max per chapter
           const ABSOLUTE_MIN = 500; // Detect severe truncation
@@ -1559,9 +1583,33 @@ ${chapterSummaries || "Sin capítulos disponibles"}
             kindleUnlimitedOptimized: (project as any).kindleUnlimitedOptimized || false,
           });
 
+          // CRITICAL: Validate that content exists before processing
+          if (!writerResult.content || writerResult.content.trim().length === 0) {
+            console.error(`[Orchestrator] CRITICAL: Ghostwriter returned NULL/EMPTY content for ${sectionLabel}. Retrying...`);
+            this.callbacks.onAgentStatus("ghostwriter", "error", 
+              `${sectionLabel} vacío. La IA no devolvió contenido. Reintentando...`
+            );
+            refinementAttempts++;
+            refinementInstructions = `CRÍTICO: Tu respuesta anterior estaba VACÍA. DEBES escribir el capítulo COMPLETO. NO devuelvas una respuesta vacía.`;
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            continue;
+          }
+
           const { cleanContent, continuityState } = this.ghostwriter.extractContinuityState(writerResult.content);
           let currentContent = cleanContent;
           const currentContinuityState = continuityState;
+          
+          // CRITICAL: Double-check after extraction that content is not empty
+          if (!currentContent || currentContent.trim().length === 0) {
+            console.error(`[Orchestrator] CRITICAL: Content extraction resulted in EMPTY content for ${sectionLabel}. Retrying...`);
+            this.callbacks.onAgentStatus("ghostwriter", "error", 
+              `${sectionLabel} vacío tras extracción. Reintentando...`
+            );
+            refinementAttempts++;
+            refinementInstructions = `CRÍTICO: Tu respuesta contenía solo metadatos sin contenido narrativo. DEBES escribir el capítulo COMPLETO con prosa narrativa.`;
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            continue;
+          }
           
           // Validate word count with user-defined min/max per chapter
           const ABSOLUTE_MIN = 500; // Detect severe truncation
@@ -3049,9 +3097,27 @@ Responde SOLO con un JSON válido con la estructura:
             kindleUnlimitedOptimized: (project as any).kindleUnlimitedOptimized || false,
           });
 
+          // CRITICAL: Validate that content exists before processing
+          if (!writerResult.content || writerResult.content.trim().length === 0) {
+            console.error(`[Orchestrator] CRITICAL: Ghostwriter returned NULL/EMPTY content for ${sectionLabel} (expansion). Skipping...`);
+            this.callbacks.onAgentStatus("ghostwriter", "error", 
+              `${sectionLabel} vacío tras expansión. Saltando al siguiente.`
+            );
+            continue;
+          }
+
           const { cleanContent, continuityState } = this.ghostwriter.extractContinuityState(writerResult.content);
           let currentContent = cleanContent;
           const currentContinuityState = continuityState;
+          
+          // CRITICAL: Double-check after extraction that content is not empty
+          if (!currentContent || currentContent.trim().length === 0) {
+            console.error(`[Orchestrator] CRITICAL: Content extraction resulted in EMPTY content for ${sectionLabel} (expansion). Skipping...`);
+            this.callbacks.onAgentStatus("ghostwriter", "error", 
+              `${sectionLabel} vacío tras extracción (expansión). Saltando al siguiente.`
+            );
+            continue;
+          }
           
           const contentWordCount = currentContent.split(/\s+/).filter((w: string) => w.length > 0).length;
           
@@ -3384,7 +3450,20 @@ Responde SOLO con un JSON válido con la estructura:
 
           await this.trackTokenUsage(project.id, writerResult.tokenUsage, "El Narrador", "gemini-3-pro-preview", chapter.chapterNumber, "chapter_regenerate");
 
+          // CRITICAL: Validate that content exists before processing
+          if (!writerResult.content || writerResult.content.trim().length === 0) {
+            console.error(`[Orchestrator] CRITICAL: Ghostwriter returned NULL/EMPTY content for Chapter ${chapter.chapterNumber} (regenerate). Retrying...`);
+            continue; // Will try again on next iteration
+          }
+
           const { cleanContent } = this.ghostwriter.extractContinuityState(writerResult.content);
+          
+          // CRITICAL: Double-check after extraction that content is not empty
+          if (!cleanContent || cleanContent.trim().length === 0) {
+            console.error(`[Orchestrator] CRITICAL: Content extraction resulted in EMPTY content for Chapter ${chapter.chapterNumber} (regenerate). Retrying...`);
+            continue; // Will try again on next iteration
+          }
+          
           const wordCount = cleanContent.split(/\s+/).filter((w: string) => w.length > 0).length;
 
           // Accept if it meets the target minimum (with 15% margin)
