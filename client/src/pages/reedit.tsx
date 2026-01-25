@@ -1752,6 +1752,7 @@ export default function ReeditPage() {
 
                           <ScrollArea className="h-[300px] border rounded-md p-2">
                             <div className="space-y-2">
+                              {/* Pending issues (actionable) */}
                               {issuesList.filter((i: any) => i.status === "pending").map((issue: any) => (
                                 <div 
                                   key={issue.id} 
@@ -1807,7 +1808,37 @@ export default function ReeditPage() {
                                   </div>
                                 </div>
                               ))}
-                              {issuesList.filter((i: any) => i.status === "pending").length === 0 && (
+                              
+                              {/* Resolved issues (tachados / crossed off) */}
+                              {issuesList.filter((i: any) => i.status === "resolved").length > 0 && (
+                                <div className="mt-4 pt-4 border-t border-dashed">
+                                  <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                                    <CheckCircle className="h-3 w-3 text-green-600" />
+                                    Problemas corregidos ({issuesList.filter((i: any) => i.status === "resolved").length})
+                                  </p>
+                                  {issuesList.filter((i: any) => i.status === "resolved").map((issue: any) => (
+                                    <div 
+                                      key={issue.id} 
+                                      className="p-2 border rounded-md border-green-200 bg-green-50/50 dark:bg-green-950/20 mb-1 opacity-60"
+                                      data-testid={`issue-card-resolved-${issue.id}`}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <Badge variant="outline" className="text-xs opacity-70">{issue.category}</Badge>
+                                            <span className="text-xs text-muted-foreground">Cap. {issue.chapterNumber}</span>
+                                          </div>
+                                          <p className="text-sm line-through text-muted-foreground">{issue.description}</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {issuesList.filter((i: any) => i.status === "pending").length === 0 && 
+                               issuesList.filter((i: any) => i.status === "resolved").length === 0 && (
                                 <div className="text-center py-8 text-muted-foreground">
                                   <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-600" />
                                   <p>Todos los problemas han sido revisados</p>

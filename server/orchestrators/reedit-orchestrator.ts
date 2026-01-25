@@ -1414,7 +1414,7 @@ export class ReeditOrchestrator {
    * Generate a hash for an issue to track if it has been resolved.
    * Uses category + simplified description + affected chapters to create stable ID.
    */
-  private generateIssueHash(issue: FinalReviewIssue): string {
+  private generateIssueHash(issue: Pick<FinalReviewIssue, 'categoria' | 'descripcion' | 'capitulos_afectados'>): string {
     // Normalize description: lowercase, remove extra spaces, keep first 100 chars
     const normalizedDesc = (issue.descripcion || "")
       .toLowerCase()
@@ -4421,7 +4421,6 @@ export class ReeditOrchestrator {
             user_approved_count: approvedIssues.length,
           },
           bestsellerScore: Math.round(bestsellerScore),
-          revisedWordCount: totalWords,
           errorMessage: null,
           pauseReason: null,
           // Preserve state from applyUserApprovedCorrections
