@@ -400,32 +400,66 @@ export class GhostwriterAgent extends BaseAgent {
     if (input.refinementInstructions) {
       prompt += `
     
-    ========================================
-    INSTRUCCIONES DE REESCRITURA (PLAN QUIRÚRGICO DEL EDITOR):
-    ========================================
-    ${input.refinementInstructions}
+    ╔═══════════════════════════════════════════════════════════════════╗
+    ║  🔬🔬🔬 MODO CIRUGÍA LÁSER - CAMBIOS MÍNIMOS OBLIGATORIOS 🔬🔬🔬  ║
+    ╠═══════════════════════════════════════════════════════════════════╣
+    ║                                                                   ║
+    ║   TU OBJETIVO: MODIFICAR SOLO LAS FRASES/PALABRAS INDICADAS      ║
+    ║   PRESERVAR EL 95% DEL TEXTO ORIGINAL INTACTO                    ║
+    ║                                                                   ║
+    ╚═══════════════════════════════════════════════════════════════════╝
     
-    ⚠️ REGLAS DE REESCRITURA (CRÍTICAS):
-    1. PRESERVA las fortalezas y pasajes efectivos del borrador anterior
-    2. APLICA solo las correcciones específicas indicadas
-    3. NO reduzcas la extensión - mantén o aumenta el número de palabras
-    4. NO reescribas desde cero - es una EDICIÓN QUIRÚRGICA, no una reescritura total
-    5. Si algo funcionaba bien, MANTENLO INTACTO
+    INSTRUCCIONES DE CORRECCIÓN ESPECÍFICAS:
+    ─────────────────────────────────────────
+    ${input.refinementInstructions}
+    ─────────────────────────────────────────
+    
+    ⛔ REGLAS INVIOLABLES DE EDICIÓN QUIRÚRGICA:
+    
+    1. COPIA LITERAL: Copia el 95% del texto original SIN CAMBIOS
+       - Cada párrafo que NO esté afectado por las instrucciones → CÓPIALO EXACTAMENTE
+       - No cambies palabras "para mejorar" si no están en las instrucciones
+       - No reorganices párrafos que funcionan
+    
+    2. CAMBIOS MÍNIMOS: Solo modifica lo ESTRICTAMENTE indicado
+       - Si dice "cambiar X por Y" → cambia SOLO esa palabra/frase
+       - Si dice "eliminar la referencia a Z" → elimina SOLO esa referencia
+       - Si dice "añadir contexto sobre W" → añade UNA frase sobre W
+    
+    3. LOCALIZACIÓN PRECISA: Los cambios deben estar en las ubicaciones indicadas
+       - Si menciona un diálogo específico → modifica SOLO ese diálogo
+       - Si menciona un párrafo específico → modifica SOLO ese párrafo
+    
+    4. PROHIBIDO REESCRIBIR ESCENAS COMPLETAS
+       - Una instrucción de corregir una frase NO es permiso para reescribir la escena
+       - Mantén la estructura, el ritmo y el tono del original
+    
+    5. CUENTA DE PALABRAS: El resultado debe tener ±50 palabras del original
+       - No expandas innecesariamente
+       - No reduzcas si no se pide
     ========================================
     `;
 
       if (input.previousChapterContent) {
-        const truncatedPrevious = input.previousChapterContent.length > 20000 
-          ? input.previousChapterContent.substring(0, 20000) + "\n[...contenido truncado...]"
+        // Aumentar límite para mejor contexto
+        const truncatedPrevious = input.previousChapterContent.length > 50000 
+          ? input.previousChapterContent.substring(0, 50000) + "\n[...contenido truncado...]"
           : input.previousChapterContent;
         prompt += `
-    ========================================
-    BORRADOR ANTERIOR (BASE PARA EDICIÓN):
-    ========================================
+    ════════════════════════════════════════════════════════════════════
+    📋 TEXTO ORIGINAL (COPIA Y MODIFICA SOLO LO INDICADO):
+    ════════════════════════════════════════════════════════════════════
     ${truncatedPrevious}
-    ========================================
+    ════════════════════════════════════════════════════════════════════
     
-    INSTRUCCIÓN: Usa este borrador como BASE. Modifica SOLO lo que indican las instrucciones de corrección.
+    🎯 PROCESO OBLIGATORIO:
+    1. Lee el texto original COMPLETO
+    2. Identifica las frases/palabras EXACTAS que deben cambiar
+    3. Copia el texto párrafo por párrafo
+    4. Al llegar a una frase que debe cambiar → aplica el cambio mínimo
+    5. Continúa copiando el resto SIN MODIFICAR
+    
+    ⚠️ Si cambias más de lo indicado, el Editor RECHAZARÁ tu trabajo.
     `;
       }
     }

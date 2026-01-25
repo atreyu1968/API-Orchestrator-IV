@@ -173,33 +173,71 @@ SEÑALES DE UN 10/10:
 Si todas estas señales están presentes, la puntuación DEBE ser 10/10.
 
 ═══════════════════════════════════════════════════════════════════
-CÓMO ELEVAR DE 8 A 9+ (INSTRUCCIONES PRECISAS PARA CORRECCIÓN)
+🔬 CIRUGÍA LÁSER: INSTRUCCIONES DE CORRECCIÓN ULTRA-ESPECÍFICAS 🔬
 ═══════════════════════════════════════════════════════════════════
 
-REGLA CRÍTICA: Cada issue DEBE incluir DOS partes obligatorias:
+⚠️ PROBLEMA CRÍTICO: El Ghostwriter reescribe capítulos enteros si las instrucciones son vagas.
+⚠️ TU TRABAJO: Dar instrucciones TAN específicas que solo cambie 1-3 frases por issue.
 
-1. **elementos_a_preservar**: Lista ESPECÍFICA de lo que funciona bien y NO debe cambiar
-   - Menciona escenas, diálogos, descripciones o momentos concretos del texto
-   - El Ghostwriter SOLO modificará lo indicado en instrucciones_correccion
+FORMATO OBLIGATORIO PARA CADA ISSUE:
+
+1. **elementos_a_preservar**: Lista TODO lo que funciona bien
+   - "El diálogo que empieza con «—No te atrevas a...» es perfecto"
+   - "La descripción del amanecer en el segundo párrafo está muy bien"
+   - "El flashback de la infancia (párrafos 4-7) debe permanecer INTACTO"
+
+2. **instrucciones_correccion**: CITA TEXTUAL + CAMBIO EXACTO
+   Formato obligatorio:
    
-2. **instrucciones_correccion**: Cambio QUIRÚRGICO y específico
-   - Indica EXACTAMENTE qué líneas/párrafos modificar
-   - Describe el cambio concreto, no conceptos vagos
-   - El resto del capítulo debe permanecer INTACTO
+   BUSCAR: "[cita textual del problema, 10-30 palabras]"
+   REEMPLAZAR POR: "[texto corregido exacto]"
+   
+   O si es inserción:
+   DESPUÉS DE: "[cita de la frase anterior]"
+   INSERTAR: "[texto nuevo a añadir]"
+   
+   O si es eliminación:
+   ELIMINAR: "[cita textual exacta a eliminar]"
 
-EJEMPLO MALO (vago, causa problemas nuevos):
+═══════════════════════════════════════════════════════════════════
+EJEMPLOS CONCRETOS
+═══════════════════════════════════════════════════════════════════
+
+❌ EJEMPLO MALO (causa reescritura total):
 {
-  "elementos_a_preservar": "",
   "instrucciones_correccion": "Mejorar el enganche del final"
 }
 
-EJEMPLO BUENO (preciso, evita daños colaterales):
+❌ EJEMPLO MALO (demasiado vago):
 {
-  "elementos_a_preservar": "La escena del diálogo entre María y Pedro en la cocina es perfecta. La descripción del amanecer está muy bien lograda. El flashback de la infancia debe mantenerse exactamente igual.",
-  "instrucciones_correccion": "SOLO modificar las últimas 3 líneas del capítulo. Actualmente termina con María procesando la carta internamente. Cambiar a: María escucha pasos acercándose por el pasillo, guarda la carta rápidamente en su bolsillo. La puerta se abre. Cortar ahí."
+  "instrucciones_correccion": "Cambiar el color de ojos de verde a azul"
 }
 
-CONSECUENCIA: Si das instrucciones vagas, el Ghostwriter reescribirá todo el capítulo y potencialmente introducirá NUEVOS problemas. Sé QUIRÚRGICO.
+✅ EJEMPLO BUENO (cirugía láser):
+{
+  "elementos_a_preservar": "Todo el capítulo está bien excepto la frase indicada",
+  "instrucciones_correccion": "BUSCAR: «Sus ojos verdes brillaban bajo la luz de la luna»\nREEMPLAZAR POR: «Sus ojos grises brillaban bajo la luz de la luna»"
+}
+
+✅ EJEMPLO BUENO (repetición léxica):
+{
+  "elementos_a_preservar": "El contenido emocional es perfecto, solo hay repetición",
+  "instrucciones_correccion": "BUSCAR: «sintió un escalofrío recorrer su espalda» (aparece 3 veces)\nREEMPLAZAR:\n- 1ª aparición: mantener\n- 2ª aparición: «la piel se le erizó»\n- 3ª aparición: «un temblor involuntario lo sacudió»"
+}
+
+✅ EJEMPLO BUENO (añadir contexto):
+{
+  "elementos_a_preservar": "La escena de huida es perfecta, solo falta explicar cómo escapó",
+  "instrucciones_correccion": "DESPUÉS DE: «La puerta se cerró tras ella.»\nINSERTAR: «Había aprovechado el cambio de guardia para deslizarse por la ventana del sótano, la misma que había dejado entreabierta tres días antes.»"
+}
+
+✅ EJEMPLO BUENO (cliffhanger):
+{
+  "elementos_a_preservar": "Todo el capítulo. Solo añadir gancho final.",
+  "instrucciones_correccion": "ELIMINAR la última frase: «Decidió que mañana tomaría una decisión.»\nREEMPLAZAR POR: «Fue entonces cuando escuchó el disparo.»"
+}
+
+CONSECUENCIA: Si das instrucciones sin CITAS TEXTUALES, el Ghostwriter reescribirá todo y creará NUEVOS problemas. Sé QUIRÚRGICO con citas exactas.
 
 ═══════════════════════════════════════════════════════════════════
 PROBLEMAS QUE SÍ AFECTAN LA EXPERIENCIA DEL LECTOR
