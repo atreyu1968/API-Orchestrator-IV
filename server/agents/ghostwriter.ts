@@ -583,7 +583,18 @@ export class GhostwriterAgent extends BaseAgent {
     ═══════════════════════════════════════════════════════════════════
     🚨 RECORDATORIO FINAL: ESCRIBE EL CAPÍTULO COMPLETO 🚨
     ═══════════════════════════════════════════════════════════════════
-    Comienza directamente con la narrativa. Sin introducción ni comentarios.
+    
+    ⛔ FORMATO DEL ENCABEZADO (OBLIGATORIO - UNA SOLA VEZ):
+    ${chapterData.numero === 0 ? '# Prólogo' : 
+      chapterData.numero === -1 ? '# Epílogo' : 
+      chapterData.numero === -2 ? '# Nota del Autor' :
+      `# Capítulo ${chapterData.numero}: ${chapterData.titulo}`}
+    
+    - El encabezado DEBE aparecer EXACTAMENTE UNA VEZ al inicio
+    - NO repitas el encabezado
+    - NO uses formatos alternativos (CAPÍTULO, Chapter, etc.)
+    - Después del encabezado, salta DOS líneas y comienza la narrativa
+    
     Recuerda: NO repitas expresiones, metáforas o conceptos. Cada imagen debe ser única.
     
     ⚠️ TU CAPÍTULO DEBE TENER MÍNIMO ${minWords} PALABRAS ⚠️
@@ -629,11 +640,14 @@ export class GhostwriterAgent extends BaseAgent {
     
     if (parts.length < 2) {
       console.log("[Ghostwriter] No continuity state separator found in content");
-      return { cleanContent: content, continuityState: null };
+      return { cleanContent: this.cleanDuplicateHeaders(content), continuityState: null };
     }
     
-    const cleanContent = parts[0].trim();
+    let cleanContent = parts[0].trim();
     const stateJson = parts[1].trim();
+    
+    // Clean duplicate headers from content
+    cleanContent = this.cleanDuplicateHeaders(cleanContent);
     
     try {
       const continuityState = JSON.parse(stateJson);
@@ -651,8 +665,44 @@ export class GhostwriterAgent extends BaseAgent {
           console.log("[Ghostwriter] Regex extraction also failed");
         }
       }
-      return { cleanContent: content, continuityState: null };
+      return { cleanContent, continuityState: null };
     }
+  }
+  
+  /**
+   * Remove duplicate chapter headers from content
+   * Keeps only the first header and removes any duplicates
+   */
+  private cleanDuplicateHeaders(content: string): string {
+    if (!content || content.trim() === '') return content;
+    
+    let cleaned = content.trim();
+    
+    // Pattern to match chapter/section headers
+    const headerPattern = /^#+ *(CHAPTER|CAPÍTULO|CAP\.?|Capítulo|Chapter|PRÓLOGO|Prólogo|PROLOGUE|Prologue|EPÍLOGO|Epílogo|EPILOGUE|Epilogue|NOTA DEL AUTOR|Nota del Autor|AUTHOR'?S?\s*NOTE|Author'?s?\s*Note)[^\n]*\n+/i;
+    
+    // Find and save the first header
+    const firstHeaderMatch = cleaned.match(headerPattern);
+    let firstHeader = '';
+    
+    if (firstHeaderMatch) {
+      firstHeader = firstHeaderMatch[0];
+      cleaned = cleaned.slice(firstHeader.length);
+    }
+    
+    // Remove any additional headers at the start (duplicates)
+    let prevLength = 0;
+    while (cleaned.length !== prevLength) {
+      prevLength = cleaned.length;
+      cleaned = cleaned.replace(headerPattern, '').trim();
+    }
+    
+    // Restore the first header (normalized)
+    if (firstHeader) {
+      cleaned = firstHeader + cleaned;
+    }
+    
+    return cleaned;
   }
 
   /**
