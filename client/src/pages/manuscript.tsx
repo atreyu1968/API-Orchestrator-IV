@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Download, BookOpen, MessageSquare, PenTool, ChevronDown, Wand2, Loader2 } from "lucide-react";
+import { Download, BookOpen, MessageSquare, PenTool, ChevronDown, Wand2, Loader2, Type } from "lucide-react";
 import { useProject } from "@/lib/project-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -73,6 +73,27 @@ export default function ManuscriptPage() {
       chapterId: chapter.id,
     });
   };
+
+  const normalizeTitlesMutation = useMutation({
+    mutationFn: async (projectId: number) => {
+      const res = await apiRequest("POST", `/api/projects/${projectId}/normalize-titles`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Títulos normalizados",
+        description: `Se actualizaron ${data.chaptersUpdated} de ${data.totalChapters} capítulos.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", currentProject?.id, "chapters"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudieron normalizar los títulos",
+        variant: "destructive",
+      });
+    },
+  });
 
   const cloneToReeditMutation = useMutation({
     mutationFn: async (params: { projectId: number; instructions: string }) => {
@@ -270,6 +291,19 @@ export default function ManuscriptPage() {
               </Button>
             )}
           </div>
+          <Button 
+            variant="outline"
+            onClick={() => currentProject && normalizeTitlesMutation.mutate(currentProject.id)}
+            disabled={normalizeTitlesMutation.isPending || chapters.length === 0}
+            data-testid="button-normalize-titles"
+          >
+            {normalizeTitlesMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Type className="h-4 w-4 mr-2" />
+            )}
+            Normalizar Títulos
+          </Button>
           <Button 
             variant="outline"
             onClick={handleDownload}
