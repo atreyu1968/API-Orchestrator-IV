@@ -1032,8 +1032,8 @@ FORMATO DE RESPUESTA (JSON):
   },
   "resumenEjecutivo": "Descripción concisa de todas las correcciones realizadas"
 }`,
-      model: "deepseek-reasoner",
-      useThinking: true,
+      model: "deepseek-chat", // V3: Fast model for prose rewriting (10-60s vs 5-15min)
+      useThinking: false,
     });
   }
 

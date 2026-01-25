@@ -213,7 +213,7 @@ export class EditorAgent extends BaseAgent {
       name: "El Editor",
       role: "editor",
       systemPrompt: SYSTEM_PROMPT,
-      model: "deepseek-reasoner",
+      model: "deepseek-chat", // V3: Fast model for editing (10-60s vs 5-15min with R1)
       useThinking: false,
     });
   }
