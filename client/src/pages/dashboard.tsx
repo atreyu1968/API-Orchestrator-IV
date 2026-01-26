@@ -576,98 +576,102 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Agentes v2 - Pipeline por escenas */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-          <Badge variant="secondary" className="text-xs">v2</Badge>
-          Pipeline por Escenas
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-          <AgentCard 
-            name={agentNames["global-architect"]}
-            role="global-architect"
-            {...getAgentStatus("global-architect")}
-          />
-          <AgentCard 
-            name={agentNames["chapter-architect"]}
-            role="chapter-architect"
-            {...getAgentStatus("chapter-architect")}
-          />
-          <AgentCard 
-            name={agentNames["ghostwriter-v2"]}
-            role="ghostwriter-v2"
-            {...getAgentStatus("ghostwriter-v2")}
-          />
-          <AgentCard 
-            name={agentNames["smart-editor"]}
-            role="smart-editor"
-            {...getAgentStatus("smart-editor")}
-          />
-          <AgentCard 
-            name={agentNames["summarizer"]}
-            role="summarizer"
-            {...getAgentStatus("summarizer")}
-          />
-          <AgentCard 
-            name={agentNames["narrative-director"]}
-            role="narrative-director"
-            {...getAgentStatus("narrative-director")}
-          />
+      {/* Agentes v2 - Pipeline por escenas (solo visible si proyecto activo usa v2) */}
+      {(!activeProject || activeProject.pipelineVersion === "v2") && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">v2</Badge>
+            Pipeline por Escenas
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+            <AgentCard 
+              name={agentNames["global-architect"]}
+              role="global-architect"
+              {...getAgentStatus("global-architect")}
+            />
+            <AgentCard 
+              name={agentNames["chapter-architect"]}
+              role="chapter-architect"
+              {...getAgentStatus("chapter-architect")}
+            />
+            <AgentCard 
+              name={agentNames["ghostwriter-v2"]}
+              role="ghostwriter-v2"
+              {...getAgentStatus("ghostwriter-v2")}
+            />
+            <AgentCard 
+              name={agentNames["smart-editor"]}
+              role="smart-editor"
+              {...getAgentStatus("smart-editor")}
+            />
+            <AgentCard 
+              name={agentNames["summarizer"]}
+              role="summarizer"
+              {...getAgentStatus("summarizer")}
+            />
+            <AgentCard 
+              name={agentNames["narrative-director"]}
+              role="narrative-director"
+              {...getAgentStatus("narrative-director")}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Agentes v1 - Pipeline por capítulos */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-          <Badge variant="outline" className="text-xs">v1</Badge>
-          Pipeline por Capítulos
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <AgentCard 
-            name={agentNames.architect}
-            role="architect"
-            {...getAgentStatus("architect")}
-          />
-          <AgentCard 
-            name={agentNames.ghostwriter}
-            role="ghostwriter"
-            {...getAgentStatus("ghostwriter")}
-          />
-          <AgentCard 
-            name={agentNames.editor}
-            role="editor"
-            {...getAgentStatus("editor")}
-          />
-          <AgentCard 
-            name={agentNames.copyeditor}
-            role="copyeditor"
-            {...getAgentStatus("copyeditor")}
-          />
-        </div>
+      {/* Agentes v1 - Pipeline por capítulos (solo visible si proyecto activo usa v1) */}
+      {(!activeProject || activeProject.pipelineVersion !== "v2") && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+            <Badge variant="outline" className="text-xs">v1</Badge>
+            Pipeline por Capítulos
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <AgentCard 
+              name={agentNames.architect}
+              role="architect"
+              {...getAgentStatus("architect")}
+            />
+            <AgentCard 
+              name={agentNames.ghostwriter}
+              role="ghostwriter"
+              {...getAgentStatus("ghostwriter")}
+            />
+            <AgentCard 
+              name={agentNames.editor}
+              role="editor"
+              {...getAgentStatus("editor")}
+            />
+            <AgentCard 
+              name={agentNames.copyeditor}
+              role="copyeditor"
+              {...getAgentStatus("copyeditor")}
+            />
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <AgentCard 
-            name={agentNames["continuity-sentinel"]}
-            role="continuity-sentinel"
-            {...getAgentStatus("continuity-sentinel")}
-          />
-          <AgentCard 
-            name={agentNames["voice-auditor"]}
-            role="voice-auditor"
-            {...getAgentStatus("voice-auditor")}
-          />
-          <AgentCard 
-            name={agentNames["semantic-detector"]}
-            role="semantic-detector"
-            {...getAgentStatus("semantic-detector")}
-          />
-          <AgentCard 
-            name={agentNames["final-reviewer"]}
-            role="final-reviewer"
-            {...getAgentStatus("final-reviewer")}
-          />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <AgentCard 
+              name={agentNames["continuity-sentinel"]}
+              role="continuity-sentinel"
+              {...getAgentStatus("continuity-sentinel")}
+            />
+            <AgentCard 
+              name={agentNames["voice-auditor"]}
+              role="voice-auditor"
+              {...getAgentStatus("voice-auditor")}
+            />
+            <AgentCard 
+              name={agentNames["semantic-detector"]}
+              role="semantic-detector"
+              {...getAgentStatus("semantic-detector")}
+            />
+            <AgentCard 
+              name={agentNames["final-reviewer"]}
+              role="final-reviewer"
+              {...getAgentStatus("final-reviewer")}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {activeProject && (
         <Card>
