@@ -134,19 +134,49 @@ export class OrchestratorV2 {
       // Check if World Bible already exists (resuming)
       const existingWorldBible = await storage.getWorldBibleByProject(project.id);
       let outline: Array<{ chapter_num: number; title: string; summary: string; key_event: string; act?: number; emotional_arc?: string }>;
+      let worldBible: { characters: any; rules: any };
       
       if (existingWorldBible && existingWorldBible.plotOutline) {
-        // Resuming - use existing outline
+        // Resuming - use existing outline and world bible
         console.log(`[OrchestratorV2] World Bible exists. Resuming chapter generation.`);
         this.callbacks.onAgentStatus("global-architect", "completed", "Using existing structure");
         
+        // Load world bible data for agents
+        worldBible = {
+          characters: existingWorldBible.characters || [],
+          rules: existingWorldBible.worldRules || [],
+        };
+        
         const plotOutline = existingWorldBible.plotOutline as any;
-        outline = (plotOutline.chapterOutlines || []).map((ch: any) => ({
+        const rawOutline = (plotOutline.chapterOutlines || []).map((ch: any) => ({
           chapter_num: ch.number,
           title: ch.title || `Capítulo ${ch.number}`,
           summary: ch.summary || "",
           key_event: ch.keyEvents?.[0] || "",
         }));
+        
+        // Apply chapter number remapping if needed (for prologue/epilogue/author note)
+        const totalChapters = rawOutline.length;
+        outline = rawOutline.map((ch: any, idx: number) => {
+          let actualNumber = ch.chapter_num;
+          
+          if (project.hasPrologue && idx === 0) {
+            actualNumber = 0;
+          } else if (project.hasAuthorNote && idx === totalChapters - 1) {
+            actualNumber = 999;
+          } else if (project.hasEpilogue && (
+            (project.hasAuthorNote && idx === totalChapters - 2) ||
+            (!project.hasAuthorNote && idx === totalChapters - 1)
+          )) {
+            actualNumber = 998;
+          } else if (project.hasPrologue) {
+            actualNumber = idx;
+          }
+          
+          return { ...ch, chapter_num: actualNumber };
+        });
+        
+        console.log(`[OrchestratorV2] Loaded ${outline.length} chapter outlines. Numbers: ${outline.map(c => c.chapter_num).join(', ')}`);
       } else {
         // Phase 1: Global Architecture - create new World Bible
         this.callbacks.onAgentStatus("global-architect", "active", "Designing master structure...");
@@ -178,7 +208,7 @@ export class OrchestratorV2 {
         this.addTokenUsage(globalResult.tokenUsage);
         this.callbacks.onAgentStatus("global-architect", "completed", "Master structure complete");
 
-        const worldBible = globalResult.parsed.world_bible;
+        worldBible = globalResult.parsed.world_bible;
         const rawOutline = globalResult.parsed.outline;
         const plotThreads = globalResult.parsed.plot_threads;
 

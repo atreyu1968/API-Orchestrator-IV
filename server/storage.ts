@@ -324,8 +324,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getWorldBibleByProject(projectId: number): Promise<WorldBible | undefined> {
-    const [worldBible] = await db.select().from(worldBibles).where(eq(worldBibles.projectId, projectId));
-    return worldBible;
+    const results = await db.select().from(worldBibles).where(eq(worldBibles.projectId, projectId)).orderBy(desc(worldBibles.id));
+    return results[0];
   }
 
   async getAllWorldBibles(): Promise<WorldBible[]> {
