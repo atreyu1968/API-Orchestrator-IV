@@ -93,6 +93,9 @@ export const projects = pgTable("projects", {
   kindleUnlimitedOptimized: boolean("kindle_unlimited_optimized").notNull().default(false),
   architectInstructions: text("architect_instructions"),
   pipelineVersion: text("pipeline_version").default("v1"), // v1 = full-chapter, v2 = scene-based
+  betaReaderReport: jsonb("beta_reader_report"),
+  betaReaderScore: integer("beta_reader_score"),
+  commercialViability: text("commercial_viability"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -128,6 +131,38 @@ export const chapters = pgTable("chapters", {
   qualityScore: integer("quality_score"), // 0-10 score from Smart Editor
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
+
+// LitAgents 2.1: Chapter Version History for Beta Reader rollbacks
+export const chapterVersions = pgTable("chapter_versions", {
+  id: serial("id").primaryKey(),
+  chapterId: integer("chapter_id").notNull().references(() => chapters.id, { onDelete: "cascade" }),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  versionNumber: integer("version_number").notNull(),
+  content: text("content").notNull(),
+  changeReason: text("change_reason"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertChapterVersionSchema = createInsertSchema(chapterVersions).omit({ id: true, createdAt: true });
+export type InsertChapterVersion = z.infer<typeof insertChapterVersionSchema>;
+export type ChapterVersion = typeof chapterVersions.$inferSelect;
+
+// LitAgents 2.1: Editing Queue for Beta Reader fixes
+export const editingQueue = pgTable("editing_queue", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  chapterId: integer("chapter_id").notNull().references(() => chapters.id, { onDelete: "cascade" }),
+  chapterNumber: integer("chapter_number").notNull(),
+  issueType: text("issue_type").notNull(),
+  severity: text("severity").notNull().default("medium"),
+  instruction: text("instruction").notNull(),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertEditingQueueSchema = createInsertSchema(editingQueue).omit({ id: true, createdAt: true });
+export type InsertEditingQueue = z.infer<typeof insertEditingQueueSchema>;
+export type EditingQueueItem = typeof editingQueue.$inferSelect;
 
 // LitAgents 2.0: Plot Threads for Narrative Director
 export const plotThreads = pgTable("plot_threads", {

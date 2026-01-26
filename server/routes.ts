@@ -14,6 +14,7 @@ import { ReeditOrchestrator } from "./orchestrators/reedit-orchestrator";
 import { developmentalEditor } from "./orchestrators/developmental-editor";
 import { chatService } from "./services/chatService";
 import { TranslationOrchestrator } from "./translation-orchestrator";
+import { betaReaderAgent } from "./agents/beta-reader";
 
 const workTypeEnum = z.enum(["standalone", "series", "trilogy"]);
 
@@ -766,6 +767,108 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching plot threads:", error);
       res.status(500).json({ error: "Failed to fetch plot threads" });
+    }
+  });
+
+  // ============================================
+  // LitAgents 2.1 - Beta Reader (The Critic)
+  // ============================================
+
+  app.post("/api/projects/:id/critique", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (project.status !== "completed" && project.status !== "approved") {
+        return res.status(400).json({ 
+          error: "Solo se pueden criticar proyectos completados",
+          currentStatus: project.status 
+        });
+      }
+
+      res.json({ message: "Beta Reader analysis started", projectId: id });
+
+      const sendToStreams = (data: any) => {
+        const streams = activeStreams.get(id);
+        if (streams) {
+          const message = `data: ${JSON.stringify(data)}\n\n`;
+          streams.forEach(stream => {
+            try {
+              stream.write(message);
+            } catch (e) {
+              console.error("Error writing to stream:", e);
+            }
+          });
+        }
+      };
+
+      betaReaderAgent.runFullCritique(id, (status, message) => {
+        sendToStreams({ type: "agent_status", role: status, status: "active", message });
+        persistActivityLog(id, "info", message, status);
+      }).then(async ({ status, report }) => {
+        sendToStreams({ 
+          type: "critique_complete", 
+          status,
+          score: report.score,
+          viability: report.viability,
+          flaggedCount: report.flagged_chapters.length
+        });
+        await persistActivityLog(id, "success", `Crítica completada: ${report.score}/10 - ${report.viability}`, "beta-reader");
+      }).catch(async (err) => {
+        console.error("[Critique] Error:", err);
+        sendToStreams({ type: "error", message: err.message });
+        await persistActivityLog(id, "error", err.message, "beta-reader");
+      });
+
+    } catch (error) {
+      console.error("Error starting critique:", error);
+      res.status(500).json({ error: "Failed to start critique" });
+    }
+  });
+
+  app.get("/api/projects/:id/beta-report", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      res.json({
+        report: project.betaReaderReport || null,
+        score: project.betaReaderScore || null,
+        viability: project.commercialViability || null
+      });
+    } catch (error) {
+      console.error("Error fetching beta report:", error);
+      res.status(500).json({ error: "Failed to fetch beta report" });
+    }
+  });
+
+  app.get("/api/projects/:id/editing-queue", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const queue = await storage.getEditingQueueByProject(id);
+      res.json(queue);
+    } catch (error) {
+      console.error("Error fetching editing queue:", error);
+      res.status(500).json({ error: "Failed to fetch editing queue" });
+    }
+  });
+
+  app.get("/api/projects/:id/chapter-versions/:chapterId", async (req: Request, res: Response) => {
+    try {
+      const chapterId = parseInt(req.params.chapterId);
+      const versions = await storage.getChapterVersionsByChapter(chapterId);
+      res.json(versions);
+    } catch (error) {
+      console.error("Error fetching chapter versions:", error);
+      res.status(500).json({ error: "Failed to fetch chapter versions" });
     }
   });
 

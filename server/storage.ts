@@ -6,6 +6,7 @@ import {
   aiUsageEvents, reeditProjects, reeditChapters, reeditAuditReports, reeditWorldBibles, reeditIssues,
   chatSessions, chatMessages, chatProposals, plotThreads,
   worldEntities, worldRulesTable, entityRelationships, consistencyViolations,
+  chapterVersions, editingQueue,
   type Project, type InsertProject, type Chapter, type InsertChapter,
   type WorldBible, type InsertWorldBible, type ThoughtLog, type InsertThoughtLog,
   type AgentStatus, type InsertAgentStatus, type Pseudonym, type InsertPseudonym,
@@ -34,7 +35,9 @@ import {
   type WorldEntity, type InsertWorldEntity,
   type WorldRuleRecord, type InsertWorldRuleRecord,
   type EntityRelationship, type InsertEntityRelationship,
-  type ConsistencyViolation, type InsertConsistencyViolation
+  type ConsistencyViolation, type InsertConsistencyViolation,
+  type ChapterVersion, type InsertChapterVersion,
+  type EditingQueueItem, type InsertEditingQueue
 } from "@shared/schema";
 import { eq, desc, asc, and, lt, isNull, or, sql } from "drizzle-orm";
 
@@ -1415,6 +1418,68 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(consistencyViolations)
       .set(data)
       .where(eq(consistencyViolations.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ============================================
+  // CHAPTER VERSIONS (Beta Reader Rollbacks)
+  // ============================================
+
+  async createChapterVersion(data: InsertChapterVersion): Promise<ChapterVersion> {
+    const [version] = await db.insert(chapterVersions).values(data).returning();
+    return version;
+  }
+
+  async getChapterVersionsByChapter(chapterId: number): Promise<ChapterVersion[]> {
+    return db.select().from(chapterVersions)
+      .where(eq(chapterVersions.chapterId, chapterId))
+      .orderBy(desc(chapterVersions.versionNumber));
+  }
+
+  async getChapterVersionCount(chapterId: number): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(chapterVersions)
+      .where(eq(chapterVersions.chapterId, chapterId));
+    return Number(result[0]?.count || 0);
+  }
+
+  async getLatestChapterVersion(chapterId: number): Promise<ChapterVersion | undefined> {
+    const [latest] = await db.select().from(chapterVersions)
+      .where(eq(chapterVersions.chapterId, chapterId))
+      .orderBy(desc(chapterVersions.versionNumber))
+      .limit(1);
+    return latest;
+  }
+
+  // ============================================
+  // EDITING QUEUE (Beta Reader Fixes)
+  // ============================================
+
+  async createEditingQueueItem(data: InsertEditingQueue): Promise<EditingQueueItem> {
+    const [item] = await db.insert(editingQueue).values(data).returning();
+    return item;
+  }
+
+  async getEditingQueueByProject(projectId: number): Promise<EditingQueueItem[]> {
+    return db.select().from(editingQueue)
+      .where(eq(editingQueue.projectId, projectId))
+      .orderBy(asc(editingQueue.chapterNumber));
+  }
+
+  async getPendingEdits(projectId: number): Promise<EditingQueueItem[]> {
+    return db.select().from(editingQueue)
+      .where(and(
+        eq(editingQueue.projectId, projectId),
+        eq(editingQueue.status, 'pending')
+      ))
+      .orderBy(asc(editingQueue.chapterNumber));
+  }
+
+  async updateEditingQueueItem(id: number, data: Partial<EditingQueueItem>): Promise<EditingQueueItem | undefined> {
+    const [updated] = await db.update(editingQueue)
+      .set(data)
+      .where(eq(editingQueue.id, id))
       .returning();
     return updated;
   }
