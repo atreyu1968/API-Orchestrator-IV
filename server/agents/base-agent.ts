@@ -87,6 +87,14 @@ function mapGeminiToDeepSeek(geminiModel: GeminiModel): DeepSeekModel {
 // PERFORMANCE OPTIMIZATION: Use V3 by default, R1 only when absolutely necessary
 // This reduces processing time from hours to minutes.
 export const AGENT_DEEPSEEK_MODELS: Record<string, DeepSeekModel> = {
+  // === LitAgents 2.0 Agents ===
+  "global-architect": "deepseek-reasoner",  // R1: Deep planning for master structure
+  "chapter-architect": "deepseek-reasoner", // R1: Scene planning
+  "ghostwriter-v2": "deepseek-chat",        // V3: Fast creative writing (scene by scene)
+  "smart-editor": "deepseek-chat",          // V3: Fast editing with patches
+  "summarizer": "deepseek-chat",            // V3: Fast compression
+  "narrative-director": "deepseek-reasoner", // R1: Strategic oversight
+  
   // === PROSE GENERATION (V3 - need speed and fluency) ===
   "ghostwriter": "deepseek-chat",       // V3: fluent creative prose
   "chapter-expander": "deepseek-chat",  // V3: prose expansion

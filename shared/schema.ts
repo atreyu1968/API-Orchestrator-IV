@@ -120,6 +120,24 @@ export const chapters = pgTable("chapters", {
   needsRevision: boolean("needs_revision").default(false),
   revisionReason: text("revision_reason"),
   continuityState: jsonb("continuity_state"),
+  // LitAgents 2.0 fields
+  sceneBreakdown: jsonb("scene_breakdown"), // Chapter Architect's scene plan
+  summary: text("summary"), // Compressed summary for future context (Summarizer)
+  editorFeedback: jsonb("editor_feedback"), // Smart Editor's last feedback
+  qualityScore: integer("quality_score"), // 0-10 score from Smart Editor
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// LitAgents 2.0: Plot Threads for Narrative Director
+export const plotThreads = pgTable("plot_threads", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  goal: text("goal"), // Expected resolution
+  status: text("status").notNull().default("active"), // active, resolved, ignored
+  intensityScore: integer("intensity_score").default(5), // 1-10
+  lastUpdatedChapter: integer("last_updated_chapter").default(0),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -226,6 +244,14 @@ export const insertChapterSchema = createInsertSchema(chapters).omit({
   id: true,
   createdAt: true,
 });
+
+export const insertPlotThreadSchema = createInsertSchema(plotThreads).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type PlotThread = typeof plotThreads.$inferSelect;
+export type InsertPlotThread = z.infer<typeof insertPlotThreadSchema>;
 
 export const insertWorldBibleSchema = createInsertSchema(worldBibles).omit({
   id: true,

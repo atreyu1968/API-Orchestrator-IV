@@ -4,7 +4,7 @@ import {
   series, continuitySnapshots, importedManuscripts, importedChapters, extendedGuides, activityLogs,
   projectQueue, queueState, seriesArcMilestones, seriesPlotThreads, seriesArcVerifications,
   aiUsageEvents, reeditProjects, reeditChapters, reeditAuditReports, reeditWorldBibles, reeditIssues,
-  chatSessions, chatMessages, chatProposals,
+  chatSessions, chatMessages, chatProposals, plotThreads,
   type Project, type InsertProject, type Chapter, type InsertChapter,
   type WorldBible, type InsertWorldBible, type ThoughtLog, type InsertThoughtLog,
   type AgentStatus, type InsertAgentStatus, type Pseudonym, type InsertPseudonym,
@@ -28,7 +28,8 @@ import {
   type ReeditWorldBible, type InsertReeditWorldBible,
   type ChatSession, type InsertChatSession,
   type ChatMessage, type InsertChatMessage,
-  type ChatProposal, type InsertChatProposal
+  type ChatProposal, type InsertChatProposal,
+  type PlotThread, type InsertPlotThread
 } from "@shared/schema";
 import { eq, desc, asc, and, lt, isNull, or, sql } from "drizzle-orm";
 
@@ -213,6 +214,12 @@ export interface IStorage {
   getChatProposalsByMessage(messageId: number): Promise<ChatProposal[]>;
   updateChatProposal(id: number, data: Partial<ChatProposal>): Promise<ChatProposal | undefined>;
   deleteChatProposal(id: number): Promise<void>;
+
+  // LitAgents 2.0: Plot Threads for Narrative Director
+  createPlotThread(data: InsertPlotThread): Promise<PlotThread>;
+  getPlotThreadsByProject(projectId: number): Promise<PlotThread[]>;
+  updatePlotThread(id: number, data: Partial<PlotThread>): Promise<PlotThread | undefined>;
+  deletePlotThreadsByProject(projectId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1225,6 +1232,30 @@ export class DatabaseStorage implements IStorage {
 
   async deleteChatProposal(id: number): Promise<void> {
     await db.delete(chatProposals).where(eq(chatProposals.id, id));
+  }
+
+  // LitAgents 2.0: Plot Threads for Narrative Director
+  async createPlotThread(data: InsertPlotThread): Promise<PlotThread> {
+    const [thread] = await db.insert(plotThreads).values(data).returning();
+    return thread;
+  }
+
+  async getPlotThreadsByProject(projectId: number): Promise<PlotThread[]> {
+    return db.select().from(plotThreads)
+      .where(eq(plotThreads.projectId, projectId))
+      .orderBy(asc(plotThreads.createdAt));
+  }
+
+  async updatePlotThread(id: number, data: Partial<PlotThread>): Promise<PlotThread | undefined> {
+    const [updated] = await db.update(plotThreads)
+      .set(data)
+      .where(eq(plotThreads.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePlotThreadsByProject(projectId: number): Promise<void> {
+    await db.delete(plotThreads).where(eq(plotThreads.projectId, projectId));
   }
 }
 

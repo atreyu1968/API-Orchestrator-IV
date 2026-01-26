@@ -1,0 +1,431 @@
+// LitAgents 2.0 - Scene-Based Orchestrator
+// Implements the new pipeline: Global Architect → Chapter Architect → Ghostwriter (scene by scene) → Smart Editor → Patcher → Summarizer → Narrative Director
+
+import { storage } from "./storage";
+import {
+  GlobalArchitectAgent,
+  ChapterArchitectAgent,
+  GhostwriterV2Agent,
+  SmartEditorAgent,
+  SummarizerAgent,
+  NarrativeDirectorAgent,
+  type GlobalArchitectOutput,
+  type ChapterArchitectOutput,
+  type SmartEditorOutput,
+  type NarrativeDirectorOutput,
+  type PlotThread as AgentPlotThread,
+  type ScenePlan
+} from "./agents/v2";
+import { applyPatches, type PatchResult } from "./utils/patcher";
+import type { TokenUsage } from "./agents/base-agent";
+import type { Project, Chapter, InsertPlotThread } from "@shared/schema";
+import { isProjectCancelledFromDb } from "./agents";
+
+interface OrchestratorV2Callbacks {
+  onAgentStatus: (role: string, status: string, message?: string) => void;
+  onChapterComplete: (chapterNumber: number, wordCount: number, chapterTitle: string) => void;
+  onSceneComplete: (chapterNumber: number, sceneNumber: number, wordCount: number) => void;
+  onProjectComplete: () => void;
+  onError: (error: string) => void;
+}
+
+export class OrchestratorV2 {
+  private globalArchitect = new GlobalArchitectAgent();
+  private chapterArchitect = new ChapterArchitectAgent();
+  private ghostwriter = new GhostwriterV2Agent();
+  private smartEditor = new SmartEditorAgent();
+  private summarizer = new SummarizerAgent();
+  private narrativeDirector = new NarrativeDirectorAgent();
+  private callbacks: OrchestratorV2Callbacks;
+  
+  private cumulativeTokens = {
+    inputTokens: 0,
+    outputTokens: 0,
+    thinkingTokens: 0,
+  };
+
+  constructor(callbacks: OrchestratorV2Callbacks) {
+    this.callbacks = callbacks;
+  }
+
+  private addTokenUsage(usage?: TokenUsage) {
+    if (usage) {
+      this.cumulativeTokens.inputTokens += usage.inputTokens || 0;
+      this.cumulativeTokens.outputTokens += usage.outputTokens || 0;
+      this.cumulativeTokens.thinkingTokens += usage.thinkingTokens || 0;
+    }
+  }
+
+  private async updateProjectTokens(projectId: number) {
+    await storage.updateProject(projectId, {
+      totalInputTokens: this.cumulativeTokens.inputTokens,
+      totalOutputTokens: this.cumulativeTokens.outputTokens,
+      totalThinkingTokens: this.cumulativeTokens.thinkingTokens,
+    });
+  }
+
+  async generateNovel(project: Project): Promise<void> {
+    console.log(`[OrchestratorV2] Starting novel generation for "${project.title}" (ID: ${project.id})`);
+    
+    try {
+      // Update project status
+      await storage.updateProject(project.id, { status: "generating" });
+
+      // Phase 1: Global Architecture
+      this.callbacks.onAgentStatus("global-architect", "active", "Designing master structure...");
+      
+      const globalResult = await this.globalArchitect.execute({
+        title: project.title,
+        premise: project.premise || "",
+        genre: project.genre,
+        tone: project.tone,
+        chapterCount: project.chapterCount,
+        architectInstructions: project.architectInstructions || undefined,
+      });
+
+      if (globalResult.error || !globalResult.parsed) {
+        throw new Error(`Global Architect failed: ${globalResult.error || "No parsed output"}`);
+      }
+
+      this.addTokenUsage(globalResult.tokenUsage);
+      this.callbacks.onAgentStatus("global-architect", "completed", "Master structure complete");
+
+      const worldBible = globalResult.parsed.world_bible;
+      const outline = globalResult.parsed.outline;
+      const plotThreads = globalResult.parsed.plot_threads;
+
+      // Store World Bible
+      await storage.createWorldBible({
+        projectId: project.id,
+        characters: worldBible.characters as any,
+        worldRules: worldBible.rules as any,
+        plotOutline: {
+          chapterOutlines: outline.map(ch => ({
+            number: ch.chapter_num,
+            summary: ch.summary,
+            keyEvents: [ch.key_event],
+          }))
+        } as any,
+      });
+
+      // Store Plot Threads for Narrative Director
+      for (const thread of plotThreads) {
+        await storage.createPlotThread({
+          projectId: project.id,
+          name: thread.name,
+          description: thread.description || null,
+          goal: thread.goal,
+          status: "active",
+          intensityScore: 5,
+          lastUpdatedChapter: 0,
+        });
+      }
+
+      // Get style guide
+      let guiaEstilo = "";
+      if (project.styleGuideId) {
+        const styleGuide = await storage.getStyleGuide(project.styleGuideId);
+        if (styleGuide) {
+          guiaEstilo = styleGuide.content;
+        }
+      }
+
+      // Phase 2: Generate each chapter
+      let rollingSummary = "Inicio de la novela.";
+      const chapterSummaries: string[] = [];
+
+      for (let i = 0; i < outline.length; i++) {
+        if (await isProjectCancelledFromDb(project.id)) {
+          console.log(`[OrchestratorV2] Project ${project.id} was cancelled`);
+          return;
+        }
+
+        const chapterOutline = outline[i];
+        const chapterNumber = chapterOutline.chapter_num;
+
+        console.log(`[OrchestratorV2] Generating Chapter ${chapterNumber}: "${chapterOutline.title}"`);
+
+        // 2a: Chapter Architect - Plan scenes
+        this.callbacks.onAgentStatus("chapter-architect", "active", `Planning scenes for Chapter ${chapterNumber}...`);
+        
+        const previousSummary = i > 0 ? chapterSummaries[i - 1] : "";
+        const storyState = rollingSummary;
+
+        const chapterPlan = await this.chapterArchitect.execute({
+          chapterOutline,
+          worldBible,
+          previousChapterSummary: previousSummary,
+          storyState,
+        });
+
+        if (chapterPlan.error || !chapterPlan.parsed) {
+          throw new Error(`Chapter Architect failed for Chapter ${chapterNumber}: ${chapterPlan.error || "No parsed output"}`);
+        }
+
+        this.addTokenUsage(chapterPlan.tokenUsage);
+        this.callbacks.onAgentStatus("chapter-architect", "completed", `${chapterPlan.parsed.scenes.length} scenes planned`);
+
+        const sceneBreakdown = chapterPlan.parsed;
+
+        // 2b: Ghostwriter - Write scene by scene
+        let fullChapterText = "";
+        let lastContext = "";
+
+        for (const scene of sceneBreakdown.scenes) {
+          if (await isProjectCancelledFromDb(project.id)) {
+            console.log(`[OrchestratorV2] Project ${project.id} was cancelled during scene writing`);
+            return;
+          }
+
+          this.callbacks.onAgentStatus("ghostwriter-v2", "active", `Writing Scene ${scene.scene_num}...`);
+
+          const sceneResult = await this.ghostwriter.execute({
+            scenePlan: scene,
+            prevSceneContext: lastContext,
+            rollingSummary,
+            worldBible,
+            guiaEstilo,
+          });
+
+          if (sceneResult.error) {
+            console.error(`[OrchestratorV2] Scene ${scene.scene_num} failed:`, sceneResult.error);
+            continue; // Try to continue with next scene
+          }
+
+          this.addTokenUsage(sceneResult.tokenUsage);
+          
+          fullChapterText += "\n\n" + sceneResult.content;
+          lastContext = sceneResult.content.slice(-1500); // Keep last 1500 chars for context
+
+          const sceneWordCount = sceneResult.content.split(/\s+/).length;
+          this.callbacks.onSceneComplete(chapterNumber, scene.scene_num, sceneWordCount);
+        }
+
+        this.callbacks.onAgentStatus("ghostwriter-v2", "completed", "All scenes written");
+
+        // 2c: Smart Editor - Evaluate and patch
+        this.callbacks.onAgentStatus("smart-editor", "active", "Evaluating chapter...");
+
+        const editResult = await this.smartEditor.execute({
+          chapterContent: fullChapterText,
+          sceneBreakdown,
+          worldBible,
+        });
+
+        this.addTokenUsage(editResult.tokenUsage);
+
+        let finalText = fullChapterText;
+        let editorFeedback: SmartEditorOutput | null = null;
+
+        if (editResult.parsed) {
+          editorFeedback = editResult.parsed;
+
+          if (editResult.parsed.is_approved) {
+            this.callbacks.onAgentStatus("smart-editor", "completed", `Approved: ${editResult.parsed.logic_score}/10 Logic, ${editResult.parsed.style_score}/10 Style`);
+          } else if (editResult.parsed.patches && editResult.parsed.patches.length > 0) {
+            // Apply patches
+            this.callbacks.onAgentStatus("smart-editor", "active", `Applying ${editResult.parsed.patches.length} patches...`);
+            
+            const patchResult = applyPatches(fullChapterText, editResult.parsed.patches);
+            finalText = patchResult.patchedText;
+
+            console.log(`[OrchestratorV2] Patch results: ${patchResult.appliedPatches}/${editResult.parsed.patches.length} applied`);
+            patchResult.log.forEach(log => console.log(`  ${log}`));
+
+            this.callbacks.onAgentStatus("smart-editor", "completed", `${patchResult.appliedPatches} patches applied`);
+          } else if (editResult.parsed.needs_rewrite) {
+            console.log(`[OrchestratorV2] Chapter ${chapterNumber} needs rewrite, but continuing with current version`);
+            this.callbacks.onAgentStatus("smart-editor", "completed", "Needs improvement (continuing)");
+          }
+        }
+
+        // 2d: Summarizer - Compress for memory
+        this.callbacks.onAgentStatus("summarizer", "active", "Compressing for memory...");
+
+        const summaryResult = await this.summarizer.execute({
+          chapterContent: finalText,
+          chapterNumber,
+        });
+
+        this.addTokenUsage(summaryResult.tokenUsage);
+
+        const chapterSummary = summaryResult.content || `Chapter ${chapterNumber} completed.`;
+        chapterSummaries.push(chapterSummary);
+
+        // Update rolling summary (keep last 3 chapters for context)
+        const recentSummaries = chapterSummaries.slice(-3);
+        rollingSummary = recentSummaries.map((s, idx) => `Cap ${chapterNumber - (recentSummaries.length - 1 - idx)}: ${s}`).join("\n");
+
+        this.callbacks.onAgentStatus("summarizer", "completed", "Chapter compressed");
+
+        // Save chapter to database
+        const wordCount = finalText.split(/\s+/).length;
+        
+        await storage.createChapter({
+          projectId: project.id,
+          chapterNumber,
+          title: chapterOutline.title,
+          content: finalText,
+          wordCount,
+          status: "approved",
+          sceneBreakdown: sceneBreakdown as any,
+          summary: chapterSummary,
+          editorFeedback: editorFeedback as any,
+          qualityScore: editorFeedback ? Math.round((editorFeedback.logic_score + editorFeedback.style_score) / 2) : null,
+        });
+
+        await storage.updateProject(project.id, { currentChapter: chapterNumber });
+        this.callbacks.onChapterComplete(chapterNumber, wordCount, chapterOutline.title);
+
+        // 2e: Narrative Director - Check every 5 chapters
+        if (chapterNumber > 0 && chapterNumber % 5 === 0) {
+          await this.runNarrativeDirector(project.id, chapterNumber, project.chapterCount, chapterSummaries);
+        }
+
+        // Update token counts
+        await this.updateProjectTokens(project.id);
+      }
+
+      // Complete
+      await storage.updateProject(project.id, { status: "completed" });
+      this.callbacks.onProjectComplete();
+
+    } catch (error) {
+      console.error(`[OrchestratorV2] Error:`, error);
+      this.callbacks.onError(error instanceof Error ? error.message : String(error));
+      await storage.updateProject(project.id, { status: "error" });
+    }
+  }
+
+  private async runNarrativeDirector(
+    projectId: number,
+    currentChapter: number,
+    totalChapters: number,
+    chapterSummaries: string[]
+  ): Promise<void> {
+    this.callbacks.onAgentStatus("narrative-director", "active", "Analyzing story progress...");
+
+    // Get plot threads from database
+    const dbThreads = await storage.getPlotThreadsByProject(projectId);
+    const plotThreads: AgentPlotThread[] = dbThreads.map(t => ({
+      name: t.name,
+      status: t.status,
+      goal: t.goal || "",
+      lastUpdatedChapter: t.lastUpdatedChapter || 0,
+    }));
+
+    // Get recent summaries
+    const recentSummaries = chapterSummaries.slice(-5).map((s, idx) => {
+      const chapNum = currentChapter - (chapterSummaries.slice(-5).length - 1 - idx);
+      return `Capítulo ${chapNum}: ${s}`;
+    }).join("\n\n");
+
+    const result = await this.narrativeDirector.execute({
+      recentSummaries,
+      plotThreads,
+      currentChapter,
+      totalChapters,
+    });
+
+    this.addTokenUsage(result.tokenUsage);
+
+    if (result.parsed) {
+      console.log(`[OrchestratorV2] Narrative Director directive: ${result.parsed.directive}`);
+      
+      // Update thread statuses if needed
+      if (result.parsed.thread_updates) {
+        for (const update of result.parsed.thread_updates) {
+          const thread = dbThreads.find(t => t.name === update.name);
+          if (thread) {
+            await storage.updatePlotThread(thread.id, {
+              status: update.new_status,
+              lastUpdatedChapter: currentChapter,
+            });
+          }
+        }
+      }
+
+      this.callbacks.onAgentStatus("narrative-director", "completed", `Tension: ${result.parsed.tension_level}/10`);
+    } else {
+      this.callbacks.onAgentStatus("narrative-director", "completed", "Analysis complete");
+    }
+  }
+
+  /**
+   * Generate a single chapter using the V2 pipeline
+   */
+  async generateSingleChapter(
+    project: Project,
+    chapterOutline: {
+      chapter_num: number;
+      title: string;
+      summary: string;
+      key_event: string;
+      emotional_arc?: string;
+    },
+    worldBible: any,
+    previousChapterSummary: string,
+    rollingSummary: string,
+    guiaEstilo: string
+  ): Promise<{ content: string; summary: string; wordCount: number; sceneBreakdown: ChapterArchitectOutput }> {
+    
+    // Plan scenes
+    const chapterPlan = await this.chapterArchitect.execute({
+      chapterOutline,
+      worldBible,
+      previousChapterSummary,
+      storyState: rollingSummary,
+    });
+
+    if (!chapterPlan.parsed) {
+      throw new Error("Chapter planning failed");
+    }
+
+    const sceneBreakdown = chapterPlan.parsed;
+
+    // Write scenes
+    let fullChapterText = "";
+    let lastContext = "";
+
+    for (const scene of sceneBreakdown.scenes) {
+      const sceneResult = await this.ghostwriter.execute({
+        scenePlan: scene,
+        prevSceneContext: lastContext,
+        rollingSummary,
+        worldBible,
+        guiaEstilo,
+      });
+
+      if (!sceneResult.error) {
+        fullChapterText += "\n\n" + sceneResult.content;
+        lastContext = sceneResult.content.slice(-1500);
+      }
+    }
+
+    // Edit
+    const editResult = await this.smartEditor.execute({
+      chapterContent: fullChapterText,
+      sceneBreakdown,
+      worldBible,
+    });
+
+    let finalText = fullChapterText;
+    if (editResult.parsed?.patches && editResult.parsed.patches.length > 0) {
+      const patchResult = applyPatches(fullChapterText, editResult.parsed.patches);
+      finalText = patchResult.patchedText;
+    }
+
+    // Summarize
+    const summaryResult = await this.summarizer.execute({
+      chapterContent: finalText,
+      chapterNumber: chapterOutline.chapter_num,
+    });
+
+    return {
+      content: finalText,
+      summary: summaryResult.content || "",
+      wordCount: finalText.split(/\s+/).length,
+      sceneBreakdown,
+    };
+  }
+}

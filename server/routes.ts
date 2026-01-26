@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { Orchestrator } from "./orchestrator";
+import { OrchestratorV2 } from "./orchestrator-v2";
 import { queueManager } from "./queue-manager";
 import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema } from "@shared/schema";
 import multer from "multer";
@@ -690,6 +691,80 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error starting generation:", error);
       res.status(500).json({ error: "Failed to start generation" });
+    }
+  });
+
+  // LitAgents 2.0 - Scene-based generation pipeline
+  app.post("/api/projects/:id/generate-v2", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (project.status === "generating") {
+        return res.status(400).json({ error: "Project is already generating" });
+      }
+
+      res.json({ message: "Generation started (LitAgents 2.0)", projectId: id, version: "2.0" });
+
+      const sendToStreams = (data: any) => {
+        const streams = activeStreams.get(id);
+        if (streams) {
+          const message = `data: ${JSON.stringify(data)}\n\n`;
+          streams.forEach(stream => {
+            try {
+              stream.write(message);
+            } catch (e) {
+              console.error("Error writing to stream:", e);
+            }
+          });
+        }
+      };
+
+      const orchestrator = new OrchestratorV2({
+        onAgentStatus: async (role, status, message) => {
+          await storage.updateAgentStatus(id, role, { status, currentTask: message });
+          sendToStreams({ type: "agent_status", role, status, message });
+          if (message) await persistActivityLog(id, "info", message, role);
+        },
+        onChapterComplete: async (chapterNumber, wordCount, chapterTitle) => {
+          sendToStreams({ type: "chapter_complete", chapterNumber, wordCount, chapterTitle });
+          const label = getSectionLabel(chapterNumber, chapterTitle);
+          await persistActivityLog(id, "success", `${label} completado (${wordCount} palabras)`, "ghostwriter-v2");
+        },
+        onSceneComplete: (chapterNumber, sceneNumber, wordCount) => {
+          sendToStreams({ type: "scene_complete", chapterNumber, sceneNumber, wordCount });
+        },
+        onProjectComplete: async () => {
+          sendToStreams({ type: "project_complete" });
+          await persistActivityLog(id, "success", "Novela completada exitosamente (LitAgents 2.0)", "orchestrator-v2");
+        },
+        onError: async (error) => {
+          sendToStreams({ type: "error", message: error });
+          await persistActivityLog(id, "error", error, "orchestrator-v2");
+        },
+      });
+
+      orchestrator.generateNovel(project).catch(console.error);
+
+    } catch (error) {
+      console.error("Error starting V2 generation:", error);
+      res.status(500).json({ error: "Failed to start V2 generation" });
+    }
+  });
+
+  // LitAgents 2.0 - Plot Threads API
+  app.get("/api/projects/:id/plot-threads", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const threads = await storage.getPlotThreadsByProject(id);
+      res.json(threads);
+    } catch (error) {
+      console.error("Error fetching plot threads:", error);
+      res.status(500).json({ error: "Failed to fetch plot threads" });
     }
   });
 

@@ -1,0 +1,105 @@
+import OpenAI from 'openai';
+import { PROMPTS, AGENT_MODELS } from '../agents/agent_prompts';
+import Fuse from 'fuse.js'; // npm install fuse.js
+
+// Configuración DeepSeek
+const openai = new OpenAI({
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: 'https://api.deepseek.com'
+});
+
+// Tipos simulados
+interface Project { id: number; current_chapter_index: number; }
+interface ScenePlan { scene_num: number; plot_beat: string; }
+
+export class Orchestrator {
+  
+  // Función Principal: Generar Capítulo Completo
+  async generateChapter(project: Project, chapterOutline: any) {
+    console.log(`[Orchestrator] Iniciando Cap ${project.current_chapter_index}...`);
+
+    // 1. Chapter Architect (Planificación Micro)
+    const sceneBreakdown = await this.callAI(
+      AGENT_MODELS.REASONER,
+      PROMPTS.CHAPTER_ARCHITECT(chapterOutline.summary, "Estado actual normal")
+    );
+    const plan = JSON.parse(sceneBreakdown); // Asumiendo que la IA devuelve JSON limpio
+
+    let fullChapterText = "";
+    let lastContext = ""; // Últimas 500 palabras para continuidad
+
+    // 2. Bucle de Escritura de Escenas (Ghostwriter)
+    for (const scene of plan.scenes) {
+      console.log(`  > Escribiendo Escena ${scene.scene_num}...`);
+      
+      const sceneText = await this.callAI(
+        AGENT_MODELS.WRITER,
+        PROMPTS.GHOSTWRITER_SCENE(JSON.stringify(scene), lastContext, "Resumen acumulado...")
+      );
+
+      fullChapterText += "\n\n" + sceneText;
+      // Actualizamos contexto deslizante (últimos ~1500 caracteres)
+      lastContext = sceneText.slice(-1500); 
+    }
+
+    // 3. Fase de Edición (Smart Editor)
+    console.log(`[Orchestrator] Editando Capítulo...`);
+    const editResponse = await this.callAI(
+        AGENT_MODELS.FAST,
+        PROMPTS.SMART_EDITOR + `\n\nTEXTO A EVALUAR:\n${fullChapterText}`
+    );
+    
+    // Limpieza de JSON (DeepSeek a veces pone ```json ... ```)
+    const cleanJson = editResponse.replace(/```json/g, '').replace(/```/g, '');
+    const editResult = JSON.parse(cleanJson);
+
+    let finalText = fullChapterText;
+
+    if (editResult.is_approved) {
+      console.log("  > Capítulo Aprobado Directamente.");
+    } else {
+      console.log(`  > Aplicando ${editResult.patches.length} parches correctivos...`);
+      finalText = this.applyPatches(fullChapterText, editResult.patches);
+    }
+
+    // 4. Compresión (Summarizer)
+    const summary = await this.callAI(
+      AGENT_MODELS.FAST, 
+      PROMPTS.SUMMARIZER + `\n\n${finalText}`
+    );
+
+    return {
+      content: finalText,
+      summary: summary,
+      score: editResult.logic_score
+    };
+  }
+
+  // Utilidad de Parcheado (Ahorro de Tokens)
+  private applyPatches(text: string, patches: any[]): string {
+    let result = text;
+    // Usamos Fuse.js para encontrar el texto aunque la IA se equivoque por un espacio
+    const fuse = new Fuse([text], { includeScore: true, threshold: 0.2 });
+
+    for (const patch of patches) {
+      // Intento simple primero
+      if (result.includes(patch.original_text_snippet)) {
+        result = result.replace(patch.original_text_snippet, patch.replacement_text);
+      } else {
+        // Fallback lógica difusa o reporte de error
+        console.warn(`No se pudo aplicar parche: "${patch.original_text_snippet.substring(0, 20)}..."`);
+      }
+    }
+    return result;
+  }
+
+  // Wrapper de llamada a API
+  private async callAI(model: string, prompt: string): Promise<string> {
+    const completion = await openai.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      model: model,
+      temperature: model.includes('reasoner') ? 0.6 : 1.1, // Temp alta para V3 (creatividad)
+    });
+    return completion.choices[0].message.content || "";
+  }
+}
