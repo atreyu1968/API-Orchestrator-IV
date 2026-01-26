@@ -90,6 +90,11 @@ Preferred communication style: Simple, everyday language.
 - **Model Assignment**: R1 (deepseek-reasoner) for planning agents, V3 (deepseek-chat) for writing/editing agents.
 - **Plot Threads API**: `GET /api/projects/:id/plot-threads` for accessing narrative thread status.
 - **Backward Compatibility**: Original v1 orchestrator and routes remain unchanged.
+- **Frontend v2 Integration** (added January 2026):
+  - **Pipeline Selection**: Checkbox in generation dialog allows users to choose between v1 (full-chapter) and v2 (scene-based) pipelines.
+  - **v2 Agent Names**: Dashboard displays v2 agent names (Arquitecto Global, Diseñador de Escenas, Escritor de Escenas, Editor Inteligente, Compresor, Director Narrativo).
+  - **Scene Progress Indicator**: Real-time badge shows current scene/chapter being written when using v2 pipeline.
+  - **SSE Event Handling**: Frontend handles `scene_complete` events for granular progress tracking, resetting on `chapter_complete`.
 
 ## External Dependencies
 
