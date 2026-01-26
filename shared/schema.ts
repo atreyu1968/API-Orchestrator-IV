@@ -406,6 +406,96 @@ export const activityLogs = pgTable("activity_logs", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+// ============================================
+// UNIVERSAL CONSISTENCY MODULE (LitAgents 2.1)
+// ============================================
+
+// World Entities - Characters, Locations, Objects, Evidence with dynamic attributes
+export const worldEntities = pgTable("world_entities", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // CHARACTER, LOCATION, OBJECT, EVIDENCE
+  attributes: jsonb("attributes").default({}), // Dynamic per genre
+  lastSeenChapter: integer("last_seen_chapter"),
+  status: text("status").notNull().default("active"), // active, dead, missing, destroyed
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// World Rules - Immutable facts that cannot be contradicted
+export const worldRulesTable = pgTable("world_rules", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  ruleDescription: text("rule_description").notNull(),
+  category: text("category"), // PHYSICS, MAGIC, LAW, TIMELINE, ALIBI, CAUSE_OF_DEATH
+  isActive: boolean("is_active").notNull().default(true),
+  sourceChapter: integer("source_chapter"), // Where this rule was established
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// Entity Relationships - The Narrative Graph
+export const entityRelationships = pgTable("entity_relationships", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  subjectId: integer("subject_id").notNull().references(() => worldEntities.id, { onDelete: "cascade" }),
+  targetId: integer("target_id").notNull().references(() => worldEntities.id, { onDelete: "cascade" }),
+  relationType: text("relation_type").notNull(), // KNOWS, LOVES, KILLED, LOCATED_AT, SUSPECTS, ALIBI_FOR
+  meta: jsonb("meta").default({}), // { intensity: 10, sinceChapter: 2, isSecret: true }
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// Consistency Violations Log - Track all detected violations
+export const consistencyViolations = pgTable("consistency_violations", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  chapterNumber: integer("chapter_number").notNull(),
+  violationType: text("violation_type").notNull(), // CONTRADICTION, ANACHRONISM, IMPOSSIBLE_LOCATION, DEAD_CHARACTER_ACTS
+  severity: text("severity").notNull().default("major"), // minor, major, critical
+  description: text("description").notNull(),
+  affectedEntities: jsonb("affected_entities").default([]), // [{entityId, name}]
+  brokenRuleId: integer("broken_rule_id").references(() => worldRulesTable.id, { onDelete: "set null" }),
+  wasAutoFixed: boolean("was_auto_fixed").notNull().default(false),
+  fixDescription: text("fix_description"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertWorldEntitySchema = createInsertSchema(worldEntities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWorldRuleSchema = createInsertSchema(worldRulesTable).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertEntityRelationshipSchema = createInsertSchema(entityRelationships).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertConsistencyViolationSchema = createInsertSchema(consistencyViolations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type WorldEntity = typeof worldEntities.$inferSelect;
+export type InsertWorldEntity = z.infer<typeof insertWorldEntitySchema>;
+
+export type WorldRuleRecord = typeof worldRulesTable.$inferSelect;
+export type InsertWorldRuleRecord = z.infer<typeof insertWorldRuleSchema>;
+
+export type EntityRelationship = typeof entityRelationships.$inferSelect;
+export type InsertEntityRelationship = z.infer<typeof insertEntityRelationshipSchema>;
+
+export type ConsistencyViolation = typeof consistencyViolations.$inferSelect;
+export type InsertConsistencyViolation = z.infer<typeof insertConsistencyViolationSchema>;
+
 export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ id: true, createdAt: true });
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
 export type ActivityLog = typeof activityLogs.$inferSelect;

@@ -96,6 +96,22 @@ Preferred communication style: Simple, everyday language.
   - **Scene Progress Indicator**: Real-time badge shows current scene/chapter being written when using v2 pipeline.
   - **SSE Event Handling**: Frontend handles `scene_complete` events for granular progress tracking, resetting on `chapter_complete`.
 
+### LitAgents 2.1 (Universal Consistency Module) - Added January 2026
+- **Purpose**: Prevents continuity violations (character identity contradictions, timeline errors, role inconsistencies) by injecting constraints before writing and validating after each chapter.
+- **Database Schema**: New tables `world_entities`, `world_rules`, `entity_relationships`, `consistency_violations` store the "truth database" for each project.
+- **Genre Definitions** (`server/agents/v2/genre-definitions.ts`): Tracking rules for 10+ genres including `crime_thriller`, `mystery`, `historical`, `fantasy`, `romance`, etc.
+- **UniversalConsistencyAgent** (`server/agents/v2/universal-consistency.ts`):
+  - `extractInitialEntities()`: Populates entities/rules from World Bible at generation start.
+  - `generateConstraints()`: Creates structured prompt injection for Ghostwriter with current entity states, rules, and relationships.
+  - `validateChapter()`: Checks for violations and extracts new facts after Smart Editor phase.
+  - `generateRewriteInstructions()`: Creates detailed feedback for surgical rewrites when violations detected.
+- **Orchestrator Integration**:
+  - Initializes consistency DB after World Bible creation.
+  - Injects constraints into Ghostwriter before scene writing.
+  - Validates chapter after Smart Editor, before Summarizer.
+  - Logs violations to `consistency_violations` table for audit.
+- **Constraint Format**: Prominent, structured block at top of Ghostwriter prompt listing dead characters, active injuries, last known locations, and genre-specific immutable facts.
+
 ## External Dependencies
 
 ### AI Services

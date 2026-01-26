@@ -1,0 +1,249 @@
+LitAgents 2.1 - Módulo de Consistencia Universal (Blueprint)Este documento define la arquitectura técnica del Agente de Consistencia Universal. Su objetivo es eliminar las alucinaciones de continuidad y errores lógicos en novelas largas, independientemente del género (Thriller, Romance, Fantasía, etc.).1. Concepto ArquitectónicoEl sistema utiliza un enfoque de "Verdad Externa":Base de Datos de Hechos: Una fuente de verdad inmutable (PostgreSQL + JSONB) que persiste más allá de la ventana de contexto del LLM.Agnosticismo de Género: El código no cambia entre géneros; solo cambia la configuración (genre_definitions).Ciclo de Validación:Pre-Escritura (Inyección): Se inyectan hechos relevantes en el prompt del escritor.Post-Escritura (Auditoría): Se valida el texto generado contra la base de datos de verdad.2. Esquema de Base de Datos (PostgreSQL)Ejecutar este SQL para crear las estructuras de memoria semántica flexibles.-- TABLA 1: Entidades del Mundo (Personajes, Lugares, Objetos)
+-- La columna 'attributes' cambia según el género.
+CREATE TABLE world_entities (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    name TEXT NOT NULL,          -- Ej: "Dr. Elias Aris"
+    type TEXT NOT NULL,          -- 'CHARACTER', 'LOCATION', 'OBJECT', 'EVIDENCE'
+    
+    -- Estado Dinámico (JSONB es crítico aquí)
+    -- Thriller: { "is_suspect": true, "alibi": "confirmed_at_10pm" }
+    -- Romance:  { "relationship_status": "single", "known_secrets": ["Juan's affair"] }
+    -- Histórico: { "social_rank": "Duke", "historical_fate": "Dies in 1540" }
+    attributes JSONB DEFAULT '{}',
+    
+    last_seen_chapter INTEGER,
+    status TEXT DEFAULT 'active' -- 'active', 'dead', 'missing'
+);
+
+-- TABLA 2: Reglas y Hechos Inmutables
+-- Cosas que el autor NO puede contradecir sin romper la lógica del mundo.
+CREATE TABLE world_rules (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    rule_description TEXT NOT NULL, -- Ej: "Los vampiros mueren con luz solar" o "El tren sale a las 8:00"
+    category TEXT,                  -- 'PHYSICS', 'MAGIC', 'LAW', 'TIMELINE'
+    is_active BOOLEAN DEFAULT true
+);
+
+-- TABLA 3: Relaciones (El Grafo Narrativo)
+CREATE TABLE entity_relationships (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER,
+    subject_id INTEGER REFERENCES world_entities(id),
+    target_id INTEGER REFERENCES world_entities(id),
+    relation_type TEXT, -- 'KNOWS', 'LOVES', 'KILLED', 'LOCATED_AT'
+    meta JSONB DEFAULT '{}' -- { "intensity": 10, "since_chapter": 2 }
+);
+3. Configuración de Géneros (genre_definitions.ts)Este archivo dicta qué le importa rastrear al agente según el tipo de novela.export const GENRE_TRACKING_CONFIG = {
+  // --- GÉNEROS DE MISTERIO Y CRIMEN ---
+  "crime_thriller": {
+    focus: "Coartadas, Ubicaciones Exactas, Líneas de Tiempo, Evidencias Físicas.",
+    critical_rules: [
+      "Un personaje no puede estar en dos lugares al mismo tiempo.",
+      "La causa de muerte debe ser consistente con la autopsia establecida.",
+      "Las coartadas verificadas son inmutables.",
+      "La cadena de custodia de la evidencia no puede romperse inexplicablemente."
+    ]
+  },
+  
+  "historical_thriller": {
+    focus: "Tecnología Forense de la Época, Tiempos de Viaje Históricos, Contexto Político Real.",
+    critical_rules: [
+      "No se pueden usar métodos forenses modernos (ADN, huellas digitales) si no existían en el año establecido.",
+      "Los tiempos de viaje deben respetar el transporte de la época (caballo, tren a vapor).",
+      "Las motivaciones deben encajar con la moralidad y política del momento histórico."
+    ]
+  },
+
+  // --- GÉNEROS HISTÓRICOS ---
+  "historical_fiction": {
+    focus: "Fechas de Eventos Reales, Etiqueta Social, Vestimenta, Tecnología Disponible.",
+    critical_rules: [
+      "CERO ANACRONISMOS: No mencionar objetos, conceptos o palabras que no existían.",
+      "Los grandes eventos históricos (batallas, coronaciones) deben ocurrir en su fecha exacta.",
+      "El lenguaje y la jerarquía social deben respetarse estrictamente (tratos de nobleza, roles de género de la época)."
+    ]
+  },
+
+  // --- GÉNEROS ESPECULATIVOS ---
+  "science_fiction": {
+    focus: "Leyes de la Física (Reales o Ficticias), Consistencia Tecnológica, Biología Alienígena.",
+    critical_rules: [
+      "Si se establece una limitación tecnológica (ej: el escudo dura 5 min), no se puede romper sin una mejora explícita.",
+      "Las reglas del viaje espacial (FTL, criogenia) deben ser constantes.",
+      "La fisiología alienígena o IA debe seguir sus propias reglas biológicas/lógicas."
+    ]
+  },
+
+  "fantasy": {
+    focus: "Sistemas de Magia (Hard/Soft), Costes de poder, Geopolítica de Reinos, Inventario Mágico.",
+    critical_rules: [
+      "El coste de la magia (maná, sangre, energía) debe pagarse siempre.",
+      "No se pueden inventar poderes nuevos para resolver un problema (Deus Ex Machina).",
+      "Las distancias de viaje deben respetar el mapa establecido."
+    ]
+  },
+
+  "dystopian": {
+    focus: "Reglas de la Opresión, Escasez de Recursos, Vigilancia, Estratificación Social.",
+    critical_rules: [
+      "El sistema de vigilancia/control del gobierno tiene reglas fijas que no se pueden burlar fácilmente.",
+      "La escasez de recursos (comida, agua, energía) es un límite duro para los personajes.",
+      "Las consecuencias de la desobediencia deben ser consistentes y brutales."
+    ]
+  },
+
+  // --- GÉNEROS EMOCIONALES Y DE PERSONAJE ---
+  "romance": {
+    focus: "Niveles de intimidad, Secretos compartidos, Estado emocional, Malentendidos, Obstáculos Externos.",
+    critical_rules: [
+      "El nivel de intimidad no puede saltar o retroceder sin un evento narrativo mayor.",
+      "Los secretos revelados no pueden ser 'des-conocidos'.",
+      "La 'Química' o tensión emocional debe ser monitoreada y mantenida.",
+      "Los obstáculos para estar juntos deben ser lógicos y no simples coincidencias repetitivas."
+    ]
+  },
+
+  "horror": {
+    focus: "Reglas del Monstruo/Entidad, Nivel de Aislamiento, Salud Mental, Recursos de Supervivencia.",
+    critical_rules: [
+      "La entidad sobrenatural debe seguir sus propias reglas (ej: no puede cruzar agua, solo sale de noche).",
+      "El aislamiento (sin señal, sin salida) no puede romperse mágicamente.",
+      "Las reacciones de miedo deben ser realistas; los personajes no se vuelven inmunes al terror sin razón."
+    ]
+  },
+
+  "adventure": {
+    focus: "Geografía, Suministros/Inventario, Estado Físico/Heridas, El 'Reloj' (Tiempo Límite).",
+    critical_rules: [
+      "Las heridas físicas reducen la capacidad del personaje y no sanan instantáneamente.",
+      "El inventario es limitado; no pueden sacar objetos que no empacaron.",
+      "La geografía y el clima dictan la velocidad de movimiento."
+    ]
+  }
+};
+4. Lógica del Agente (universal_consistency.ts)Este es el cerebro del módulo. Contiene dos métodos principales: generateConstraints (antes de escribir) y validateChapter (después de escribir).import OpenAI from 'openai';
+import { GENRE_TRACKING_CONFIG } from './genre_definitions';
+
+// Interfaces
+interface Entity { name: string; type: string; attributes: any; }
+interface Rule { rule_description: string; }
+interface ValidationResult { isValid: boolean; blocker?: string; newFacts?: any[]; }
+
+export class UniversalConsistencyAgent {
+  private openai: OpenAI;
+
+  constructor() {
+    this.openai = new OpenAI({ 
+      apiKey: process.env.DEEPSEEK_API_KEY, 
+      baseURL: '[https://api.deepseek.com](https://api.deepseek.com)' 
+    });
+  }
+
+  /**
+   * FASE 1: INYECCIÓN
+   * Genera el texto de restricciones para pegar en el prompt del Ghostwriter.
+   */
+  generateConstraints(genre: string, entities: Entity[], rules: Rule[]): string {
+    const config = GENRE_TRACKING_CONFIG[genre] || GENRE_TRACKING_CONFIG['crime_thriller'];
+    
+    const entityBlock = entities.map(e => 
+      `- [${e.type}] ${e.name}: ${JSON.stringify(e.attributes)}`
+    ).join('\n');
+
+    const rulesBlock = rules.map(r => `- [REGLA] ${r.rule_description}`).join('\n');
+
+    return `
+      ⛔ SISTEMA DE CONSISTENCIA ACTIVO (${genre.toUpperCase()})
+      
+      Debes respetar ESTRICTAMENTE la siguiente Lógica de Mundo. 
+      El lector notará cualquier contradicción.
+      
+      FOCO DEL GÉNERO: ${config.focus}
+      
+      ESTADO ACTUAL DE PERSONAJES Y OBJETOS:
+      ${entityBlock}
+      
+      REGLAS INMUTABLES:
+      ${rulesBlock}
+      ${config.critical_rules.map(r => `- ${r}`).join('\n')}
+    `;
+  }
+
+  /**
+   * FASE 2: AUDITORÍA
+   * Verifica si el texto generado rompió alguna regla.
+   */
+  async validateChapter(text: string, genre: string, entities: Entity[], rules: Rule[]): Promise<ValidationResult> {
+    const config = GENRE_TRACKING_CONFIG[genre] || GENRE_TRACKING_CONFIG['crime_thriller'];
+    
+    const prompt = `
+      Actúa como un Supervisor de Continuidad (Script Supervisor) experto en ${genre}.
+      
+      BASE DE DATOS DE VERDAD:
+      ${JSON.stringify(entities)}
+      ${JSON.stringify(rules)}
+      ${JSON.stringify(config.critical_rules)}
+      
+      CAPÍTULO A EVALUAR:
+      "${text.substring(0, 8000)}" (truncado)
+      
+      TAREA:
+      1. ¿Hay contradicciones directas con la base de datos? (Ej: Alguien muerto habla, coartada rota, anacronismo).
+      2. ¿Se rompen las reglas físicas/mágicas/históricas del mundo?
+      3. Extrae NUEVOS hechos importantes si los hay.
+      
+      SALIDA JSON:
+      {
+        "isValid": boolean,
+        "criticalError": "Descripción del error o null",
+        "newFacts": [ { "entity": "Nombre", "update": { "key": "val" } } ]
+      }
+    `;
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        messages: [{ role: "user", content: prompt }],
+        model: "deepseek-chat", // V3 es suficiente para validación lógica
+        temperature: 0.1,
+        response_format: { type: "json_object" }
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || '{}');
+      return {
+        isValid: result.isValid,
+        blocker: result.criticalError,
+        newFacts: result.newFacts
+      };
+    } catch (e) {
+      console.error("Error validando consistencia:", e);
+      return { isValid: true }; // Fallback optimista
+    }
+  }
+}
+5. Guía de Integración (Orquestador)Dónde colocar este código dentro del bucle principal de generación (orchestrator.ts):// 1. Antes de llamar al Ghostwriter
+const entities = await db.getEntitiesForScene(projectId, sceneCharacters);
+const rules = await db.getActiveRules(projectId);
+const constraints = consistencyAgent.generateConstraints(projectGenre, entities, rules);
+
+// 2. Inyectar en prompt
+const finalPrompt = `${ghostWriterPrompt}\n\n${constraints}`;
+
+// 3. Generar Texto
+const draft = await ghostwriter.generate(finalPrompt);
+
+// 4. Validar Texto (El Checkpoint)
+const check = await consistencyAgent.validateChapter(draft, projectGenre, entities, rules);
+
+if (!check.isValid) {
+  // RECHAZO AUTOMÁTICO
+  console.log(`[Consistencia] Rechazado: ${check.blocker}`);
+  return await ghostwriter.rewrite(`Tu borrador fue rechazado por un error de lógica: ${check.blocker}. Reescribe corrigiendo esto.`);
+} else {
+  // APROBADO -> ACTUALIZAR DB
+  if (check.newFacts) {
+    await db.updateWorldState(projectId, check.newFacts);
+  }
+  return draft;
+}

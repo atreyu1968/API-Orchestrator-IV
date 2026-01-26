@@ -1,0 +1,222 @@
+LitAgents 2.1 - Módulo "El Crítico" (Lector Beta Artificial)Este documento define la arquitectura técnica del Agente Lector Beta. Su función es leer la novela terminada, analizar su arco narrativo completo y ordenar reescrituras quirúrgicas para mejorar la calidad comercial.1. El Problema y la SoluciónProblema: Leer una novela de 100k palabras para criticarla consume demasiados tokens y desborda la ventana de contexto de la mayoría de los modelos, provocando "amnesia" sobre el inicio del libro.Solución (Muestreo Inteligente): El Crítico no lee el texto crudo completo. Lee una versión comprimida compuesta por:Resúmenes densos de cada capítulo (generados durante la escritura).Texto completo del Capítulo 1 (Gancho).Texto completo del Capítulo Final (Clímax).Muestras aleatorias de prosa (para evaluar estilo).2. Esquema de Base de Datos (PostgreSQL)Ejecutar este SQL para habilitar el almacenamiento de críticas y versiones.-- 1. Actualizar Tabla de Proyectos
+ALTER TABLE projects 
+ADD COLUMN beta_reader_report JSONB DEFAULT '{}', -- El informe final
+ADD COLUMN quality_score INTEGER DEFAULT 0,       -- 0-10
+ADD COLUMN commercial_viability TEXT;             -- 'High', 'Medium', 'Low'
+
+-- 2. Historial de Versiones (Para poder deshacer cambios del Crítico)
+CREATE TABLE chapter_versions (
+    id SERIAL PRIMARY KEY,
+    chapter_id INTEGER REFERENCES chapters(id) ON DELETE CASCADE,
+    project_id INTEGER,
+    version_number INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    change_reason TEXT, -- Ej: "Beta Reader: Ritmo lento en escena 2"
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 3. Cola de Tareas de Edición
+-- Cuando el Crítico marca capítulos, se crean tareas aquí
+CREATE TABLE editing_queue (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER,
+    chapter_id INTEGER,
+    instruction TEXT NOT NULL, -- "Acelerar el ritmo, eliminar el diálogo sobre el clima"
+    status TEXT DEFAULT 'pending' -- 'pending', 'processing', 'completed'
+);
+3. Configuración de Prompts (server/agents/critic_prompts.ts)El Crítico cambia de personalidad según el género para juzgar con los criterios correctos.export const CRITIC_PROMPTS = {
+
+  // A. EL EVALUADOR (R1 - Reasoner)
+  // Analiza la estructura global
+  FULL_EVALUATION: (genre: string, summaryBlock: string, firstCap: string, lastCap: string) => `
+    Actúa como un Editor Senior de una editorial "Big Five", especializado en ${genre}.
+    Has recibido un manuscrito. Aquí tienes la radiografía estructural:
+
+    === RESUMEN CAPÍTULO A CAPÍTULO ===
+    ${summaryBlock}
+
+    === MUESTRA DE INICIO (GANCHO) ===
+    "${firstCap.substring(0, 4000)}..."
+
+    === MUESTRA DE FINAL (CLÍMAX) ===
+    "${lastCap.substring(lastCap.length - 4000)}..."
+
+    TAREA:
+    Realiza una crítica despiadada enfocada en la viabilidad comercial.
+    1. **Ritmo (Pacing):** ¿Dónde se estanca la historia? Identifica el "valle de la muerte" (segundo acto aburrido).
+    2. **Arco de Personaje:** ¿El protagonista del final es diferente al del inicio?
+    3. **Promesa del Género:** ¿Cumple lo que promete un ${genre}? (Ej: Si es Thriller, ¿hay tensión? Si es Romance, ¿hay final feliz/satisfactorio?).
+
+    SALIDA JSON (Plan de Acción):
+    {
+      "score": 1-10,
+      "viability": "High/Medium/Low",
+      "critique_summary": "Texto de opinión de 300 palabras...",
+      "flagged_chapters": [
+        {
+          "chapter_number": 5,
+          "issue_type": "PACING_SLOW",
+          "severity": "HIGH",
+          "specific_fix": "Eliminar la escena de la cena. Saltar directo a la explosión."
+        }
+      ]
+    }
+    NOTA: Sé conservador. Solo marca capítulos que maten el interés del lector.
+  `,
+
+  // B. EL EJECUTOR (V3 - Writer)
+  // Reescribe un capítulo específico basándose en la crítica
+  SURGICAL_REWRITE: (originalText: string, criticism: string, fixInstruction: string) => `
+    ACTÚA COMO UN 'BOOK DOCTOR' (Editor de Desarrollo).
+    
+    CAPÍTULO ORIGINAL:
+    "${originalText}"
+
+    EL DIAGNÓSTICO DEL CRÍTICO:
+    "${criticism}"
+
+    TU ORDEN DE OPERACIÓN:
+    "${fixInstruction}"
+
+    INSTRUCCIONES:
+    Reescribe el capítulo para obedecer la orden.
+    - Puedes borrar secciones enteras.
+    - Puedes resumir diálogos largos.
+    - NO cambies hechos clave de la trama (muertes, objetos obtenidos) a menos que se te pida explícitamente.
+    - Mantén el estilo de prosa original.
+  `
+};
+4. Lógica del Agente (server/core/beta_reader.ts)Este archivo contiene la clase que orquesta la lectura y la reescritura.import OpenAI from 'openai';
+import { CRITIC_PROMPTS } from '../agents/critic_prompts';
+
+// Tipos
+interface ProjectData {
+  id: number;
+  genre: string;
+  summaries: string[]; // Array ordenado de resúmenes
+  firstChapter: string;
+  lastChapter: string;
+}
+
+export class BetaReaderAgent {
+  private openai: OpenAI;
+
+  constructor() {
+    this.openai = new OpenAI({ 
+      apiKey: process.env.DEEPSEEK_API_KEY, 
+      baseURL: '[https://api.deepseek.com](https://api.deepseek.com)' 
+    });
+  }
+
+  // FASE 1: LECTURA Y DIAGNÓSTICO
+  async evaluateNovel(project: ProjectData) {
+    console.log(`[Critic] Leyendo novela ${project.id} (${project.genre})...`);
+
+    // Construir el "Mapa del Libro"
+    const summaryBlock = project.summaries
+      .map((s, i) => `[Capítulo ${i + 1}]: ${s}`)
+      .join('\n');
+
+    const prompt = CRITIC_PROMPTS.FULL_EVALUATION(
+      project.genre,
+      summaryBlock,
+      project.firstChapter,
+      project.lastChapter
+    );
+
+    // Usar R1 para pensar profundamente sobre la estructura
+    const response = await this.openai.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      model: "deepseek-reasoner",
+      temperature: 0.7 
+    });
+
+    // Parsear JSON (con limpieza de markdown por si acaso)
+    const jsonStr = response.choices[0].message.content?.replace(/```json|```/g, '') || '{}';
+    return JSON.parse(jsonStr);
+  }
+
+  // FASE 2: CIRUGÍA (Aplicar correcciones)
+  async applyFix(chapterContent: string, issue: any) {
+    console.log(`[Critic] Aplicando cirugía a Cap ${issue.chapter_number}...`);
+    
+    const prompt = CRITIC_PROMPTS.SURGICAL_REWRITE(
+      chapterContent,
+      issue.issue_type,
+      issue.specific_fix
+    );
+
+    // Usar V3 para la reescritura (más barato y rápido)
+    const response = await this.openai.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      model: "deepseek-chat",
+      temperature: 0.5 // Balance entre creatividad y obediencia
+    });
+
+    return response.choices[0].message.content;
+  }
+}
+5. Integración en el Flujo Principal (orchestrator.ts)Cómo conectar este módulo para que se ejecute al finalizar el libro.// Fragmento para Orchestrator
+
+async finalizeProject(projectId: number) {
+  // 1. Recopilar datos de la DB
+  const summaries = await db.getSummaries(projectId);
+  const firstCap = await db.getChapter(projectId, 1);
+  const lastCap = await db.getLastChapter(projectId);
+  const genre = await db.getGenre(projectId);
+
+  // 2. Instanciar Crítico
+  const critic = new BetaReaderAgent();
+  
+  // 3. Ejecutar Evaluación
+  const report = await critic.evaluateNovel({
+    id: projectId,
+    genre,
+    summaries,
+    firstChapter: firstCap.content,
+    lastChapter: lastCap.content
+  });
+
+  // 4. Guardar Reporte
+  await db.saveReport(projectId, report);
+
+  // 5. Decisión Automática: ¿Merece la pena arreglarlo?
+  // Si el score es muy bajo (<4), quizás mejor no gastar tokens.
+  // Si es medio (4-8), arreglamos.
+  // Si es alto (>9), lo dejamos estar.
+  
+  if (report.score >= 4 && report.score < 9) {
+    console.log(`[Orchestrator] Calidad mejorable (${report.score}). Iniciando reparaciones...`);
+    
+    for (const flag of report.flagged_chapters) {
+      // Recuperar contenido original
+      const original = await db.getChapter(projectId, flag.chapter_number);
+      
+      // Guardar backup
+      await db.createVersion(projectId, flag.chapter_number, original.content, "Pre-Critic");
+      
+      // Reescribir
+      const fixedContent = await critic.applyFix(original.content, flag);
+      
+      // Actualizar capítulo
+      await db.updateChapter(projectId, flag.chapter_number, fixedContent);
+    }
+    
+    return { status: "polished", report };
+  }
+
+  return { status: "completed", report };
+}
+6. API Endpoints// POST /api/projects/:id/critique
+// Inicia el proceso manualmente
+router.post('/:id/critique', async (req, res) => {
+  const result = await orchestrator.finalizeProject(req.params.id);
+  res.json(result);
+});
+
+// GET /api/projects/:id/report
+// Devuelve el informe del crítico para mostrar en el Frontend
+router.get('/:id/report', async (req, res) => {
+  const report = await db.getReport(req.params.id);
+  res.json(report);
+});

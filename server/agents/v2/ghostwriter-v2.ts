@@ -12,6 +12,7 @@ export interface GhostwriterV2Input {
   rollingSummary: string;
   worldBible: any;
   guiaEstilo: string;
+  consistencyConstraints?: string;
 }
 
 const SYSTEM_PROMPT = `
@@ -48,13 +49,18 @@ export class GhostwriterV2Agent extends BaseAgent {
   async execute(input: GhostwriterV2Input): Promise<AgentResponse> {
     console.log(`[GhostwriterV2] Writing Scene ${input.scenePlan.scene_num}: "${input.scenePlan.plot_beat.substring(0, 50)}..."`);
     
-    const prompt = PROMPTS_V2.GHOSTWRITER_SCENE(
+    let prompt = PROMPTS_V2.GHOSTWRITER_SCENE(
       input.scenePlan,
       input.prevSceneContext,
       input.rollingSummary,
       input.worldBible,
       input.guiaEstilo
     );
+
+    if (input.consistencyConstraints) {
+      prompt = `${input.consistencyConstraints}\n\n---\n\n${prompt}`;
+      console.log(`[GhostwriterV2] Injected consistency constraints (${input.consistencyConstraints.length} chars)`);
+    }
 
     const response = await this.generateContent(prompt, undefined, { temperature: 1.1 });
     

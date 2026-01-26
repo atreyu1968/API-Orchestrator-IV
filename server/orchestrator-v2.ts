@@ -1,5 +1,6 @@
 // LitAgents 2.0 - Scene-Based Orchestrator
 // Implements the new pipeline: Global Architect → Chapter Architect → Ghostwriter (scene by scene) → Smart Editor → Patcher → Summarizer → Narrative Director
+// LitAgents 2.1: Now with Universal Consistency Module for continuity enforcement
 
 import * as fs from "fs";
 import { storage } from "./storage";
@@ -17,9 +18,10 @@ import {
   type PlotThread as AgentPlotThread,
   type ScenePlan
 } from "./agents/v2";
+import { universalConsistencyAgent } from "./agents/v2/universal-consistency";
 import { applyPatches, type PatchResult } from "./utils/patcher";
 import type { TokenUsage } from "./agents/base-agent";
-import type { Project, Chapter, InsertPlotThread } from "@shared/schema";
+import type { Project, Chapter, InsertPlotThread, WorldEntity, WorldRuleRecord, EntityRelationship } from "@shared/schema";
 import { isProjectCancelledFromDb } from "./agents";
 import { calculateRealCost, formatCostForStorage } from "./cost-calculator";
 
@@ -99,6 +101,181 @@ export class OrchestratorV2 {
     } catch (err) {
       console.error(`[OrchestratorV2] Failed to log AI usage for ${agentName}:`, err);
     }
+  }
+
+  // ============================================
+  // UNIVERSAL CONSISTENCY MODULE INTEGRATION
+  // ============================================
+
+  private async initializeConsistencyDatabase(projectId: number, worldBible: any, genre: string): Promise<void> {
+    console.log(`[OrchestratorV2] Initializing consistency database for project ${projectId}`);
+    
+    const existingEntities = await storage.getWorldEntitiesByProject(projectId);
+    if (existingEntities.length > 0) {
+      console.log(`[OrchestratorV2] Consistency DB already initialized (${existingEntities.length} entities)`);
+      return;
+    }
+
+    const characters = worldBible.characters || [];
+    const rules = worldBible.worldRules || [];
+
+    const { entities, rules: extractedRules } = await universalConsistencyAgent.extractInitialEntities(
+      characters,
+      rules,
+      genre,
+      projectId
+    );
+
+    for (const entity of entities) {
+      await storage.createWorldEntity(entity);
+    }
+
+    for (const rule of extractedRules) {
+      await storage.createWorldRule(rule);
+    }
+
+    console.log(`[OrchestratorV2] Initialized: ${entities.length} entities, ${extractedRules.length} rules`);
+    this.callbacks.onAgentStatus("consistency", "completed", `Initialized ${entities.length} entities, ${extractedRules.length} rules`);
+  }
+
+  private async getConsistencyContext(projectId: number): Promise<{
+    entities: Array<{ name: string; type: string; attributes: any; status: string; lastSeenChapter?: number }>;
+    rules: Array<{ ruleDescription: string; category: string }>;
+    relationships: Array<{ subject: string; target: string; relationType: string; meta?: any }>;
+  }> {
+    const [dbEntities, dbRules, dbRelationships] = await Promise.all([
+      storage.getWorldEntitiesByProject(projectId),
+      storage.getWorldRulesByProject(projectId),
+      storage.getEntityRelationshipsByProject(projectId),
+    ]);
+
+    const entityMap = new Map(dbEntities.map(e => [e.id, e.name]));
+
+    return {
+      entities: dbEntities.map(e => ({
+        name: e.name,
+        type: e.type,
+        attributes: e.attributes || {},
+        status: e.status,
+        lastSeenChapter: e.lastSeenChapter || undefined,
+      })),
+      rules: dbRules.map(r => ({
+        ruleDescription: r.ruleDescription,
+        category: r.category || 'GENERAL',
+      })),
+      relationships: dbRelationships.map(r => ({
+        subject: entityMap.get(r.subjectId) || `Entity#${r.subjectId}`,
+        target: entityMap.get(r.targetId) || `Entity#${r.targetId}`,
+        relationType: r.relationType,
+        meta: r.meta || {},
+      })),
+    };
+  }
+
+  private async validateAndUpdateConsistency(
+    projectId: number,
+    chapterNumber: number,
+    chapterText: string,
+    genre: string
+  ): Promise<{ isValid: boolean; error?: string }> {
+    const context = await this.getConsistencyContext(projectId);
+    
+    if (context.entities.length === 0 && context.rules.length === 0) {
+      console.log(`[OrchestratorV2] Skipping consistency validation - no context available`);
+      return { isValid: true };
+    }
+
+    this.callbacks.onAgentStatus("consistency", "active", "Validating continuity...");
+    
+    const result = await universalConsistencyAgent.validateChapter(
+      chapterText,
+      genre,
+      context.entities,
+      context.rules,
+      context.relationships,
+      chapterNumber
+    );
+
+    if (!result.isValid && result.criticalError) {
+      await storage.createConsistencyViolation({
+        projectId,
+        chapterNumber,
+        violationType: 'CONTRADICTION',
+        severity: 'critical',
+        description: result.criticalError,
+        affectedEntities: [],
+        wasAutoFixed: false,
+      });
+
+      this.callbacks.onAgentStatus("consistency", "warning", `Violation: ${result.criticalError}`);
+      return { isValid: false, error: result.criticalError };
+    }
+
+    if (result.newFacts && result.newFacts.length > 0) {
+      for (const fact of result.newFacts) {
+        const existing = await storage.getWorldEntityByName(projectId, fact.entityName);
+        if (existing) {
+          const newAttrs = { ...((existing.attributes as any) || {}), ...fact.update };
+          await storage.updateWorldEntity(existing.id, {
+            attributes: newAttrs,
+            lastSeenChapter: chapterNumber,
+          });
+        } else {
+          await storage.createWorldEntity({
+            projectId,
+            name: fact.entityName,
+            type: fact.entityType || 'CHARACTER',
+            attributes: fact.update,
+            status: 'active',
+            lastSeenChapter: chapterNumber,
+          });
+        }
+      }
+      console.log(`[OrchestratorV2] Updated ${result.newFacts.length} facts in consistency DB`);
+    }
+
+    if (result.newRules && result.newRules.length > 0) {
+      for (const rule of result.newRules) {
+        await storage.createWorldRule({
+          projectId,
+          ruleDescription: rule.ruleDescription,
+          category: rule.category,
+          isActive: true,
+          sourceChapter: chapterNumber,
+        });
+      }
+      console.log(`[OrchestratorV2] Added ${result.newRules.length} new rules`);
+    }
+
+    if (result.newRelationships && result.newRelationships.length > 0) {
+      const entities = await storage.getWorldEntitiesByProject(projectId);
+      const entityNameToId = new Map(entities.map(e => [e.name.toLowerCase(), e.id]));
+      
+      for (const rel of result.newRelationships) {
+        const subjectId = entityNameToId.get(rel.subject.toLowerCase());
+        const targetId = entityNameToId.get(rel.target.toLowerCase());
+        
+        if (subjectId && targetId) {
+          await storage.createEntityRelationship({
+            projectId,
+            subjectId,
+            targetId,
+            relationType: rel.relationType,
+            meta: rel.meta || {},
+            sourceChapter: chapterNumber,
+          });
+        }
+      }
+      console.log(`[OrchestratorV2] Added ${result.newRelationships.length} new relationships`);
+    }
+
+    if (result.warnings && result.warnings.length > 0) {
+      this.callbacks.onAgentStatus("consistency", "completed", `Passed with ${result.warnings.length} warnings`);
+    } else {
+      this.callbacks.onAgentStatus("consistency", "completed", "Continuity validated");
+    }
+
+    return { isValid: true };
   }
 
   private generateTitleFromHook(hookOrBeat: string): string {
@@ -551,6 +728,10 @@ export class OrchestratorV2 {
             lastUpdatedChapter: 0,
           });
         }
+
+        // LitAgents 2.1: Initialize Universal Consistency Database
+        this.callbacks.onAgentStatus("consistency", "active", "Initializing consistency database...");
+        await this.initializeConsistencyDatabase(project.id, worldBible, project.genre);
       }
 
       // Get style guide
@@ -631,6 +812,24 @@ export class OrchestratorV2 {
 
         const sceneBreakdown = chapterPlan.parsed;
 
+        // 2a.5: LitAgents 2.1 - Generate consistency constraints
+        let consistencyConstraints = "";
+        try {
+          const context = await this.getConsistencyContext(project.id);
+          if (context.entities.length > 0) {
+            consistencyConstraints = universalConsistencyAgent.generateConstraints(
+              project.genre,
+              context.entities,
+              context.rules,
+              context.relationships,
+              chapterNumber
+            );
+            console.log(`[OrchestratorV2] Generated consistency constraints (${consistencyConstraints.length} chars)`);
+          }
+        } catch (err) {
+          console.error(`[OrchestratorV2] Failed to generate constraints:`, err);
+        }
+
         // 2b: Ghostwriter - Write scene by scene
         let fullChapterText = "";
         let lastContext = "";
@@ -649,6 +848,7 @@ export class OrchestratorV2 {
             rollingSummary,
             worldBible,
             guiaEstilo,
+            consistencyConstraints,
           });
 
           if (sceneResult.error) {
@@ -703,6 +903,18 @@ export class OrchestratorV2 {
             console.log(`[OrchestratorV2] Chapter ${chapterNumber} needs rewrite, but continuing with current version`);
             this.callbacks.onAgentStatus("smart-editor", "completed", "Needs improvement (continuing)");
           }
+        }
+
+        // 2c.5: LitAgents 2.1 - Universal Consistency Validation
+        const consistencyResult = await this.validateAndUpdateConsistency(
+          project.id,
+          chapterNumber,
+          finalText,
+          project.genre
+        );
+
+        if (!consistencyResult.isValid) {
+          console.warn(`[OrchestratorV2] Consistency violation in Chapter ${chapterNumber}: ${consistencyResult.error}`);
         }
 
         // 2d: Summarizer - Compress for memory

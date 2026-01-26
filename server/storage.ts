@@ -5,6 +5,7 @@ import {
   projectQueue, queueState, seriesArcMilestones, seriesPlotThreads, seriesArcVerifications,
   aiUsageEvents, reeditProjects, reeditChapters, reeditAuditReports, reeditWorldBibles, reeditIssues,
   chatSessions, chatMessages, chatProposals, plotThreads,
+  worldEntities, worldRulesTable, entityRelationships, consistencyViolations,
   type Project, type InsertProject, type Chapter, type InsertChapter,
   type WorldBible, type InsertWorldBible, type ThoughtLog, type InsertThoughtLog,
   type AgentStatus, type InsertAgentStatus, type Pseudonym, type InsertPseudonym,
@@ -29,7 +30,11 @@ import {
   type ChatSession, type InsertChatSession,
   type ChatMessage, type InsertChatMessage,
   type ChatProposal, type InsertChatProposal,
-  type PlotThread, type InsertPlotThread
+  type PlotThread, type InsertPlotThread,
+  type WorldEntity, type InsertWorldEntity,
+  type WorldRuleRecord, type InsertWorldRuleRecord,
+  type EntityRelationship, type InsertEntityRelationship,
+  type ConsistencyViolation, type InsertConsistencyViolation
 } from "@shared/schema";
 import { eq, desc, asc, and, lt, isNull, or, sql } from "drizzle-orm";
 
@@ -220,6 +225,33 @@ export interface IStorage {
   getPlotThreadsByProject(projectId: number): Promise<PlotThread[]>;
   updateProjectPlotThread(id: number, data: Partial<PlotThread>): Promise<PlotThread | undefined>;
   deletePlotThreadsByProject(projectId: number): Promise<void>;
+
+  // Universal Consistency Module
+  createWorldEntity(data: InsertWorldEntity): Promise<WorldEntity>;
+  getWorldEntitiesByProject(projectId: number): Promise<WorldEntity[]>;
+  getWorldEntity(id: number): Promise<WorldEntity | undefined>;
+  getWorldEntityByName(projectId: number, name: string): Promise<WorldEntity | undefined>;
+  updateWorldEntity(id: number, data: Partial<WorldEntity>): Promise<WorldEntity | undefined>;
+  deleteWorldEntity(id: number): Promise<void>;
+  deleteWorldEntitiesByProject(projectId: number): Promise<void>;
+
+  createWorldRule(data: InsertWorldRuleRecord): Promise<WorldRuleRecord>;
+  getWorldRulesByProject(projectId: number): Promise<WorldRuleRecord[]>;
+  updateWorldRule(id: number, data: Partial<WorldRuleRecord>): Promise<WorldRuleRecord | undefined>;
+  deleteWorldRule(id: number): Promise<void>;
+  deleteWorldRulesByProject(projectId: number): Promise<void>;
+
+  createEntityRelationship(data: InsertEntityRelationship): Promise<EntityRelationship>;
+  getEntityRelationshipsByProject(projectId: number): Promise<EntityRelationship[]>;
+  getEntityRelationshipsBySubject(subjectId: number): Promise<EntityRelationship[]>;
+  updateEntityRelationship(id: number, data: Partial<EntityRelationship>): Promise<EntityRelationship | undefined>;
+  deleteEntityRelationship(id: number): Promise<void>;
+  deleteEntityRelationshipsByProject(projectId: number): Promise<void>;
+
+  createConsistencyViolation(data: InsertConsistencyViolation): Promise<ConsistencyViolation>;
+  getConsistencyViolationsByProject(projectId: number): Promise<ConsistencyViolation[]>;
+  getConsistencyViolationsByChapter(projectId: number, chapterNumber: number): Promise<ConsistencyViolation[]>;
+  updateConsistencyViolation(id: number, data: Partial<ConsistencyViolation>): Promise<ConsistencyViolation | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1256,6 +1288,135 @@ export class DatabaseStorage implements IStorage {
 
   async deletePlotThreadsByProject(projectId: number): Promise<void> {
     await db.delete(plotThreads).where(eq(plotThreads.projectId, projectId));
+  }
+
+  // ============================================
+  // UNIVERSAL CONSISTENCY MODULE
+  // ============================================
+
+  async createWorldEntity(data: InsertWorldEntity): Promise<WorldEntity> {
+    const [entity] = await db.insert(worldEntities).values(data).returning();
+    return entity;
+  }
+
+  async getWorldEntitiesByProject(projectId: number): Promise<WorldEntity[]> {
+    return db.select().from(worldEntities)
+      .where(eq(worldEntities.projectId, projectId))
+      .orderBy(asc(worldEntities.type), asc(worldEntities.name));
+  }
+
+  async getWorldEntity(id: number): Promise<WorldEntity | undefined> {
+    const [entity] = await db.select().from(worldEntities).where(eq(worldEntities.id, id));
+    return entity;
+  }
+
+  async getWorldEntityByName(projectId: number, name: string): Promise<WorldEntity | undefined> {
+    const [entity] = await db.select().from(worldEntities)
+      .where(and(eq(worldEntities.projectId, projectId), eq(worldEntities.name, name)));
+    return entity;
+  }
+
+  async updateWorldEntity(id: number, data: Partial<WorldEntity>): Promise<WorldEntity | undefined> {
+    const [updated] = await db.update(worldEntities)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(worldEntities.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteWorldEntity(id: number): Promise<void> {
+    await db.delete(worldEntities).where(eq(worldEntities.id, id));
+  }
+
+  async deleteWorldEntitiesByProject(projectId: number): Promise<void> {
+    await db.delete(worldEntities).where(eq(worldEntities.projectId, projectId));
+  }
+
+  async createWorldRule(data: InsertWorldRuleRecord): Promise<WorldRuleRecord> {
+    const [rule] = await db.insert(worldRulesTable).values(data).returning();
+    return rule;
+  }
+
+  async getWorldRulesByProject(projectId: number): Promise<WorldRuleRecord[]> {
+    return db.select().from(worldRulesTable)
+      .where(and(eq(worldRulesTable.projectId, projectId), eq(worldRulesTable.isActive, true)))
+      .orderBy(asc(worldRulesTable.category), asc(worldRulesTable.id));
+  }
+
+  async updateWorldRule(id: number, data: Partial<WorldRuleRecord>): Promise<WorldRuleRecord | undefined> {
+    const [updated] = await db.update(worldRulesTable)
+      .set(data)
+      .where(eq(worldRulesTable.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteWorldRule(id: number): Promise<void> {
+    await db.delete(worldRulesTable).where(eq(worldRulesTable.id, id));
+  }
+
+  async deleteWorldRulesByProject(projectId: number): Promise<void> {
+    await db.delete(worldRulesTable).where(eq(worldRulesTable.projectId, projectId));
+  }
+
+  async createEntityRelationship(data: InsertEntityRelationship): Promise<EntityRelationship> {
+    const [rel] = await db.insert(entityRelationships).values(data).returning();
+    return rel;
+  }
+
+  async getEntityRelationshipsByProject(projectId: number): Promise<EntityRelationship[]> {
+    return db.select().from(entityRelationships)
+      .where(eq(entityRelationships.projectId, projectId))
+      .orderBy(asc(entityRelationships.relationType));
+  }
+
+  async getEntityRelationshipsBySubject(subjectId: number): Promise<EntityRelationship[]> {
+    return db.select().from(entityRelationships)
+      .where(eq(entityRelationships.subjectId, subjectId));
+  }
+
+  async updateEntityRelationship(id: number, data: Partial<EntityRelationship>): Promise<EntityRelationship | undefined> {
+    const [updated] = await db.update(entityRelationships)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(entityRelationships.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEntityRelationship(id: number): Promise<void> {
+    await db.delete(entityRelationships).where(eq(entityRelationships.id, id));
+  }
+
+  async deleteEntityRelationshipsByProject(projectId: number): Promise<void> {
+    await db.delete(entityRelationships).where(eq(entityRelationships.projectId, projectId));
+  }
+
+  async createConsistencyViolation(data: InsertConsistencyViolation): Promise<ConsistencyViolation> {
+    const [violation] = await db.insert(consistencyViolations).values(data).returning();
+    return violation;
+  }
+
+  async getConsistencyViolationsByProject(projectId: number): Promise<ConsistencyViolation[]> {
+    return db.select().from(consistencyViolations)
+      .where(eq(consistencyViolations.projectId, projectId))
+      .orderBy(desc(consistencyViolations.createdAt));
+  }
+
+  async getConsistencyViolationsByChapter(projectId: number, chapterNumber: number): Promise<ConsistencyViolation[]> {
+    return db.select().from(consistencyViolations)
+      .where(and(
+        eq(consistencyViolations.projectId, projectId),
+        eq(consistencyViolations.chapterNumber, chapterNumber)
+      ))
+      .orderBy(desc(consistencyViolations.createdAt));
+  }
+
+  async updateConsistencyViolation(id: number, data: Partial<ConsistencyViolation>): Promise<ConsistencyViolation | undefined> {
+    const [updated] = await db.update(consistencyViolations)
+      .set(data)
+      .where(eq(consistencyViolations.id, id))
+      .returning();
+    return updated;
   }
 }
 
