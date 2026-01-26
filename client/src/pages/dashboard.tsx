@@ -80,7 +80,7 @@ export default function Dashboard() {
   const [architectInstructions, setArchitectInstructions] = useState("");
   const [showExtendDialog, setShowExtendDialog] = useState(false);
   const [targetChapters, setTargetChapters] = useState("");
-  const [useV2Pipeline, setUseV2Pipeline] = useState(false);
+  const [useV2Pipeline, setUseV2Pipeline] = useState(true);
   const [sceneProgress, setSceneProgress] = useState<{chapterNumber: number; sceneNumber: number; wordCount: number} | null>(null);
   const { projects, currentProject, setSelectedProjectId } = useProject();
 
