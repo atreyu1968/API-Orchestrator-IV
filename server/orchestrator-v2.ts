@@ -131,110 +131,121 @@ export class OrchestratorV2 {
         }
       }
 
-      // Phase 1: Global Architecture
-      this.callbacks.onAgentStatus("global-architect", "active", "Designing master structure...");
+      // Check if World Bible already exists (resuming)
+      const existingWorldBible = await storage.getWorldBibleByProject(project.id);
+      let outline: Array<{ chapter_num: number; title: string; summary: string; key_event: string; act?: number; emotional_arc?: string }>;
       
-      const globalResult = await this.globalArchitect.execute({
-        title: project.title,
-        premise: project.premise || "",
-        genre: project.genre,
-        tone: project.tone,
-        chapterCount: project.chapterCount,
-        architectInstructions: project.architectInstructions || undefined,
-        extendedGuide: extendedGuideContent,
-        styleGuide: styleGuideContent,
-        hasPrologue: project.hasPrologue,
-        hasEpilogue: project.hasEpilogue,
-        hasAuthorNote: project.hasAuthorNote,
-        workType: project.workType || undefined,
-        seriesName,
-        seriesOrder: project.seriesOrder || undefined,
-        previousBooksContext,
-        minWordsPerChapter: project.minWordsPerChapter || undefined,
-        maxWordsPerChapter: project.maxWordsPerChapter || undefined,
-      });
-
-      if (globalResult.error || !globalResult.parsed) {
-        throw new Error(`Global Architect failed: ${globalResult.error || "No parsed output"}`);
-      }
-
-      this.addTokenUsage(globalResult.tokenUsage);
-      this.callbacks.onAgentStatus("global-architect", "completed", "Master structure complete");
-
-      const worldBible = globalResult.parsed.world_bible;
-      const rawOutline = globalResult.parsed.outline;
-      const plotThreads = globalResult.parsed.plot_threads;
-
-      // Remap chapter numbers to match system convention:
-      // Prologue: 0, Normal chapters: 1-N, Epilogue: 998, Author Note: 999
-      const outline = rawOutline.map((ch, idx) => {
-        let actualNumber = ch.chapter_num;
-        const totalChapters = rawOutline.length;
+      if (existingWorldBible && existingWorldBible.plotOutline) {
+        // Resuming - use existing outline
+        console.log(`[OrchestratorV2] World Bible exists. Resuming chapter generation.`);
+        this.callbacks.onAgentStatus("global-architect", "completed", "Using existing structure");
         
-        // Detect prologue (first chapter if project has prologue)
-        if (project.hasPrologue && idx === 0) {
-          actualNumber = 0;
-        }
-        // Detect author note (last chapter if project has author note)
-        else if (project.hasAuthorNote && idx === totalChapters - 1) {
-          actualNumber = 999;
-        }
-        // Detect epilogue (last or second-to-last if author note exists)
-        else if (project.hasEpilogue && (
-          (project.hasAuthorNote && idx === totalChapters - 2) ||
-          (!project.hasAuthorNote && idx === totalChapters - 1)
-        )) {
-          actualNumber = 998;
-        }
-        // Normal chapters: adjust numbering if prologue exists
-        else if (project.hasPrologue) {
-          actualNumber = idx; // idx 1 becomes chapter 1, etc.
-        }
+        const plotOutline = existingWorldBible.plotOutline as any;
+        outline = (plotOutline.chapterOutlines || []).map((ch: any) => ({
+          chapter_num: ch.number,
+          title: ch.title || `Capítulo ${ch.number}`,
+          summary: ch.summary || "",
+          key_event: ch.keyEvents?.[0] || "",
+        }));
+      } else {
+        // Phase 1: Global Architecture - create new World Bible
+        this.callbacks.onAgentStatus("global-architect", "active", "Designing master structure...");
         
-        return { ...ch, chapter_num: actualNumber };
-      });
-
-      // Store World Bible with timeline derived from outline
-      const timeline = outline.map(ch => ({
-        chapter: ch.chapter_num,
-        title: ch.title,
-        events: [ch.key_event],
-        summary: ch.summary,
-        act: ch.act || (ch.chapter_num <= Math.ceil(outline.length * 0.25) ? 1 : 
-                        ch.chapter_num <= Math.ceil(outline.length * 0.75) ? 2 : 3),
-      }));
-
-      await storage.createWorldBible({
-        projectId: project.id,
-        characters: worldBible.characters as any,
-        worldRules: worldBible.rules as any,
-        timeline: timeline as any,
-        plotOutline: {
-          chapterOutlines: outline.map(ch => ({
-            number: ch.chapter_num,
-            summary: ch.summary,
-            keyEvents: [ch.key_event],
-          })),
-          threeActStructure: globalResult.parsed.three_act_structure || null,
-          plotThreads: plotThreads.map(t => ({
-            name: t.name,
-            description: t.description,
-            goal: t.goal,
-          })),
-        } as any,
-      });
-
-      // Store Plot Threads for Narrative Director
-      for (const thread of plotThreads) {
-        await storage.createPlotThread({
-          projectId: project.id,
-          name: thread.name,
-          description: thread.description || null,
-          goal: thread.goal,
-          status: "active",
-          intensityScore: 5,
-          lastUpdatedChapter: 0,
+        const globalResult = await this.globalArchitect.execute({
+          title: project.title,
+          premise: project.premise || "",
+          genre: project.genre,
+          tone: project.tone,
+          chapterCount: project.chapterCount,
+          architectInstructions: project.architectInstructions || undefined,
+          extendedGuide: extendedGuideContent,
+          styleGuide: styleGuideContent,
+          hasPrologue: project.hasPrologue,
+          hasEpilogue: project.hasEpilogue,
+          hasAuthorNote: project.hasAuthorNote,
+          workType: project.workType || undefined,
+          seriesName,
+          seriesOrder: project.seriesOrder || undefined,
+          previousBooksContext,
+          minWordsPerChapter: project.minWordsPerChapter || undefined,
+          maxWordsPerChapter: project.maxWordsPerChapter || undefined,
         });
+
+        if (globalResult.error || !globalResult.parsed) {
+          throw new Error(`Global Architect failed: ${globalResult.error || "No parsed output"}`);
+        }
+
+        this.addTokenUsage(globalResult.tokenUsage);
+        this.callbacks.onAgentStatus("global-architect", "completed", "Master structure complete");
+
+        const worldBible = globalResult.parsed.world_bible;
+        const rawOutline = globalResult.parsed.outline;
+        const plotThreads = globalResult.parsed.plot_threads;
+
+        // Remap chapter numbers to match system convention:
+        // Prologue: 0, Normal chapters: 1-N, Epilogue: 998, Author Note: 999
+        outline = rawOutline.map((ch, idx) => {
+          let actualNumber = ch.chapter_num;
+          const totalChapters = rawOutline.length;
+          
+          if (project.hasPrologue && idx === 0) {
+            actualNumber = 0;
+          } else if (project.hasAuthorNote && idx === totalChapters - 1) {
+            actualNumber = 999;
+          } else if (project.hasEpilogue && (
+            (project.hasAuthorNote && idx === totalChapters - 2) ||
+            (!project.hasAuthorNote && idx === totalChapters - 1)
+          )) {
+            actualNumber = 998;
+          } else if (project.hasPrologue) {
+            actualNumber = idx;
+          }
+          
+          return { ...ch, chapter_num: actualNumber };
+        });
+
+        // Store World Bible with timeline derived from outline
+        const timeline = outline.map(ch => ({
+          chapter: ch.chapter_num,
+          title: ch.title,
+          events: [ch.key_event],
+          summary: ch.summary,
+          act: ch.act || (ch.chapter_num <= Math.ceil(outline.length * 0.25) ? 1 : 
+                          ch.chapter_num <= Math.ceil(outline.length * 0.75) ? 2 : 3),
+        }));
+
+        await storage.createWorldBible({
+          projectId: project.id,
+          characters: worldBible.characters as any,
+          worldRules: worldBible.rules as any,
+          timeline: timeline as any,
+          plotOutline: {
+            chapterOutlines: outline.map(ch => ({
+              number: ch.chapter_num,
+              summary: ch.summary,
+              keyEvents: [ch.key_event],
+            })),
+            threeActStructure: globalResult.parsed.three_act_structure || null,
+            plotThreads: plotThreads.map(t => ({
+              name: t.name,
+              description: t.description,
+              goal: t.goal,
+            })),
+          } as any,
+        });
+
+        // Store Plot Threads for Narrative Director
+        for (const thread of plotThreads) {
+          await storage.createPlotThread({
+            projectId: project.id,
+            name: thread.name,
+            description: thread.description || null,
+            goal: thread.goal,
+            status: "active",
+            intensityScore: 5,
+            lastUpdatedChapter: 0,
+          });
+        }
       }
 
       // Get style guide
