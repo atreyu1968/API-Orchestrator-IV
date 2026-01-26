@@ -165,17 +165,33 @@ export class OrchestratorV2 {
       const outline = globalResult.parsed.outline;
       const plotThreads = globalResult.parsed.plot_threads;
 
-      // Store World Bible
+      // Store World Bible with timeline derived from outline
+      const timeline = outline.map(ch => ({
+        chapter: ch.chapter_num,
+        title: ch.title,
+        events: [ch.key_event],
+        summary: ch.summary,
+        act: ch.act || (ch.chapter_num <= Math.ceil(outline.length * 0.25) ? 1 : 
+                        ch.chapter_num <= Math.ceil(outline.length * 0.75) ? 2 : 3),
+      }));
+
       await storage.createWorldBible({
         projectId: project.id,
         characters: worldBible.characters as any,
         worldRules: worldBible.rules as any,
+        timeline: timeline as any,
         plotOutline: {
           chapterOutlines: outline.map(ch => ({
             number: ch.chapter_num,
             summary: ch.summary,
             keyEvents: [ch.key_event],
-          }))
+          })),
+          threeActStructure: globalResult.parsed.three_act_structure || null,
+          plotThreads: plotThreads.map(t => ({
+            name: t.name,
+            description: t.description,
+            goal: t.goal,
+          })),
         } as any,
       });
 
