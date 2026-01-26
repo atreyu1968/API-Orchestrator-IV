@@ -540,7 +540,7 @@ export default function Dashboard() {
     };
   };
 
-  const completedChapters = chapters.filter(c => c.status === "completed").length;
+  const completedChapters = chapters.filter(c => c.status === "completed" || c.status === "approved").length;
   const totalWordCount = chapters.reduce((sum, c) => sum + (c.wordCount || 0), 0);
 
   const handleStartGeneration = () => {
@@ -696,7 +696,7 @@ export default function Dashboard() {
                       data-testid={`progress-chapter-${chapter.chapterNumber}`}
                     >
                       <div className="flex items-center gap-2">
-                        {chapter.status === "completed" ? (
+                        {(chapter.status === "completed" || chapter.status === "approved") ? (
                           <CheckCircle className="h-4 w-4 text-green-500" />
                         ) : chapter.status === "revision" ? (
                           <RefreshCw className="h-4 w-4 text-orange-500 animate-spin" />
@@ -729,10 +729,10 @@ export default function Dashboard() {
                           </span>
                         )}
                         <Badge 
-                          variant={chapter.status === "completed" ? "default" : chapter.status === "revision" ? "destructive" : "secondary"}
+                          variant={(chapter.status === "completed" || chapter.status === "approved") ? "default" : chapter.status === "revision" ? "destructive" : "secondary"}
                           className="text-xs"
                         >
-                          {chapter.status === "completed" ? "Listo" : 
+                          {(chapter.status === "completed" || chapter.status === "approved") ? "Listo" : 
                            chapter.status === "writing" ? "Escribiendo" :
                            chapter.status === "editing" ? "Editando" : 
                            chapter.status === "revision" ? "Reescribiendo" : "Pendiente"}
