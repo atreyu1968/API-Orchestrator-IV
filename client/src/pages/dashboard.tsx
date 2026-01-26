@@ -469,6 +469,7 @@ export default function Dashboard() {
           
           if (data.type === "agent_status") {
             const role = data.role as AgentRole;
+            queryClient.invalidateQueries({ queryKey: ["/api/agent-statuses"] });
             if (data.status === "thinking") {
               setCurrentStage(role);
               addLog("thinking", data.message || `${agentNames[role]} está procesando...`, role);
