@@ -207,6 +207,17 @@ export default function Dashboard() {
     refetchInterval: currentProject?.status === "generating" ? 3000 : false,
   });
 
+  const { data: worldBible } = useQuery<{ plotOutline?: { chapterOutlines?: Array<{ number: number; summary: string; keyEvents: string[] }> } }>({
+    queryKey: ["/api/projects", currentProject?.id, "world-bible"],
+    enabled: !!currentProject?.id,
+  });
+
+  // Extract chapter titles from outline
+  const outlineTitles = worldBible?.plotOutline?.chapterOutlines?.reduce((acc, ch) => {
+    acc[ch.number] = ch.summary?.substring(0, 60) + (ch.summary && ch.summary.length > 60 ? "..." : "");
+    return acc;
+  }, {} as Record<number, string>) || {};
+
   const fetchLogs = () => {
     if (!currentProject?.id) return;
     
@@ -741,6 +752,8 @@ export default function Dashboard() {
                           <CheckCircle className="h-4 w-4 text-green-500" />
                         ) : chapter.status === "revision" ? (
                           <RefreshCw className="h-4 w-4 text-orange-500 animate-spin" />
+                        ) : sceneProgress && sceneProgress.chapterNumber === chapter.chapterNumber ? (
+                          <Loader2 className="h-4 w-4 text-primary animate-spin" />
                         ) : (
                           <Clock className="h-4 w-4 text-muted-foreground" />
                         )}
@@ -748,25 +761,30 @@ export default function Dashboard() {
                           {chapter.chapterNumber === 0 ? "Prólogo" :
                            chapter.chapterNumber === 998 ? "Epílogo" :
                            chapter.chapterNumber === 999 ? "Nota del Autor" :
-                           `Capítulo ${chapter.chapterNumber}`}
+                           `Cap. ${chapter.chapterNumber}`}
                         </span>
-                        {chapter.title && chapter.chapterNumber !== 0 && chapter.chapterNumber !== 998 && chapter.chapterNumber !== 999 && (
-                          <span className="text-sm text-muted-foreground truncate max-w-[200px]">
-                            - {chapter.title}
-                          </span>
-                        )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm text-muted-foreground truncate block">
+                          {chapter.title || outlineTitles[chapter.chapterNumber] || ""}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {sceneProgress && sceneProgress.chapterNumber === chapter.chapterNumber && currentProject.status === "generating" && (
+                          <Badge variant="outline" className="text-xs animate-pulse bg-primary/10">
+                            Escena {sceneProgress.sceneNumber}
+                          </Badge>
+                        )}
                         {chapter.wordCount && chapter.wordCount > 0 && (
                           <span className="text-xs text-muted-foreground">
-                            {chapter.wordCount.toLocaleString()} palabras
+                            {chapter.wordCount.toLocaleString()} pal.
                           </span>
                         )}
                         <Badge 
                           variant={chapter.status === "completed" ? "default" : chapter.status === "revision" ? "destructive" : "secondary"}
                           className="text-xs"
                         >
-                          {chapter.status === "completed" ? "Completado" : 
+                          {chapter.status === "completed" ? "Listo" : 
                            chapter.status === "writing" ? "Escribiendo" :
                            chapter.status === "editing" ? "Editando" : 
                            chapter.status === "revision" ? "Reescribiendo" : "Pendiente"}
