@@ -477,6 +477,7 @@ export class OrchestratorV2 {
           plotOutline: {
             chapterOutlines: outline.map(ch => ({
               number: ch.chapter_num,
+              title: ch.title,
               summary: ch.summary,
               keyEvents: [ch.key_event],
             })),
