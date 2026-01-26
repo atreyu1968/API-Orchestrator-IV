@@ -81,25 +81,36 @@ function TimelineTab({ events }: { events: TimelineEvent[] }) {
     <ScrollArea className="h-[400px]">
       <div className="relative pl-6 pr-4 space-y-4">
         <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-border" />
-        {events.map((event, index) => (
-          <div key={index} className="relative" data-testid={`timeline-event-${index}`}>
-            <div className="absolute -left-4 top-1.5 w-3 h-3 rounded-full bg-primary border-2 border-background" />
-            <div className="bg-card border border-card-border rounded-md p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Badge variant="secondary" className="text-xs">Cap. {event.chapter}</Badge>
-                <span className="text-sm font-medium">{safeStringify(event.event)}</span>
+        {events.map((event, index) => {
+          const eventAny = event as any;
+          const chapterNum = event.chapter || eventAny.number || index + 1;
+          const eventText = event.event || eventAny.title || eventAny.summary || "";
+          const characters = event.characters || [];
+          const keyEvents = eventAny.keyEvents || [];
+          const significance = event.significance || (keyEvents.length > 0 ? keyEvents[0] : null);
+
+          return (
+            <div key={index} className="relative" data-testid={`timeline-event-${index}`}>
+              <div className="absolute -left-4 top-1.5 w-3 h-3 rounded-full bg-primary border-2 border-background" />
+              <div className="bg-card border border-card-border rounded-md p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge variant="secondary" className="text-xs">Cap. {chapterNum}</Badge>
+                  <span className="text-sm font-medium">{safeStringify(eventText)}</span>
+                </div>
+                {characters.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {characters.map((char: string, i: number) => (
+                      <Badge key={i} className="text-xs bg-chart-1/10 text-chart-1">{safeStringify(char)}</Badge>
+                    ))}
+                  </div>
+                )}
+                {significance && (
+                  <p className="text-xs text-muted-foreground mt-2 italic">{safeStringify(significance)}</p>
+                )}
               </div>
-              <div className="flex flex-wrap gap-1">
-                {event.characters.map((char, i) => (
-                  <Badge key={i} className="text-xs bg-chart-1/10 text-chart-1">{safeStringify(char)}</Badge>
-                ))}
-              </div>
-              {event.significance && (
-                <p className="text-xs text-muted-foreground mt-2 italic">{safeStringify(event.significance)}</p>
-              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </ScrollArea>
   );
