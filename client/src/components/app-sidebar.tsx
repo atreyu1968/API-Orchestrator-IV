@@ -33,7 +33,8 @@ import {
   ListOrdered,
   Edit3,
   Zap,
-  Sparkles
+  Sparkles,
+  DollarSign
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -55,6 +56,7 @@ const settingsNavItems = [
   { title: "Pseudónimos", url: "/pseudonyms", icon: User },
   { title: "Series", url: "/series", icon: Library },
   { title: "Cola de Proyectos", url: "/queue", icon: ListOrdered },
+  { title: "Historial de Costos", url: "/costs-history", icon: DollarSign },
   { title: "Configuración", url: "/config", icon: Settings },
 ];
 
