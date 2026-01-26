@@ -88,6 +88,61 @@ export class OrchestratorV2 {
     return title || "Sin título";
   }
 
+  private generateTitleFromSummary(summary: string): string {
+    if (!summary || summary.length < 5) return "";
+    
+    // Try to extract a meaningful phrase from the summary
+    // Look for key patterns that often contain good titles
+    
+    // Pattern 1: Look for quoted content (ship names, place names, etc.)
+    const quotedMatch = summary.match(/'([^']{3,30})'/);
+    if (quotedMatch) return quotedMatch[1];
+    
+    // Pattern 2: Get the first sentence only
+    const firstSentence = summary.split(/[.!?]/)[0]?.trim() || "";
+    if (!firstSentence || firstSentence.length < 5) return "";
+    
+    // Pattern 3: Look for key nouns/phrases that make good titles
+    // Common chapter title patterns: "El/La [noun]", "Los/Las [noun]", action phrases
+    const keyPhrases = [
+      /el (hallazgo|descubrimiento|misterio|secreto|cadáver|cuerpo|testigo|sospechoso|rastro|encuentro|interrogatorio|enfrentamiento|conflicto|amanecer|anochecer|regreso|viaje)/i,
+      /la (huida|búsqueda|revelación|traición|verdad|mentira|pista|sombra|luz|noche|tormenta|calma|confesión|escena|evidencia)/i,
+      /las? (sombras?|huellas?|señales?|marcas?|aguas?)/i,
+      /los? (secretos?|indicios?|restos?)/i,
+    ];
+    
+    for (const pattern of keyPhrases) {
+      const match = firstSentence.match(pattern);
+      if (match) {
+        let title = match[0].charAt(0).toUpperCase() + match[0].slice(1);
+        return title;
+      }
+    }
+    
+    // Pattern 4: Extract first 3-5 significant words from first sentence
+    const words = firstSentence.split(/\s+/).slice(0, 5);
+    let title = words.join(" ");
+    
+    // Truncate at word boundary to max 35 chars
+    if (title.length > 35) {
+      const lastSpace = title.lastIndexOf(" ", 35);
+      title = title.slice(0, lastSpace > 10 ? lastSpace : 35);
+    }
+    
+    // Remove trailing articles or prepositions
+    title = title.replace(/\s+(el|la|los|las|un|una|de|del|en|a|y|con|por|para)$/i, "");
+    
+    // Remove trailing punctuation
+    title = title.replace(/[.,;:!?]+$/, "");
+    
+    // Capitalize first letter
+    if (title.length > 0) {
+      title = title.charAt(0).toUpperCase() + title.slice(1);
+    }
+    
+    return title.length > 5 ? title : "";
+  }
+
   private async syncChapterHeaders(projectId: number, outline: Array<{ chapter_num: number; title: string }>): Promise<void> {
     const existingChapters = await storage.getChaptersByProject(projectId);
     if (existingChapters.length === 0) return;
@@ -109,9 +164,11 @@ export class OrchestratorV2 {
       
       // Extract any existing title from the content header
       let existingTitleFromContent = "";
+      let hasHeader = false;
       for (const pattern of headerPatterns) {
         const match = chapter.content.match(pattern);
         if (match) {
+          hasHeader = true;
           // Get the title part (after the colon/dash)
           const titlePart = match[match.length - 1]?.trim() || "";
           if (titlePart && !titlePart.match(/^(Prólogo|Epílogo|Capítulo \d+)$/i)) {
@@ -121,54 +178,97 @@ export class OrchestratorV2 {
         }
       }
       
-      // Priority: chapter.title from DB > existingTitleFromContent > outlineEntry?.title
-      let titleToUse = (chapter.title && !chapter.title.match(/^Capítulo \d+$/i)) 
-        ? chapter.title 
-        : existingTitleFromContent || outlineEntry?.title || "";
+      // Priority: chapter.title from DB (if not generic) > existingTitleFromContent > outlineEntry?.title (if not generic)
+      // Also try to extract a title from the chapter summary if no descriptive title exists
+      let titleToUse = "";
+      
+      // Helper to check if a title is valid (not too long, not generic)
+      const isValidTitle = (title: string) => {
+        if (!title || title.length > 60) return false;  // Too long = probably content, not title
+        if (title.match(/^Capítulo \d+$/i)) return false;  // Generic
+        return true;
+      };
+      
+      if (chapter.title && isValidTitle(chapter.title)) {
+        titleToUse = chapter.title;
+      } else if (existingTitleFromContent && isValidTitle(existingTitleFromContent)) {
+        titleToUse = existingTitleFromContent;
+      } else if (outlineEntry?.title && isValidTitle(outlineEntry.title)) {
+        titleToUse = outlineEntry.title;
+      } else if (chapter.summary) {
+        // Try to generate a title from the chapter summary
+        titleToUse = this.generateTitleFromSummary(chapter.summary);
+      }
       
       // Remove "Prólogo:", "Epílogo:", or "Capítulo X:" prefix from title if it exists
       titleToUse = titleToUse.replace(/^(Prólogo|Prologo|Epílogo|Epilogo|Nota del Autor)\s*[:|-]?\s*/i, "").trim();
       titleToUse = titleToUse.replace(/^Capítulo\s+\d+\s*[:|-]?\s*/i, "").trim();
       
-      // Determine the correct header based on chapter number
+      // Determine the correct header and DB title based on chapter number
       let correctHeader = "";
+      let correctDbTitle = "";
       if (chapter.chapterNumber === 0) {
         correctHeader = "# Prólogo";
+        correctDbTitle = "Prólogo";
         if (titleToUse && titleToUse.toLowerCase() !== "prólogo") {
           correctHeader += `: ${titleToUse}`;
+          correctDbTitle += `: ${titleToUse}`;
         }
       } else if (chapter.chapterNumber === 998) {
         correctHeader = "# Epílogo";
+        correctDbTitle = "Epílogo";
         if (titleToUse && titleToUse.toLowerCase() !== "epílogo") {
           correctHeader += `: ${titleToUse}`;
+          correctDbTitle += `: ${titleToUse}`;
         }
       } else if (chapter.chapterNumber === 999) {
         correctHeader = "# Nota del Autor";
+        correctDbTitle = "Nota del Autor";
       } else {
         correctHeader = `# Capítulo ${chapter.chapterNumber}`;
+        correctDbTitle = titleToUse || `Capítulo ${chapter.chapterNumber}`;
         if (titleToUse && !titleToUse.match(/^Capítulo \d+$/i)) {
           correctHeader += `: ${titleToUse}`;
         }
       }
 
       let updatedContent = chapter.content;
-      let wasUpdated = false;
+      let contentWasUpdated = false;
+      let titleWasUpdated = false;
 
+      // Check if we need to update an existing header
       for (const pattern of headerPatterns) {
         const match = updatedContent.match(pattern);
         if (match) {
           const oldHeader = match[0];
           if (oldHeader !== correctHeader) {
             updatedContent = updatedContent.replace(pattern, correctHeader);
-            wasUpdated = true;
+            contentWasUpdated = true;
             console.log(`[OrchestratorV2] Chapter ${chapter.chapterNumber}: "${oldHeader.substring(0, 40)}..." -> "${correctHeader}"`);
           }
           break;
         }
       }
 
-      if (wasUpdated) {
-        await storage.updateChapter(chapter.id, { content: updatedContent });
+      // If no header exists, add one at the beginning
+      if (!hasHeader) {
+        updatedContent = correctHeader + "\n\n" + updatedContent.trimStart();
+        contentWasUpdated = true;
+        console.log(`[OrchestratorV2] Chapter ${chapter.chapterNumber}: Added header "${correctHeader}"`);
+      }
+
+      // Check if DB title needs updating
+      if (chapter.title !== correctDbTitle) {
+        titleWasUpdated = true;
+        console.log(`[OrchestratorV2] Chapter ${chapter.chapterNumber}: DB title "${chapter.title}" -> "${correctDbTitle}"`);
+      }
+
+      // Update in database
+      if (contentWasUpdated || titleWasUpdated) {
+        const updates: any = {};
+        if (contentWasUpdated) updates.content = updatedContent;
+        if (titleWasUpdated) updates.title = correctDbTitle;
+        await storage.updateChapter(chapter.id, updates);
       }
     }
   }
