@@ -64,6 +64,30 @@ export class OrchestratorV2 {
     });
   }
 
+  private generateTitleFromHook(hookOrBeat: string): string {
+    if (!hookOrBeat || hookOrBeat.length < 3) return "";
+    
+    // Clean and truncate the hook to create a title
+    let title = hookOrBeat.trim();
+    
+    // Remove common prefixes
+    title = title.replace(/^(el |la |los |las |un |una |unos |unas )/i, "");
+    
+    // Capitalize first letter
+    title = title.charAt(0).toUpperCase() + title.slice(1);
+    
+    // Truncate to reasonable length (max 50 chars for a title)
+    if (title.length > 50) {
+      const lastSpace = title.lastIndexOf(" ", 50);
+      title = title.slice(0, lastSpace > 20 ? lastSpace : 50) + "...";
+    }
+    
+    // Remove trailing punctuation except ellipsis
+    title = title.replace(/[.,;:!?]+$/, "");
+    
+    return title || "Sin título";
+  }
+
   async generateNovel(project: Project): Promise<void> {
     console.log(`[OrchestratorV2] Starting novel generation for "${project.title}" (ID: ${project.id})`);
     
@@ -771,7 +795,8 @@ export class OrchestratorV2 {
           return;
         }
 
-        const chapterOutline = {
+        // Plan scenes first with a generic outline
+        const tempOutline = {
           chapter_num: chapterNum,
           title: `Capítulo ${chapterNum}`,
           summary: `Continuación de la historia - Capítulo ${chapterNum}`,
@@ -784,7 +809,7 @@ export class OrchestratorV2 {
         this.callbacks.onAgentStatus("chapter-architect", "active", `Planificando escenas para Capítulo ${chapterNum}...`);
         
         const chapterPlan = await this.chapterArchitect.execute({
-          chapterOutline,
+          chapterOutline: tempOutline,
           worldBible: worldBibleData,
           previousChapterSummary: previousSummary,
           storyState: rollingSummary,
@@ -796,6 +821,18 @@ export class OrchestratorV2 {
         }
 
         this.addTokenUsage(chapterPlan.tokenUsage);
+        
+        // Generate a better title from the chapter hook or first scene
+        const generatedTitle = chapterPlan.parsed.chapter_hook 
+          ? this.generateTitleFromHook(chapterPlan.parsed.chapter_hook)
+          : chapterPlan.parsed.scenes[0]?.plot_beat 
+            ? this.generateTitleFromHook(chapterPlan.parsed.scenes[0].plot_beat)
+            : `Capítulo ${chapterNum}`;
+        
+        const chapterOutline = {
+          ...tempOutline,
+          title: generatedTitle,
+        };
 
         // Write scenes
         let fullChapterText = "";
