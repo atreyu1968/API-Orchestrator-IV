@@ -25,7 +25,9 @@ import {
   Play,
   AlertTriangle,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface TranslationProgress {
   isTranslating: boolean;
@@ -186,6 +188,7 @@ export default function ExportPage() {
   const [eventSourceRef, setEventSourceRef] = useState<EventSource | null>(null);
   const [projectSearch, setProjectSearch] = useState("");
   const [translationSearch, setTranslationSearch] = useState("");
+  const [useLitTranslators2, setUseLitTranslators2] = useState(true);
   
   const savedState = loadTranslationState();
   const [translationProgress, setTranslationProgress] = useState<TranslationProgress>({
@@ -416,6 +419,158 @@ export default function ExportPage() {
         }, 3000);
       }
     };
+  }, [toast, completedProjects, eventSourceRef]);
+
+  const startTranslationV2 = useCallback((projectId: number, srcLang: string, tgtLang: string, projectTitle?: string, source: "original" | "reedit" = "original") => {
+    if (eventSourceRef) {
+      eventSourceRef.close();
+      setEventSourceRef(null);
+    }
+    
+    const title = projectTitle || completedProjects.find(p => p.id === projectId)?.title || "Proyecto";
+    
+    setTranslationProgress({
+      isTranslating: true,
+      currentChapter: 0,
+      totalChapters: 0,
+      chapterTitle: "Analizando estilo y tipografía...",
+      inputTokens: 0,
+      outputTokens: 0,
+      status: "active",
+    });
+    
+    saveTranslationState({
+      projectId,
+      projectTitle: title,
+      sourceLanguage: srcLang,
+      targetLanguage: tgtLang,
+      startedAt: new Date().toISOString(),
+      currentChapter: 0,
+      totalChapters: 0,
+      chapterTitle: "Analizando estilo y tipografía...",
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+
+    const body = source === "reedit" 
+      ? { reeditProjectId: projectId, targetLanguage: tgtLang }
+      : { projectId, targetLanguage: tgtLang };
+
+    fetch("/api/translations/v2/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(response => {
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      
+      const processStream = async () => {
+        if (!reader) return;
+        
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          
+          for (const line of lines) {
+            if (line.startsWith("event: ")) {
+              const eventType = line.slice(7);
+              const dataLine = lines[lines.indexOf(line) + 1];
+              if (dataLine?.startsWith("data: ")) {
+                try {
+                  const data = JSON.parse(dataLine.slice(6));
+                  
+                  if (eventType === "started") {
+                    queryClient.invalidateQueries({ queryKey: ["/api/translations"] });
+                  } else if (eventType === "status") {
+                    setTranslationProgress(prev => ({
+                      ...prev,
+                      chapterTitle: data.message || data.status,
+                    }));
+                  } else if (eventType === "strategy") {
+                    toast({
+                      title: "Estrategia definida",
+                      description: `Reglas tipográficas: ${data.typographical_rules?.substring(0, 50)}...`,
+                    });
+                  } else if (eventType === "progress") {
+                    setTranslationProgress(prev => ({
+                      ...prev,
+                      currentChapter: data.current,
+                      totalChapters: data.total,
+                      chapterTitle: `Transcreando fragmento ${data.current}/${data.total}...`,
+                    }));
+                    queryClient.invalidateQueries({ queryKey: ["/api/translations"] });
+                  } else if (eventType === "complete") {
+                    saveTranslationState(null);
+                    setTranslationProgress({
+                      isTranslating: false,
+                      currentChapter: 0,
+                      totalChapters: 0,
+                      chapterTitle: "",
+                      inputTokens: 0,
+                      outputTokens: 0,
+                    });
+                    queryClient.invalidateQueries({ queryKey: ["/api/translations"] });
+                    toast({
+                      title: "Transcreación completada",
+                      description: `${data.projectTitle} transcreado a ${getLangName(tgtLang)}. Puntuación: Maquetación ${data.layoutScore}/10, Naturalidad ${data.naturalnessScore}/10`,
+                    });
+                  } else if (eventType === "error") {
+                    saveTranslationState(null);
+                    setTranslationProgress({
+                      isTranslating: false,
+                      currentChapter: 0,
+                      totalChapters: 0,
+                      chapterTitle: "",
+                      inputTokens: 0,
+                      outputTokens: 0,
+                    });
+                    toast({
+                      title: "Error en transcreación",
+                      description: data.error,
+                      variant: "destructive",
+                    });
+                  }
+                } catch {}
+              }
+            }
+          }
+        }
+      };
+      
+      processStream().catch(err => {
+        console.error("Stream error:", err);
+        saveTranslationState(null);
+        setTranslationProgress({
+          isTranslating: false,
+          currentChapter: 0,
+          totalChapters: 0,
+          chapterTitle: "",
+          inputTokens: 0,
+          outputTokens: 0,
+        });
+      });
+    }).catch(err => {
+      console.error("Fetch error:", err);
+      saveTranslationState(null);
+      setTranslationProgress({
+        isTranslating: false,
+        currentChapter: 0,
+        totalChapters: 0,
+        chapterTitle: "",
+        inputTokens: 0,
+        outputTokens: 0,
+      });
+      toast({
+        title: "Error",
+        description: "No se pudo iniciar la transcreación",
+        variant: "destructive",
+      });
+    });
   }, [toast, completedProjects, eventSourceRef]);
 
   useEffect(() => {
@@ -877,6 +1032,20 @@ export default function ExportPage() {
                     </div>
                   </div>
 
+                  <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/20 rounded-md">
+                    <Checkbox 
+                      id="use-v2" 
+                      checked={useLitTranslators2}
+                      onCheckedChange={(checked) => setUseLitTranslators2(checked === true)}
+                      data-testid="checkbox-littranslators2"
+                    />
+                    <Label htmlFor="use-v2" className="flex items-center gap-2 cursor-pointer text-sm">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      <span>LitTranslators 2.0</span>
+                      <Badge variant="secondary" className="text-xs">Transcreación</Badge>
+                    </Label>
+                  </div>
+
                   {!translationProgress.isTranslating && (
                     <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-sm">
                       <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
@@ -970,7 +1139,13 @@ export default function ExportPage() {
                     </div>
                   ) : (
                     <Button
-                      onClick={() => startTranslation(selectedProject.id, sourceLanguage, targetLanguage, selectedProject.title, selectedProject.source)}
+                      onClick={() => {
+                        if (useLitTranslators2) {
+                          startTranslationV2(selectedProject.id, sourceLanguage, targetLanguage, selectedProject.title, selectedProject.source);
+                        } else {
+                          startTranslation(selectedProject.id, sourceLanguage, targetLanguage, selectedProject.title, selectedProject.source);
+                        }
+                      }}
                       disabled={translationProgress.isTranslating || sourceLanguage === targetLanguage}
                       className="w-full"
                       data-testid="button-translate-project"
@@ -982,8 +1157,8 @@ export default function ExportPage() {
                         </>
                       ) : (
                         <>
-                          <Languages className="h-4 w-4 mr-2" />
-                          Traducir a {getLangName(targetLanguage)}
+                          {useLitTranslators2 ? <Sparkles className="h-4 w-4 mr-2" /> : <Languages className="h-4 w-4 mr-2" />}
+                          {useLitTranslators2 ? "Transcrear" : "Traducir"} a {getLangName(targetLanguage)}
                         </>
                       )}
                     </Button>
