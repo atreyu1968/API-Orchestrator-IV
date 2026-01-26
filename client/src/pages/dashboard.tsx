@@ -11,6 +11,7 @@ import { DuplicateManager } from "@/components/duplicate-manager";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Play, FileText, Clock, CheckCircle, Download, Archive, Copy, Trash2, ClipboardCheck, RefreshCw, Ban, CheckCheck, Plus, Upload, Database, Info, ExternalLink, Loader2 } from "lucide-react";
@@ -21,7 +22,7 @@ import type { Project, AgentStatus, Chapter } from "@shared/schema";
 
 import type { AgentRole } from "@/components/process-flow";
 
-const agentNames: Record<AgentRole, string> = {
+const agentNames: Record<string, string> = {
   architect: "El Arquitecto",
   ghostwriter: "El Narrador",
   editor: "El Editor",
@@ -30,6 +31,12 @@ const agentNames: Record<AgentRole, string> = {
   "continuity-sentinel": "El Centinela",
   "voice-auditor": "El Auditor de Voz",
   "semantic-detector": "El Detector Semántico",
+  "global-architect": "Arquitecto Global",
+  "chapter-architect": "Diseñador de Escenas",
+  "ghostwriter-v2": "Escritor de Escenas",
+  "smart-editor": "Editor Inteligente",
+  "summarizer": "Compresor",
+  "narrative-director": "Director Narrativo",
 };
 
 function sortChaptersForDisplay(chapters: Chapter[]): Chapter[] {
@@ -73,6 +80,8 @@ export default function Dashboard() {
   const [architectInstructions, setArchitectInstructions] = useState("");
   const [showExtendDialog, setShowExtendDialog] = useState(false);
   const [targetChapters, setTargetChapters] = useState("");
+  const [useV2Pipeline, setUseV2Pipeline] = useState(false);
+  const [sceneProgress, setSceneProgress] = useState<{chapterNumber: number; sceneNumber: number; wordCount: number} | null>(null);
   const { projects, currentProject, setSelectedProjectId } = useProject();
 
   const handleExportData = async () => {
@@ -191,7 +200,7 @@ export default function Dashboard() {
   });
 
   const startGenerationMutation = useMutation({
-    mutationFn: async (params: { projectId: number; instructions?: string }) => {
+    mutationFn: async (params: { projectId: number; instructions?: string; useV2?: boolean }) => {
       // First save instructions if provided
       if (params.instructions) {
         await saveArchitectInstructionsMutation.mutateAsync({
@@ -199,14 +208,18 @@ export default function Dashboard() {
           instructions: params.instructions,
         });
       }
-      const response = await apiRequest("POST", `/api/projects/${params.projectId}/generate`);
+      const endpoint = params.useV2 
+        ? `/api/projects/${params.projectId}/generate-v2`
+        : `/api/projects/${params.projectId}/generate`;
+      const response = await apiRequest("POST", endpoint);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      addLog("info", "Generación iniciada");
+      addLog("info", variables.useV2 ? "Generación iniciada (LitAgents 2.0 - Escenas)" : "Generación iniciada");
       setShowArchitectDialog(false);
       setArchitectInstructions("");
+      setUseV2Pipeline(false);
     },
     onError: (error) => {
       toast({
@@ -412,7 +425,15 @@ export default function Dashboard() {
             queryClient.invalidateQueries({ queryKey: ["/api/projects", activeProject.id, "chapters"] });
           } else if (data.type === "chapter_status_change") {
             queryClient.invalidateQueries({ queryKey: ["/api/projects", activeProject.id, "chapters"] });
+          } else if (data.type === "scene_complete") {
+            setSceneProgress({
+              chapterNumber: data.chapterNumber,
+              sceneNumber: data.sceneNumber,
+              wordCount: data.wordCount
+            });
+            addLog("writing", `Escena ${data.sceneNumber} del capítulo ${data.chapterNumber} completada (${data.wordCount} palabras)`, "ghostwriter-v2" as AgentRole);
           } else if (data.type === "chapter_complete") {
+            setSceneProgress(null);
             const sectionName = data.chapterTitle === "Prólogo" ? "Prólogo" :
                                data.chapterTitle === "Epílogo" ? "Epílogo" :
                                data.chapterTitle === "Nota del Autor" ? "Nota del Autor" :
@@ -470,6 +491,7 @@ export default function Dashboard() {
       startGenerationMutation.mutate({
         projectId: currentProject.id,
         instructions: architectInstructions.trim() || undefined,
+        useV2: useV2Pipeline,
       });
     }
   };
@@ -566,7 +588,7 @@ export default function Dashboard() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
                 <CardTitle className="text-lg">Progreso del Manuscrito</CardTitle>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   <div className="flex items-center gap-2 text-sm">
                     <FileText className="h-4 w-4 text-muted-foreground" />
                     <span>{completedChapters}/{currentProject.chapterCount + (currentProject.hasPrologue ? 1 : 0) + (currentProject.hasEpilogue ? 1 : 0) + (currentProject.hasAuthorNote ? 1 : 0)} secciones</span>
@@ -575,6 +597,11 @@ export default function Dashboard() {
                     <Clock className="h-4 w-4 text-muted-foreground" />
                     <span>{totalWordCount.toLocaleString()} palabras</span>
                   </div>
+                  {sceneProgress && currentProject.status === "generating" && (
+                    <Badge variant="secondary" className="animate-pulse" data-testid="badge-scene-progress">
+                      Escena {sceneProgress.sceneNumber} - Cap. {sceneProgress.chapterNumber}
+                    </Badge>
+                  )}
                   {currentProject.status === "completed" && (
                     <>
                       <Button
@@ -1050,6 +1077,40 @@ export default function Dashboard() {
                 data-testid="input-architect-instructions"
               />
             </div>
+            
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">LitAgents 2.0</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Nuevo pipeline por escenas con edición quirúrgica
+                  </p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="use-v2"
+                    checked={useV2Pipeline}
+                    onCheckedChange={(checked) => setUseV2Pipeline(checked === true)}
+                    data-testid="checkbox-use-v2"
+                  />
+                  <label htmlFor="use-v2" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Activar
+                  </label>
+                </div>
+              </div>
+              {useV2Pipeline && (
+                <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                  <strong>Características v2:</strong>
+                  <ul className="list-disc list-inside mt-1 space-y-0.5">
+                    <li>Escritura por escenas (3-4 por capítulo)</li>
+                    <li>Parches quirúrgicos en lugar de reescrituras</li>
+                    <li>Director Narrativo cada 5 capítulos</li>
+                    <li>Menor consumo de tokens</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+            
             <div className="text-sm text-muted-foreground">
               <p><strong>Nota:</strong> Estas instrucciones son opcionales. Puedes iniciar la generación sin ellas.</p>
             </div>
