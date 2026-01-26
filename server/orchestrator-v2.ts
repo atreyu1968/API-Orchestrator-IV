@@ -781,7 +781,58 @@ export class OrchestratorV2 {
             label = `Chapter ${chapterNumber} checkpoint`;
           }
           console.log(`[OrchestratorV2] Running Narrative Director: ${label}`);
-          await this.runNarrativeDirector(project.id, chapterNumber, project.chapterCount, chapterSummaries);
+          const directorResult = await this.runNarrativeDirector(project.id, chapterNumber, project.chapterCount, chapterSummaries);
+          
+          // If epilogue needs rewrite due to unresolved threads or issues
+          if (isEpilogue && directorResult.needsRewrite) {
+            console.log(`[OrchestratorV2] Rewriting epilogue to resolve: ${directorResult.unresolvedThreads.join(", ")}`);
+            this.callbacks.onAgentStatus("ghostwriter-v2", "active", "Rewriting epilogue to close narrative threads...");
+            
+            // Get current epilogue chapter
+            const allChapters = await storage.getChaptersByProject(project.id);
+            const epilogueChapter = allChapters.find(c => c.chapterNumber === 998);
+            
+            if (epilogueChapter) {
+              // Generate enhanced scene plan with closure instructions
+              const closureInstructions = directorResult.unresolvedThreads.length > 0 
+                ? `Debes añadir cierres para: ${directorResult.unresolvedThreads.join(", ")}`
+                : directorResult.directive;
+              
+              // Get previous chapter summary for context
+              const prevChapterSummary = chapterSummaries[chapterSummaries.length - 2] || "";
+              
+              // Rewrite epilogue using Ghostwriter with closure instructions
+              const rewriteResult = await this.ghostwriter.execute({
+                scenePlan: {
+                  scene_num: 1,
+                  characters: [],
+                  setting: "Final",
+                  plot_beat: closureInstructions,
+                  emotional_beat: "Cierre y resolución de todos los hilos narrativos",
+                  ending_hook: "Conclusión satisfactoria",
+                },
+                prevSceneContext: prevChapterSummary,
+                rollingSummary: rollingSummary,
+                worldBible,
+                guiaEstilo: "",
+              });
+              
+              this.addTokenUsage(rewriteResult.tokenUsage);
+              
+              if (rewriteResult.content) {
+                await storage.updateChapter(epilogueChapter.id, {
+                  originalContent: epilogueChapter.originalContent, // Keep original
+                  content: rewriteResult.content,
+                });
+                
+                console.log(`[OrchestratorV2] Epilogue rewritten to close ${directorResult.unresolvedThreads.length} narrative threads`);
+                this.callbacks.onAgentStatus("ghostwriter-v2", "completed", `Epilogue rewritten (${directorResult.unresolvedThreads.length} threads closed)`);
+              } else {
+                console.log(`[OrchestratorV2] Epilogue rewrite failed - no content generated`);
+                this.callbacks.onAgentStatus("ghostwriter-v2", "completed", "Rewrite skipped");
+              }
+            }
+          }
         }
 
         // Update token counts
@@ -804,7 +855,7 @@ export class OrchestratorV2 {
     currentChapter: number,
     totalChapters: number,
     chapterSummaries: string[]
-  ): Promise<void> {
+  ): Promise<{ needsRewrite: boolean; directive: string; unresolvedThreads: string[] }> {
     this.callbacks.onAgentStatus("narrative-director", "active", "Analyzing story progress...");
 
     // Get plot threads from database
@@ -831,8 +882,13 @@ export class OrchestratorV2 {
 
     this.addTokenUsage(result.tokenUsage);
 
+    let needsRewrite = false;
+    let directive = "";
+    let unresolvedThreads: string[] = [];
+
     if (result.parsed) {
       console.log(`[OrchestratorV2] Narrative Director directive: ${result.parsed.directive}`);
+      directive = result.parsed.directive || "";
       
       // Update thread statuses if needed
       if (result.parsed.thread_updates) {
@@ -847,10 +903,29 @@ export class OrchestratorV2 {
         }
       }
 
+      // Check for unresolved threads at epilogue
+      if (currentChapter === 998) {
+        unresolvedThreads = plotThreads
+          .filter(t => t.status === "active" || t.status === "developing")
+          .map(t => t.name);
+        
+        // Needs rewrite if there are unresolved threads or critical issues in directive
+        const criticalKeywords = ["inconsistencia", "sin resolver", "unresolved", "contradiction", "error", "problema"];
+        const hasCriticalIssue = criticalKeywords.some(kw => directive.toLowerCase().includes(kw));
+        
+        needsRewrite = unresolvedThreads.length > 0 || hasCriticalIssue;
+        
+        if (needsRewrite) {
+          console.log(`[OrchestratorV2] Epilogue needs rewrite: ${unresolvedThreads.length} unresolved threads, critical issues: ${hasCriticalIssue}`);
+        }
+      }
+
       this.callbacks.onAgentStatus("narrative-director", "completed", `Tension: ${result.parsed.tension_level}/10`);
     } else {
       this.callbacks.onAgentStatus("narrative-director", "completed", "Analysis complete");
     }
+
+    return { needsRewrite, directive, unresolvedThreads };
   }
 
   /**
@@ -1571,10 +1646,17 @@ export class OrchestratorV2 {
       ]);
       
       // For chapters not in outline, we need to create synthetic outline entries
-      const outlineMap = new Map(outline.map((ch: any) => [ch.chapter_num, ch]));
-      const missingChapters = Array.from(allMissingNumbers).sort((a, b) => a - b).map(num => {
+      interface ChapterOutlineEntry {
+        chapter_num: number;
+        title: string;
+        summary: string;
+        key_event: string;
+        emotional_arc?: string;
+      }
+      const outlineMap = new Map<number, ChapterOutlineEntry>(outline.map((ch: any) => [ch.chapter_num, ch]));
+      const missingChapters: ChapterOutlineEntry[] = Array.from(allMissingNumbers).sort((a, b) => a - b).map(num => {
         if (outlineMap.has(num)) {
-          return outlineMap.get(num);
+          return outlineMap.get(num)!;
         }
         // Create synthetic outline entry for chapters not in World Bible
         return {
