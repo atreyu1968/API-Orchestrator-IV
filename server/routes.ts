@@ -6066,11 +6066,31 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     }
   });
 
+  // LitEditors 3.0: Update reedit project (for setting context, etc.)
+  app.patch("/api/reedit-projects/:id", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const updates = req.body;
+      
+      const project = await storage.getReeditProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      await storage.updateReeditProject(projectId, updates);
+      const updatedProject = await storage.getReeditProject(projectId);
+      
+      res.json(updatedProject);
+    } catch (error: any) {
+      console.error("Error updating reedit project:", error);
+      res.status(500).json({ error: error.message || "Failed to update project" });
+    }
+  });
+
   // LitEditors 3.0: Analyze structure endpoint
   app.post("/api/reedit-projects/:id/analyze-structure", async (req: Request, res: Response) => {
     try {
       const projectId = parseInt(req.params.id);
-      const { settingContext } = req.body;
       
       const project = await storage.getReeditProject(projectId);
       if (!project) {
@@ -6081,40 +6101,20 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         return res.status(400).json({ error: "Project is already being processed" });
       }
 
-      // Update setting context if provided
-      if (settingContext) {
-        await storage.updateReeditProject(projectId, { settingContext });
-      }
-
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.flushHeaders();
-
-      const sendEvent = (event: string, data: any) => {
-        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      };
-
-      developmentalEditor.setProgressCallback((progress) => {
-        sendEvent("progress", progress);
-      });
-
-      sendEvent("started", { projectId });
-
+      // Run the analysis pipeline (this may take a while)
       await developmentalEditor.runFullPipeline(projectId);
 
       const updatedProject = await storage.getReeditProject(projectId);
-      sendEvent("complete", {
+      
+      res.json({
+        success: true,
         projectId,
         structuralReport: updatedProject?.structuralReport,
         reconstructionPlan: updatedProject?.reconstructionPlan,
       });
-
-      res.end();
     } catch (error: any) {
       console.error("Error analyzing structure:", error);
-      res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
-      res.end();
+      res.status(500).json({ error: error.message || "Failed to analyze structure" });
     }
   });
 
@@ -6170,39 +6170,37 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         return res.status(400).json({ error: "Project is already being processed" });
       }
 
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.flushHeaders();
-
-      const sendEvent = (event: string, data: any) => {
-        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      };
-
-      developmentalEditor.setProgressCallback((progress) => {
-        sendEvent("progress", progress);
+      // Respond immediately with success
+      res.json({
+        success: true,
+        message: "Plan execution started",
+        projectId,
       });
 
-      sendEvent("started", { projectId });
+      // Execute plan and then continue with regular reedit pipeline in background
+      (async () => {
+        try {
+          await developmentalEditor.executeApprovedPlan(projectId);
+          
+          // After plan execution, continue with the regular reedit pipeline
+          const orchestrator = new ReeditOrchestrator();
+          activeReeditOrchestrators.set(projectId, orchestrator);
 
-      await developmentalEditor.executeApprovedPlan(projectId);
-
-      // After plan execution, continue with the regular reedit pipeline
-      const orchestrator = new ReeditOrchestrator();
-      activeReeditOrchestrators.set(projectId, orchestrator);
-
-      sendEvent("status", { message: "Plan executed. Starting style editing..." });
-
-      orchestrator.processProject(projectId).finally(() => {
-        activeReeditOrchestrators.delete(projectId);
-        sendEvent("complete", { projectId });
-        res.end();
-      });
+          orchestrator.processProject(projectId).finally(() => {
+            activeReeditOrchestrators.delete(projectId);
+          });
+        } catch (err: any) {
+          console.error("Background plan execution error:", err);
+          await storage.updateReeditProject(projectId, {
+            status: "error",
+            errorMessage: err.message || "Plan execution failed",
+          });
+        }
+      })();
 
     } catch (error: any) {
       console.error("Error executing plan:", error);
-      res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
-      res.end();
+      res.status(500).json({ error: error.message || "Failed to execute plan" });
     }
   });
 

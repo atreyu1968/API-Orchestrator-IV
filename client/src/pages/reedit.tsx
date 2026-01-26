@@ -624,6 +624,143 @@ function WorldBibleDisplay({ worldBible }: { worldBible: any }) {
   );
 }
 
+// LitEditors 3.0: Structural Report Display Component
+function StructuralReportDisplay({ report }: { report: any }) {
+  if (!report) return null;
+
+  const getSeverityBadge = (severity: string) => {
+    switch (severity?.toLowerCase()) {
+      case 'critical':
+      case 'critico':
+        return <Badge variant="destructive">Crítico</Badge>;
+      case 'major':
+      case 'mayor':
+        return <Badge className="bg-orange-500">Mayor</Badge>;
+      case 'minor':
+      case 'menor':
+        return <Badge variant="secondary">Menor</Badge>;
+      default:
+        return <Badge variant="outline">{severity}</Badge>;
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {report.critique && (
+        <div className="p-4 bg-muted/50 rounded-lg">
+          <h4 className="font-semibold mb-2">Crítica General</h4>
+          <p className="text-sm text-muted-foreground">{report.critique}</p>
+        </div>
+      )}
+
+      {report.plot_holes && report.plot_holes.length > 0 && (
+        <div>
+          <h4 className="font-semibold mb-2 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+            Huecos en la Trama ({report.plot_holes.length})
+          </h4>
+          <div className="space-y-2">
+            {report.plot_holes.map((hole: any, idx: number) => (
+              <Card key={idx} className="border-red-500/30">
+                <CardContent className="py-3">
+                  <div className="flex items-start gap-2">
+                    <Badge variant="outline" className="shrink-0">Cap. {hole.chapter || hole.between_chapters}</Badge>
+                    <div>
+                      <p className="text-sm font-medium">{hole.issue || hole.description}</p>
+                      {hole.suggestion && (
+                        <p className="text-xs text-muted-foreground mt-1">Sugerencia: {hole.suggestion}</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {report.redundancies && report.redundancies.length > 0 && (
+        <div>
+          <h4 className="font-semibold mb-2 flex items-center gap-2">
+            <XCircle className="h-4 w-4 text-orange-500" />
+            Redundancias ({report.redundancies.length})
+          </h4>
+          <div className="space-y-2">
+            {report.redundancies.map((red: any, idx: number) => (
+              <Card key={idx} className="border-orange-500/30">
+                <CardContent className="py-3">
+                  <div className="flex items-start gap-2">
+                    <Badge variant="outline" className="shrink-0">Caps. {red.chapters?.join(', ') || red.chapter}</Badge>
+                    <p className="text-sm">{red.issue || red.description}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {report.pacing_issues && report.pacing_issues.length > 0 && (
+        <div>
+          <h4 className="font-semibold mb-2 flex items-center gap-2">
+            <Clock className="h-4 w-4 text-yellow-500" />
+            Problemas de Ritmo ({report.pacing_issues.length})
+          </h4>
+          <div className="space-y-2">
+            {report.pacing_issues.map((pace: any, idx: number) => (
+              <Card key={idx} className="border-yellow-500/30">
+                <CardContent className="py-3">
+                  <div className="flex items-start gap-2">
+                    <Badge variant="outline" className="shrink-0">{pace.section || `Cap. ${pace.chapter}`}</Badge>
+                    <p className="text-sm">{pace.issue || pace.description}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {report.anachronisms_warning && report.anachronisms_warning.length > 0 && (
+        <div>
+          <h4 className="font-semibold mb-2 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-purple-500" />
+            Anacronismos Detectados ({report.anachronisms_warning.length})
+          </h4>
+          <div className="space-y-2">
+            {report.anachronisms_warning.map((ana: any, idx: number) => (
+              <Card key={idx} className="border-purple-500/30">
+                <CardContent className="py-3">
+                  <div className="flex items-start gap-2">
+                    <Badge variant="outline" className="shrink-0">Cap. {ana.chapter}</Badge>
+                    <div>
+                      <p className="text-sm font-medium">{ana.element || ana.issue}</p>
+                      {ana.reason && (
+                        <p className="text-xs text-muted-foreground mt-1">{ana.reason}</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(!report.plot_holes || report.plot_holes.length === 0) &&
+       (!report.redundancies || report.redundancies.length === 0) &&
+       (!report.pacing_issues || report.pacing_issues.length === 0) &&
+       (!report.anachronisms_warning || report.anachronisms_warning.length === 0) && (
+        <div className="text-center py-8 text-muted-foreground">
+          <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-500" />
+          <p className="font-medium">No se detectaron problemas estructurales</p>
+          <p className="text-sm">El manuscrito tiene una estructura sólida.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Real-time progress report component - shows statistics, issues found, and before/after comparison
 function ProgressReportDisplay({ 
   project, 
@@ -1007,6 +1144,12 @@ export default function ReeditPage() {
   
   // Chat panel state
   const [showChat, setShowChat] = useState(false);
+  
+  // LitEditors 3.0 state
+  const [showStructuralDialog, setShowStructuralDialog] = useState(false);
+  const [settingContext, setSettingContext] = useState("");
+  const [structuralAnalysisProgress, setStructuralAnalysisProgress] = useState<{stage: string; message: string} | null>(null);
+  const [showPlanApprovalDialog, setShowPlanApprovalDialog] = useState(false);
 
   const { data: projects = [], isLoading: projectsLoading } = useQuery<ReeditProject[]>({
     queryKey: ["/api/reedit-projects"],
@@ -1076,6 +1219,61 @@ export default function ReeditPage() {
     },
     onSuccess: () => {
       toast({ title: "Procesamiento Iniciado", description: "El manuscrito está siendo reeditado" });
+      queryClient.invalidateQueries({ queryKey: ["/api/reedit-projects"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // LitEditors 3.0: Structural analysis mutation
+  const analyzeStructureMutation = useMutation({
+    mutationFn: async ({ projectId, settingContext }: { projectId: number; settingContext: string }) => {
+      // First update the setting context via a simple POST
+      await apiRequest("PATCH", `/api/reedit-projects/${projectId}`, { settingContext });
+      
+      // Then start the analysis which returns the result when complete
+      const result = await apiRequest("POST", `/api/reedit-projects/${projectId}/analyze-structure`, {});
+      return result;
+    },
+    onMutate: () => {
+      setStructuralAnalysisProgress({ stage: "analyzing", message: "Iniciando análisis estructural..." });
+    },
+    onSuccess: () => {
+      setStructuralAnalysisProgress(null);
+      toast({ title: "Análisis Completado", description: "El análisis estructural ha sido completado. Revisa el plan de reconstrucción." });
+      queryClient.invalidateQueries({ queryKey: ["/api/reedit-projects"] });
+      setShowStructuralDialog(false);
+      setShowPlanApprovalDialog(true);
+    },
+    onError: (error: Error) => {
+      setStructuralAnalysisProgress(null);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // LitEditors 3.0: Approve plan mutation
+  const approvePlanMutation = useMutation({
+    mutationFn: async ({ projectId, modifiedPlan }: { projectId: number; modifiedPlan?: any }) => {
+      return apiRequest("POST", `/api/reedit-projects/${projectId}/approve-plan`, { modifiedPlan });
+    },
+    onSuccess: () => {
+      toast({ title: "Plan Aprobado", description: "El plan de reconstrucción ha sido aprobado." });
+      queryClient.invalidateQueries({ queryKey: ["/api/reedit-projects"] });
+      setShowPlanApprovalDialog(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // LitEditors 3.0: Execute plan mutation
+  const executePlanMutation = useMutation({
+    mutationFn: async (projectId: number) => {
+      return apiRequest("POST", `/api/reedit-projects/${projectId}/execute-plan`);
+    },
+    onSuccess: () => {
+      toast({ title: "Ejecución Iniciada", description: "El plan está siendo ejecutado." });
       queryClient.invalidateQueries({ queryKey: ["/api/reedit-projects"] });
     },
     onError: (error: Error) => {
@@ -1604,6 +1802,7 @@ export default function ReeditPage() {
                     <TabsTrigger value="progress" data-testid="tab-trigger-progress">Estado</TabsTrigger>
                     <TabsTrigger value="chapters" data-testid="tab-trigger-chapters">Capítulos</TabsTrigger>
                     <TabsTrigger value="worldbible" data-testid="tab-trigger-worldbible">Biblia del Mundo</TabsTrigger>
+                    <TabsTrigger value="structural" data-testid="tab-trigger-structural">Análisis Estructural</TabsTrigger>
                     <TabsTrigger value="audits" data-testid="tab-trigger-audits">Auditorías QA</TabsTrigger>
                     <TabsTrigger value="report" data-testid="tab-trigger-report">Informe Final</TabsTrigger>
                   </TabsList>
@@ -2000,6 +2199,104 @@ export default function ReeditPage() {
                     </ScrollArea>
                   </TabsContent>
 
+                  <TabsContent value="structural">
+                    <ScrollArea className="h-[500px] mt-4">
+                      <div className="space-y-4">
+                        {selectedProjectData.currentStage === "plan_ready" && !selectedProjectData.planApproved && (
+                          <Card className="border-2 border-amber-500/50 bg-amber-500/5">
+                            <CardContent className="pt-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                                <span className="font-semibold">Plan de Reconstrucción Listo</span>
+                              </div>
+                              <p className="text-sm text-muted-foreground mb-4">
+                                El análisis estructural ha generado un plan de reconstrucción. Revísalo y apruébalo para continuar.
+                              </p>
+                              <Button onClick={() => setShowPlanApprovalDialog(true)} data-testid="button-review-plan">
+                                <Eye className="h-4 w-4 mr-2" />
+                                Revisar Plan
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {selectedProjectData.planApproved && (
+                          <Card className="border-2 border-green-500/50 bg-green-500/5">
+                            <CardContent className="pt-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <CheckCircle className="h-5 w-5 text-green-500" />
+                                <span className="font-semibold">Plan Aprobado</span>
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                El plan de reconstrucción ha sido aprobado y está listo para ejecutarse.
+                              </p>
+                              {selectedProjectData.status === "pending" && (
+                                <Button 
+                                  onClick={() => executePlanMutation.mutate(selectedProjectData.id)}
+                                  disabled={executePlanMutation.isPending}
+                                  className="mt-4"
+                                  data-testid="button-execute-plan"
+                                >
+                                  {executePlanMutation.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                  ) : (
+                                    <Play className="h-4 w-4 mr-2" />
+                                  )}
+                                  Ejecutar Plan
+                                </Button>
+                              )}
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {(selectedProjectData.structuralReport as any) && (
+                          <Card>
+                            <CardHeader>
+                              <CardTitle className="flex items-center gap-2">
+                                <FileText className="h-5 w-5 text-primary" />
+                                Informe Estructural (LitEditors 3.0)
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <StructuralReportDisplay report={selectedProjectData.structuralReport as any} />
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {!selectedProjectData.structuralReport && selectedProjectData.status === "pending" && (
+                          <Card>
+                            <CardContent className="pt-6">
+                              <div className="text-center space-y-4">
+                                <FileText className="h-12 w-12 mx-auto opacity-50" />
+                                <div>
+                                  <p className="font-medium">Análisis Estructural Avanzado</p>
+                                  <p className="text-sm text-muted-foreground mt-1">
+                                    Ejecuta un análisis profundo para detectar huecos en la trama, redundancias, problemas de ritmo y anacronismos.
+                                  </p>
+                                </div>
+                                <Button onClick={() => setShowStructuralDialog(true)} data-testid="button-start-structural-analysis">
+                                  <Zap className="h-4 w-4 mr-2" />
+                                  Iniciar Análisis Estructural
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {structuralAnalysisProgress && (
+                          <Card className="border-2 border-primary/50">
+                            <CardContent className="pt-4">
+                              <div className="flex items-center gap-2">
+                                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                                <span className="font-medium">{structuralAnalysisProgress.message}</span>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </TabsContent>
+
                   <TabsContent value="audits">
                     <ScrollArea className="h-[400px] mt-4">
                       {auditReports.length > 0 ? (
@@ -2144,6 +2441,143 @@ export default function ReeditPage() {
                 <RotateCcw className="h-4 w-4 mr-2" />
               )}
               Reiniciar Proyecto
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* LitEditors 3.0: Structural Analysis Configuration Dialog */}
+      <Dialog open={showStructuralDialog} onOpenChange={setShowStructuralDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Análisis Estructural (LitEditors 3.0)</DialogTitle>
+            <DialogDescription>
+              Configura el contexto histórico para detectar anacronismos y problemas de continuidad.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="setting-context">Contexto Histórico</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Ej: "París, 1920" o "España medieval, siglo XIV". Esto ayuda a detectar anacronismos.
+              </p>
+              <Input
+                id="setting-context"
+                value={settingContext}
+                onChange={(e) => setSettingContext(e.target.value)}
+                placeholder="Lugar y época de la historia..."
+                data-testid="input-setting-context"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowStructuralDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={() => {
+                if (selectedProjectData) {
+                  analyzeStructureMutation.mutate({
+                    projectId: selectedProjectData.id,
+                    settingContext,
+                  });
+                }
+              }}
+              disabled={analyzeStructureMutation.isPending}
+              data-testid="button-confirm-structural-analysis"
+            >
+              {analyzeStructureMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Zap className="h-4 w-4 mr-2" />
+              )}
+              Iniciar Análisis
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* LitEditors 3.0: Plan Approval Dialog */}
+      <Dialog open={showPlanApprovalDialog} onOpenChange={setShowPlanApprovalDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Plan de Reconstrucción</DialogTitle>
+            <DialogDescription>
+              Revisa el plan generado por el análisis estructural. Puedes aprobar el plan o modificarlo antes de la ejecución.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 py-4">
+            {selectedProjectData?.reconstructionPlan && Array.isArray(selectedProjectData.reconstructionPlan) ? (
+              <div className="space-y-3">
+                {(selectedProjectData.reconstructionPlan as any[]).map((step: any, idx: number) => (
+                  <Card key={idx} className={`border-l-4 ${
+                    step.action === 'KEEP' ? 'border-l-green-500' :
+                    step.action === 'INSERT' ? 'border-l-blue-500' :
+                    step.action === 'DELETE' ? 'border-l-red-500' :
+                    step.action === 'MERGE' ? 'border-l-purple-500' : 'border-l-gray-500'
+                  }`}>
+                    <CardContent className="py-3">
+                      <div className="flex items-start gap-3">
+                        <Badge className={`shrink-0 ${
+                          step.action === 'KEEP' ? 'bg-green-500' :
+                          step.action === 'INSERT' ? 'bg-blue-500' :
+                          step.action === 'DELETE' ? 'bg-red-500' :
+                          step.action === 'MERGE' ? 'bg-purple-500' : ''
+                        }`}>
+                          {step.action}
+                        </Badge>
+                        <div className="flex-1">
+                          {step.original_id && (
+                            <p className="text-sm">
+                              <span className="text-muted-foreground">Capítulo original:</span> {step.original_id}
+                              {step.new_order && <span className="text-muted-foreground"> → Nuevo orden: {step.new_order}</span>}
+                            </p>
+                          )}
+                          {step.merge_with && (
+                            <p className="text-sm text-muted-foreground">
+                              Fusionar con capítulo: {step.merge_with}
+                            </p>
+                          )}
+                          {step.reason && (
+                            <p className="text-sm mt-1">{step.reason}</p>
+                          )}
+                          {step.prompt_for_writer && (
+                            <p className="text-xs text-muted-foreground mt-1 italic">
+                              Instrucciones: {step.prompt_for_writer}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No hay plan de reconstrucción disponible</p>
+              </div>
+            )}
+          </ScrollArea>
+          <DialogFooter className="border-t pt-4">
+            <Button variant="outline" onClick={() => setShowPlanApprovalDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={() => {
+                if (selectedProjectData) {
+                  approvePlanMutation.mutate({ projectId: selectedProjectData.id });
+                }
+              }}
+              disabled={approvePlanMutation.isPending}
+              data-testid="button-approve-plan"
+            >
+              {approvePlanMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Check className="h-4 w-4 mr-2" />
+              )}
+              Aprobar Plan
             </Button>
           </DialogFooter>
         </DialogContent>
