@@ -1,6 +1,7 @@
 // LitAgents 2.0 - Scene-Based Orchestrator
 // Implements the new pipeline: Global Architect → Chapter Architect → Ghostwriter (scene by scene) → Smart Editor → Patcher → Summarizer → Narrative Director
 
+import * as fs from "fs";
 import { storage } from "./storage";
 import {
   GlobalArchitectAgent,
@@ -540,7 +541,7 @@ export class OrchestratorV2 {
 
         // Store Plot Threads for Narrative Director
         for (const thread of plotThreads) {
-          await storage.createPlotThread({
+          await storage.createProjectPlotThread({
             projectId: project.id,
             name: thread.name,
             description: thread.description || null,
@@ -838,7 +839,7 @@ export class OrchestratorV2 {
         for (const update of result.parsed.thread_updates) {
           const thread = dbThreads.find(t => t.name === update.name);
           if (thread) {
-            await storage.updatePlotThread(thread.id, {
+            await storage.updateProjectPlotThread(thread.id, {
               status: update.new_status,
               lastUpdatedChapter: currentChapter,
             });
@@ -1484,12 +1485,29 @@ export class OrchestratorV2 {
    * This handles cases where the pipeline jumped over chapters
    */
   async generateMissingChapters(project: Project): Promise<void> {
+    fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] generateMissingChapters START for project ${project.id}\n`, { flag: "a" });
+    console.log(`[OrchestratorV2] generateMissingChapters STARTED for project ${project.id}`);
     try {
-      await storage.updateProject(project.id, { status: "generating" });
+      fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] About to update project status\n`, { flag: "a" });
+      console.log(`[OrchestratorV2] Updating project status to generating...`);
+      
+      try {
+        const updateResult = await storage.updateProject(project.id, { status: "generating" });
+        fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] updateProject returned: ${JSON.stringify(updateResult)}\n`, { flag: "a" });
+      } catch (updateError: any) {
+        fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] updateProject ERROR: ${updateError.message}\n${updateError.stack}\n`, { flag: "a" });
+        throw updateError;
+      }
+      
+      fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] Project status updated successfully\n`, { flag: "a" });
+      console.log(`[OrchestratorV2] Project status updated successfully`);
       this.callbacks.onAgentStatus("orchestrator-v2", "active", "Analizando capítulos faltantes...");
 
+      fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] About to get World Bible\n`, { flag: "a" });
+      
       // Get World Bible and outline
       const worldBible = await storage.getWorldBibleByProject(project.id);
+      fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] World Bible result: ${worldBible ? 'FOUND' : 'NULL'}\n`, { flag: "a" });
       if (!worldBible || !worldBible.plotOutline) {
         throw new Error("No se encontró el World Bible con el outline de capítulos");
       }
@@ -1528,12 +1546,53 @@ export class OrchestratorV2 {
       const existingChapters = await storage.getChaptersByProject(project.id);
       const existingNumbers = new Set(existingChapters.map(c => c.chapterNumber));
 
-      // Find missing chapters (excluding epilogue 998 and author note 999)
-      const missingChapters = outline.filter((ch: any) => 
+      // Calculate expected chapter numbers based on project config
+      const expectedChapterNumbers: number[] = [];
+      if (project.hasPrologue) expectedChapterNumbers.push(0);
+      for (let i = 1; i <= project.chapterCount; i++) {
+        expectedChapterNumbers.push(i);
+      }
+      // Note: We don't add 998 (epilogue) or 999 (author's note) here - those are handled separately
+      
+      // Find missing chapters from outline (excluding epilogue 998 and author note 999)
+      const missingFromOutline = outline.filter((ch: any) => 
         !existingNumbers.has(ch.chapter_num) && ch.chapter_num < 998
       );
+      
+      // Also find chapters expected by chapterCount but not in existing chapters
+      const missingFromExpected = expectedChapterNumbers.filter(num => 
+        !existingNumbers.has(num)
+      );
+      
+      // Combine both sources, deduplicate
+      const allMissingNumbers = new Set([
+        ...missingFromOutline.map((c: any) => c.chapter_num),
+        ...missingFromExpected
+      ]);
+      
+      // For chapters not in outline, we need to create synthetic outline entries
+      const outlineMap = new Map(outline.map((ch: any) => [ch.chapter_num, ch]));
+      const missingChapters = Array.from(allMissingNumbers).sort((a, b) => a - b).map(num => {
+        if (outlineMap.has(num)) {
+          return outlineMap.get(num);
+        }
+        // Create synthetic outline entry for chapters not in World Bible
+        return {
+          chapter_num: num,
+          title: `Capítulo ${num}`,
+          summary: `Continúa la narrativa del capítulo ${num - 1}`,
+          key_event: "",
+          emotional_arc: "",
+        };
+      });
+
+      fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] Outline chapters: ${outline.map((c: any) => c.chapter_num).join(', ')}\n`, { flag: "a" });
+      fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] Expected chapters (from chapterCount=${project.chapterCount}): ${expectedChapterNumbers.join(', ')}\n`, { flag: "a" });
+      fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] Existing chapters: ${Array.from(existingNumbers).sort((a: any, b: any) => a - b).join(', ')}\n`, { flag: "a" });
+      fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] Missing chapters (< 998): ${missingChapters.map((c: any) => c.chapter_num).join(', ') || 'NONE'}\n`, { flag: "a" });
 
       if (missingChapters.length === 0) {
+        fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] No missing chapters found, setting status to completed\n`, { flag: "a" });
         this.callbacks.onAgentStatus("orchestrator-v2", "completed", "No hay capítulos faltantes");
         await storage.updateProject(project.id, { status: "completed" });
         this.callbacks.onProjectComplete();

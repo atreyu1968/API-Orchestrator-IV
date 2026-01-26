@@ -216,9 +216,9 @@ export interface IStorage {
   deleteChatProposal(id: number): Promise<void>;
 
   // LitAgents 2.0: Plot Threads for Narrative Director
-  createPlotThread(data: InsertPlotThread): Promise<PlotThread>;
+  createProjectPlotThread(data: InsertPlotThread): Promise<PlotThread>;
   getPlotThreadsByProject(projectId: number): Promise<PlotThread[]>;
-  updatePlotThread(id: number, data: Partial<PlotThread>): Promise<PlotThread | undefined>;
+  updateProjectPlotThread(id: number, data: Partial<PlotThread>): Promise<PlotThread | undefined>;
   deletePlotThreadsByProject(projectId: number): Promise<void>;
 }
 
@@ -1235,7 +1235,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // LitAgents 2.0: Plot Threads for Narrative Director
-  async createPlotThread(data: InsertPlotThread): Promise<PlotThread> {
+  async createProjectPlotThread(data: InsertPlotThread): Promise<PlotThread> {
     const [thread] = await db.insert(plotThreads).values(data).returning();
     return thread;
   }
@@ -1246,7 +1246,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(plotThreads.createdAt));
   }
 
-  async updatePlotThread(id: number, data: Partial<PlotThread>): Promise<PlotThread | undefined> {
+  async updateProjectPlotThread(id: number, data: Partial<PlotThread>): Promise<PlotThread | undefined> {
     const [updated] = await db.update(plotThreads)
       .set(data)
       .where(eq(plotThreads.id, id))

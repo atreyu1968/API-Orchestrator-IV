@@ -783,6 +783,10 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Project is already generating" });
       }
 
+      // Allow generating missing chapters even for completed projects
+      // The orchestrator will detect which chapters are missing
+      console.log(`[generate-missing] Starting for project ${id}, current status: ${project.status}`);
+      
       res.json({ message: "Generating missing chapters", projectId: id });
 
       const sendToStreams = (data: any) => {
@@ -823,7 +827,14 @@ export async function registerRoutes(
         },
       });
 
-      orchestrator.generateMissingChapters(project).catch(console.error);
+      console.log(`[generate-missing] About to call orchestrator.generateMissingChapters for project ${id}`);
+      const promise = orchestrator.generateMissingChapters(project);
+      console.log(`[generate-missing] Promise created, adding catch handler`);
+      promise.catch((err) => {
+        console.error("[generate-missing] ERROR in generateMissingChapters:", err);
+        persistActivityLog(id, "error", `Error generando capítulos faltantes: ${err.message}`, "orchestrator-v2");
+      });
+      console.log(`[generate-missing] Catch handler added, returning response`);
 
     } catch (error) {
       console.error("Error starting missing chapters generation:", error);
