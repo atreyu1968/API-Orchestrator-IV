@@ -39,8 +39,8 @@ Sistema autónomo de orquestación de agentes de IA para la escritura, edición 
 
 ```bash
 # Clonar repositorio
-git clone https://github.com/tu-usuario/litagents.git
-cd litagents
+git clone https://github.com/atreyu1968/API-Orchestrator-II.git
+cd API-Orchestrator-II
 
 # Ejecutar instalador
 sudo bash install.sh

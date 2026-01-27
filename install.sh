@@ -20,7 +20,7 @@ APP_PORT="5000"
 APP_USER="litagents"
 DB_NAME="litagents"
 DB_USER="litagents"
-GITHUB_REPO="https://github.com/tu-usuario/litagents.git"
+GITHUB_REPO="https://github.com/atreyu1968/API-Orchestrator-II.git"
 
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
@@ -83,7 +83,15 @@ print_success "Usuario '$APP_USER' configurado"
 
 print_status "Guardando configuración en $CONFIG_DIR..."
 mkdir -p "$CONFIG_DIR"
-DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:5432/$DB_NAME"
+
+# En modo actualización, preservar DATABASE_URL y SESSION_SECRET existentes
+if [ "$IS_UPDATE" = true ]; then
+    # DATABASE_URL y SESSION_SECRET ya fueron cargados con source
+    print_status "Preservando credenciales existentes..."
+else
+    # Solo en instalación nueva, construir DATABASE_URL
+    DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:5432/$DB_NAME"
+fi
 
 echo ""
 print_status "Configuración de claves API (opcional):"
@@ -91,12 +99,19 @@ echo ""
 
 if [ "$IS_UPDATE" = false ] || [ -z "$DEEPSEEK_API_KEY" ]; then
     read -p "$(echo -e ${YELLOW}DeepSeek API Key${NC} [Enter para omitir]: )" INPUT_DEEPSEEK
-    DEEPSEEK_API_KEY="${INPUT_DEEPSEEK:-}"
+    DEEPSEEK_API_KEY="${INPUT_DEEPSEEK:-$DEEPSEEK_API_KEY}"
 fi
 
 if [ "$IS_UPDATE" = false ] || [ -z "$GEMINI_API_KEY" ]; then
     read -p "$(echo -e ${YELLOW}Gemini API Key${NC} [Enter para omitir]: )" INPUT_GEMINI
-    GEMINI_API_KEY="${INPUT_GEMINI:-}"
+    GEMINI_API_KEY="${INPUT_GEMINI:-$GEMINI_API_KEY}"
+fi
+
+# Preservar SECURE_COOKIES existente en actualizaciones
+if [ "$IS_UPDATE" = true ] && [ -n "$SECURE_COOKIES" ]; then
+    CURRENT_SECURE_COOKIES="$SECURE_COOKIES"
+else
+    CURRENT_SECURE_COOKIES="false"
 fi
 
 cat > "$CONFIG_DIR/env" << EOF
@@ -104,7 +119,7 @@ NODE_ENV=production
 PORT=$APP_PORT
 DATABASE_URL=$DATABASE_URL
 SESSION_SECRET=$SESSION_SECRET
-SECURE_COOKIES=false
+SECURE_COOKIES=$CURRENT_SECURE_COOKIES
 DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY
 GEMINI_API_KEY=$GEMINI_API_KEY
 AI_INTEGRATIONS_GEMINI_API_KEY=$GEMINI_API_KEY
