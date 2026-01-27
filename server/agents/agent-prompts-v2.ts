@@ -65,6 +65,38 @@ export const PROMPTS_V2 = {
     5. Define los hilos narrativos que mantendrán la tensión
 
     ╔══════════════════════════════════════════════════════════════════╗
+    ║ REGLAS DE DISEÑO ANTI-CLICHÉ (OBLIGATORIAS EN TODO CAPÍTULO)    ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║                                                                  ║
+    ║ 1. PROTAGONISTA ACTIVO:                                         ║
+    ║    - El protagonista obtiene información por MÉRITO PROPIO      ║
+    ║    - PROHIBIDO planificar: mensajes anónimos, llamadas          ║
+    ║      misteriosas, informantes oportunos, "alguien le envía"     ║
+    ║    - Cada descubrimiento debe ser GANADO: investigación,        ║
+    ║      interrogatorio, deducción, infiltración, vigilancia.       ║
+    ║                                                                  ║
+    ║ 2. VARIEDAD ESTRUCTURAL EN CADA CAPÍTULO:                       ║
+    ║    - NO repetir patrones consecutivos. Si Cap 5 tiene           ║
+    ║      "viaje + reflexión + encuentro", Cap 6 debe ser diferente. ║
+    ║    - Alternar: acción, diálogo tenso, descubrimiento,           ║
+    ║      confrontación, análisis, escape, trampa, traición.         ║
+    ║    - Evitar abuso de descripciones climáticas (lluvia, frío).   ║
+    ║                                                                  ║
+    ║ 3. ANTAGONISTAS COMPETENTES E INTELIGENTES:                     ║
+    ║    - Los villanos NO explican sus planes al héroe.              ║
+    ║    - No planificar escenas tipo "el villano monologa antes      ║
+    ║      de matar". Los antagonistas ACTÚAN con competencia.        ║
+    ║    - Si hay confrontación verbal, el villano AMENAZA o PROVOCA, ║
+    ║      pero NUNCA revela su estrategia completa.                  ║
+    ║                                                                  ║
+    ║ 4. GESTOS Y MULETILLAS LIMITADOS:                               ║
+    ║    - Define gestos característicos pero planifica su uso        ║
+    ║      ESPACIADO (1 vez cada 5-10 capítulos, no en cada uno).     ║
+    ║    - Evitar que un personaje repita el mismo gesto físico       ║
+    ║      (tocarse anillo, cicatriz, etc.) en múltiples capítulos.   ║
+    ╚══════════════════════════════════════════════════════════════════╝
+
+    ╔══════════════════════════════════════════════════════════════════╗
     ║ REGLA CRÍTICA E INVIOLABLE: NÚMERO EXACTO DE CAPÍTULOS          ║
     ╠══════════════════════════════════════════════════════════════════╣
     ║ El usuario solicita ${chapters} CAPÍTULOS REGULARES (numerados 1-${chapters}).    ║
@@ -152,6 +184,27 @@ export const PROMPTS_V2 = {
     - Generen tensión y emoción
     - Terminen con hooks que impulsen a continuar
 
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║ REGLAS ANTI-CLICHÉ (OBLIGATORIAS)                               ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║ 1. PROTAGONISTA ACTIVO: El protagonista DEBE obtener            ║
+    ║    información por mérito propio (investigación, deducción,     ║
+    ║    interrogatorios). PROHIBIDO: mensajes anónimos, llamadas     ║
+    ║    misteriosas o informantes que "aparecen" con pistas.         ║
+    ║                                                                  ║
+    ║ 2. VARIEDAD ESTRUCTURAL: Cada escena debe tener estructura      ║
+    ║    diferente. PROHIBIDO repetir patrones como:                  ║
+    ║    - Conducir → Clima → Mensaje → Llegar tarde                  ║
+    ║    - Personaje reflexiona → Recibe llamada → Sale corriendo     ║
+    ║    Varía: acción directa, diálogo tenso, descubrimiento,        ║
+    ║    confrontación, infiltración, análisis de pruebas.            ║
+    ║                                                                  ║
+    ║ 3. ANTAGONISTAS INTELIGENTES: Los villanos NO explican sus      ║
+    ║    planes. Actúan, no monologan. Si hay enfrentamiento verbal,  ║
+    ║    el antagonista provoca/amenaza, pero NUNCA revela su         ║
+    ║    estrategia completa al héroe.                                ║
+    ╚══════════════════════════════════════════════════════════════════╝
+
     SALIDA REQUERIDA (JSON):
     {
       "scenes": [
@@ -234,6 +287,38 @@ export const PROMPTS_V2 = {
     4. NO termines el capítulo, solo termina la escena según el plan.
     5. Usa guion largo (—) para diálogos en español.
     6. PROHIBIDO: usar clichés de IA como "crucial", "fascinante", "torbellino de emociones".
+
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║ ERRORES FATALES - TOLERANCIA CERO (REESCRITURA AUTOMÁTICA)      ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║                                                                  ║
+    ║ ❌ DEUS EX MACHINA DIGITAL:                                     ║
+    ║    - Mensajes anónimos/encriptados con pistas                   ║
+    ║    - Llamadas de números ocultos con información clave          ║
+    ║    - Informantes que "aparecen" justo cuando se necesitan       ║
+    ║    - Correos electrónicos misteriosos con coordenadas/fotos     ║
+    ║    → El protagonista DEBE descubrir por MÉRITO PROPIO:          ║
+    ║      interrogando, investigando, deduciendo, infiltrándose.     ║
+    ║                                                                  ║
+    ║ ❌ VILLANO EXPLICATIVO:                                         ║
+    ║    - Antagonista que monologa sus planes al héroe               ║
+    ║    - "Déjame explicarte por qué hago esto..."                   ║
+    ║    - Villano que revela debilidades de su plan                  ║
+    ║    → Los antagonistas ACTÚAN, no explican. Son competentes      ║
+    ║      y representan amenaza real. Si hablan, AMENAZAN/PROVOCAN.  ║
+    ║                                                                  ║
+    ║ ❌ REPETICIÓN DE PATRONES:                                      ║
+    ║    - Misma secuencia: conducir → clima → mensaje → llegar       ║
+    ║    - Abuso de descripciones atmosféricas (lluvia, frío)         ║
+    ║    - Protagonista siempre reactivo (espera, recibe, va)         ║
+    ║    → VARÍA la estructura: acción directa, confrontación,        ║
+    ║      análisis forense, diálogo de esgrima, infiltración.        ║
+    ║                                                                  ║
+    ║ ❌ MULETILLAS FÍSICAS EXCESIVAS:                                ║
+    ║    - Repetir el mismo gesto (tocarse anillo, cicatriz, etc.)    ║
+    ║    - Más de 2 veces por capítulo = ERROR                        ║
+    ║    → USA gestos variados según la emoción del momento.          ║
+    ╚══════════════════════════════════════════════════════════════════╝
     
     SALIDA: Solo el texto de la narrativa. Sin comentarios, sin marcadores.
   `,
@@ -256,6 +341,26 @@ export const PROMPTS_V2 = {
     CRITERIOS DE EVALUACIÓN (Doble 10):
     1. LÓGICA (1-10): ¿Tiene sentido la trama? ¿Hay errores de continuidad? ¿Los personajes actúan coherentemente?
     2. ESTILO (1-10): ¿Es buena la prosa? ¿Ritmo adecuado? ¿Evita clichés? ¿Muestra en vez de contar?
+
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║ ERRORES FATALES - DETECTAR Y PENALIZAR (SCORE < 5 AUTOMÁTICO)   ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║                                                                  ║
+    ║ ❌ DEUS EX MACHINA DIGITAL: Si el protagonista recibe           ║
+    ║    información de forma pasiva (mensaje anónimo, llamada        ║
+    ║    misteriosa, informante oportuno) → LÓGICA = 4 máximo.        ║
+    ║                                                                  ║
+    ║ ❌ VILLANO EXPLICATIVO: Si un antagonista explica su plan       ║
+    ║    o motivaciones al héroe en lugar de actuar                   ║
+    ║    → ESTILO = 4 máximo.                                         ║
+    ║                                                                  ║
+    ║ ❌ PATRÓN REPETITIVO: Si la estructura es idéntica a            ║
+    ║    capítulos anteriores (conducir→clima→mensaje→llegar)         ║
+    ║    → ESTILO = 5 máximo.                                         ║
+    ║                                                                  ║
+    ║ ❌ MULETILLA FÍSICA: Si un gesto/descripción se repite          ║
+    ║    más de 2 veces en el capítulo → ESTILO - 2 puntos.           ║
+    ╚══════════════════════════════════════════════════════════════════╝
 
     REGLAS DE APROBACIÓN:
     - Score > 8 en AMBOS criterios: APROBADO (is_approved: true)
