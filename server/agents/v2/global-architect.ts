@@ -134,7 +134,26 @@ export class GlobalArchitectAgent extends BaseAgent {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]) as GlobalArchitectOutput;
-        console.log(`[GlobalArchitect] Successfully parsed: ${parsed.outline?.length || 0} chapters, ${parsed.plot_threads?.length || 0} threads`);
+        
+        // Validate chapter count - count only regular chapters (1-N, excluding 0, 998, 999)
+        const regularChapters = parsed.outline?.filter(ch => 
+          ch.chapter_num > 0 && ch.chapter_num < 998
+        ) || [];
+        const expectedChapters = input.chapterCount;
+        
+        if (regularChapters.length !== expectedChapters) {
+          console.error(`[GlobalArchitect] CHAPTER COUNT MISMATCH: Expected ${expectedChapters} regular chapters, got ${regularChapters.length}`);
+          console.error(`[GlobalArchitect] Outline chapter_nums: ${parsed.outline?.map(ch => ch.chapter_num).join(', ')}`);
+          
+          // Return error to trigger retry or manual intervention
+          return {
+            ...response,
+            error: `El outline generado tiene ${regularChapters.length} capítulos regulares pero se solicitaron ${expectedChapters}. Por favor, regenere el proyecto.`,
+            parsed: undefined
+          };
+        }
+        
+        console.log(`[GlobalArchitect] Successfully parsed and validated: ${regularChapters.length} regular chapters, ${parsed.plot_threads?.length || 0} threads`);
         return { ...response, parsed };
       }
     } catch (e) {

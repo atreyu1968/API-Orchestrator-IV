@@ -64,6 +64,18 @@ export const PROMPTS_V2 = {
     4. Planifica la estructura de 3 actos con puntos de giro
     5. Define los hilos narrativos que mantendrán la tensión
 
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║ REGLA CRÍTICA E INVIOLABLE: NÚMERO EXACTO DE CAPÍTULOS          ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║ DEBES generar EXACTAMENTE ${chapters} capítulos en el outline.   ║
+    ║ - NO generes menos capítulos aunque creas que la trama cierra   ║
+    ║ - NO generes más capítulos de los solicitados                   ║
+    ║ - El prólogo (si existe) es chapter_num: 0, NO cuenta como cap. ║
+    ║ - El epílogo (si existe) es chapter_num: 998, NO cuenta como cap║
+    ║ - Los ${chapters} capítulos REGULARES son: chapter_num 1 a ${chapters}     ║
+    ║ - VERIFICA antes de finalizar que tienes EXACTAMENTE ${chapters} caps     ║
+    ╚══════════════════════════════════════════════════════════════════╝
+
     SALIDA REQUERIDA (JSON Estricto):
     {
       "world_bible": { 
