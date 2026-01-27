@@ -2,19 +2,7 @@
 
 ## Overview
 
-LitAgents is a Node.js application designed for orchestrating autonomous AI literary agents using Google's Gemini 3 Pro. Its primary purpose is to manage the entire novel-writing workflow, from initial plot planning to the production of a final, polished manuscript. The system aims to provide a comprehensive solution for authoring and refining literary works, enhancing efficiency and quality through AI-driven processes.
-
-Key capabilities include:
-- Orchestration of 9 specialized AI agents covering plot planning, prose writing, editing, quality assurance, and structural corrections.
-- **LitAgents 2.0**: New scene-based writing pipeline with 6 specialized agents optimized for DeepSeek AI, featuring surgical JSON patching for token efficiency.
-- A persistent World Bible system for maintaining consistent lore and character details.
-- Logging of AI reasoning processes for transparency and auditing.
-- A real-time dashboard for monitoring progress and agent activities.
-- Automated refinement loops for re-writing content that does not meet quality standards.
-- An auto-recovery system to handle stalled AI generations.
-- The ability to import and professionally edit external manuscripts in multiple languages.
-- Advanced features like chapter expansion, new chapter insertion, and chapter reordering for narrative optimization.
-- An automatic pause system for user intervention and a robust approval logic to ensure high-quality manuscript completion.
+LitAgents is a Node.js application designed for orchestrating autonomous AI literary agents to manage the entire novel-writing workflow, from initial plot planning to the production of a final, polished manuscript. It aims to provide a comprehensive solution for authoring and refining literary works, enhancing efficiency and quality through AI-driven processes. Key capabilities include orchestrating specialized AI agents, maintaining a persistent World Bible for consistency, logging AI reasoning, providing a real-time monitoring dashboard, and implementing automated refinement loops and auto-recovery systems. The system also supports importing and editing external manuscripts, advanced chapter manipulation, and an automatic pause and approval system for quality assurance. LitAgents 2.0 introduces a scene-based writing pipeline with surgical JSON patching for token efficiency and enhanced consistency checks.
 
 ## User Preferences
 
@@ -23,110 +11,85 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Frontend Architecture
-- **Framework**: React with TypeScript, built using Vite.
-- **Routing**: Wouter for client-side navigation.
-- **State Management**: TanStack Query for server state and caching.
-- **UI Components**: shadcn/ui library leveraging Radix UI primitives.
-- **Styling**: Tailwind CSS with a custom theme supporting light/dark modes.
-- **Design System**: Adheres to Microsoft Fluent Design principles, emphasizing productivity and clear typography (Inter, JetBrains Mono, Merriweather).
+- **Framework**: React with TypeScript (Vite).
+- **Routing**: Wouter.
+- **State Management**: TanStack Query.
+- **UI Components**: shadcn/ui (Radix UI primitives).
+- **Styling**: Tailwind CSS (light/dark modes).
+- **Design System**: Microsoft Fluent Design principles.
 
 ### Backend Architecture
 - **Runtime**: Node.js with Express.
-- **Language**: TypeScript with ES modules.
-- **API Pattern**: RESTful endpoints supplemented with Server-Sent Events (SSE) for real-time updates.
-- **Agent System**: Features modular agent classes inheriting from a BaseAgent, each with specialized system prompts optimized for Gemini 3's reasoning mode. An orchestrator manages the pipeline flow, incorporating refinement loops where the Editor agent can trigger rewrites based on detailed feedback.
+- **Language**: TypeScript (ES modules).
+- **API Pattern**: RESTful endpoints with Server-Sent Events (SSE).
+- **Agent System**: Modular agent classes (BaseAgent) with specialized system prompts. An orchestrator manages pipelines and refinement loops.
 
 ### Data Storage
-- **Database**: PostgreSQL, managed with Drizzle ORM.
-- **Schema**: Defined in `shared/schema.ts`.
-- **Key Tables**: `projects`, `chapters`, `worldBibles`, `thoughtLogs`, `agentStatuses`, `series`, `continuitySnapshots`, `importedManuscripts`, `importedChapters`, `plot_threads`. These tables store project metadata, chapter content, world-building elements, AI process logs, real-time status, series information, continuity summaries, details on imported manuscripts, and narrative thread tracking for LitAgents 2.0.
-- **LitAgents 2.0 Schema Additions**: `chapters` table has new columns (`scene_breakdown`, `summary`, `editor_feedback`, `quality_score`); `plot_threads` table tracks narrative threads for the Narrative Director agent.
+- **Database**: PostgreSQL (Drizzle ORM).
+- **Schema**: Defined in `shared/schema.ts` with tables for projects, chapters, world Bibles, thought logs, agent statuses, series, continuity snapshots, imported manuscripts, plot threads, world entities, and consistency violations.
 
 ### AI Integration
-- **Default Provider**: DeepSeek (cost-efficient), with Gemini as optional high-speed alternative.
-- **DeepSeek Models**:
-  - `deepseek-chat` (V3): Fast model (10-60s response), used for prose generation, editing, translation, and QA checks.
-  - `deepseek-reasoner` (R1): Slow reasoning model (5-15min), reserved only for Final Review.
-- **Gemini Models**: `gemini-3-pro-preview` for creative, `gemini-2.5-flash` for analysis.
-- **Provider Switching**: Users can switch between DeepSeek (economic) and Gemini (fast) via the sidebar selector.
-- **Performance Optimization**: Most agents now use V3 (fast) instead of R1 (slow) to reduce processing time from hours to minutes.
-- **Configuration**: Uses `temperature: 1.0` for creative output.
-- **Client Setup**: Utilizes the `@google/genai` SDK for Gemini or OpenAI-compatible API for DeepSeek.
+- **Default Provider**: DeepSeek (cost-efficient) with Gemini as an optional alternative.
+- **DeepSeek Models**: `deepseek-chat` (V3) for general tasks, `deepseek-reasoner` (R1) for final review.
+- **Gemini Models**: `gemini-3-pro-preview` for creative tasks, `gemini-2.5-flash` for analysis.
+- **Performance Optimization**: Focus on V3 models for faster processing.
+- **Configuration**: `temperature: 1.0` for creative output.
 
 ### Build System
-- **Development**: `tsx` for TypeScript execution with hot reload.
-- **Production**: `esbuild` for server code bundling and Vite for client asset compilation, outputting to a `dist/` directory.
+- **Development**: `tsx` (hot reload).
+- **Production**: `esbuild` for server, Vite for client.
 
 ### Feature Specifications
-- **Optimized Pipeline**: Streamlined re-edit pipeline reducing token consumption by consolidating problem detection and rewriting into a single pass.
-- **Manuscript Expansion System**: Agents (`ChapterExpansionAnalyzer`, `ChapterExpanderAgent`, `NewChapterGeneratorAgent`) for expanding short chapters and inserting new ones to fill narrative gaps.
-- **Chapter Reordering System**: Architect Analyzer can recommend and execute chapter reordering for improved narrative pacing, including automatic renumbering and title updates.
-- **Internal Chapter Header Sync**: Automatically updates chapter headers within the content (`originalContent`, `editedContent`) when chapters are reordered or inserted.
-- **Automatic Pause System**: The system pauses after multiple non-perfect evaluations, awaiting user instructions.
-- **Approval Logic**: Requires a single score of 9+ with no critical issues for project approval, preventing infinite loops on minor issues.
-- **Issue Hash Tracking System**: Prevents re-reporting of already resolved issues by generating and tracking unique hashes for issues.
-- **Improved Cancellation**: Allows for immediate cancellation of processes, with checks implemented before each chapter correction.
-- **Fast-Track Resume System**: Optimizes project resumption from `awaiting_instructions` by skipping unnecessary pipeline stages and directly engaging `runFinalReviewOnly()` with user instructions.
-- **Robust Server Restart Recovery**: When the server restarts during active generation, the QueueManager automatically marks incomplete projects as "paused", ensuring `resumeNovel()` is used instead of `generateNovel()`. This prevents regenerating the World Bible from scratch on each restart and allows chapter generation to continue from where it left off.
-- **Translation Export Improvements**: Markdown exports now: (1) strip code fences/JSON artifacts from AI output, (2) omit trailing dividers after the last chapter, and (3) use localized chapter labels (Prologue, Epilogue, Author's Note, Chapter) based on project language for 7 languages (es, en, fr, de, it, pt, ca).
-- **Immediate Continuity Validation**: Validates each chapter immediately after writing, before the Editor stage. Detects dead characters acting, ignored injuries, and location inconsistencies. If violations are found, forces a targeted rewrite with specific correction instructions before proceeding.
-- **Mandatory Continuity Constraints**: The Ghostwriter now receives prominent, structured constraints at the top of its context listing dead characters, active injuries, and last known locations, with clear warnings that violations will trigger automatic rejection.
-- **DeepSeek-Based FinalReviewer with Tranche System**: The FinalReviewer uses DeepSeek-reasoner (131k token limit) instead of Gemini for cost efficiency. Full manuscripts are divided into tranches of 8 chapters each, processed sequentially with accumulated context passed between tranches to ensure consistency. Features include:
-  - **Accumulated Context**: Each tranche receives a summary of issues found in previous tranches to avoid duplicate reports and detect cross-tranche inconsistencies.
-  - **Intelligent Deduplication**: Similar issues from different tranches are merged, with affected chapters combined and issues sorted by severity (critical first).
-  - **WorldBible Sync**: After review, plotDecisions and persistentInjuries are saved to WorldBible for continuity enforcement.
-  - **Ghostwriter Integration**: Issues with detailed correction instructions are passed to the Ghostwriter, which receives the full context for surgical rewrites.
+- **Optimized Pipeline**: Streamlined re-edit pipeline reducing token consumption.
+- **Manuscript Expansion System**: Agents for expanding and inserting chapters.
+- **Chapter Reordering System**: Architect Analyzer recommends and executes reordering.
+- **Internal Chapter Header Sync**: Automatic header updates.
+- **Automatic Pause System**: Pauses for user intervention after non-perfect evaluations.
+- **Approval Logic**: Requires high score with no critical issues for project approval.
+- **Issue Hash Tracking System**: Prevents re-reporting resolved issues.
+- **Improved Cancellation**: Immediate process cancellation.
+- **Fast-Track Resume System**: Optimizes project resumption by skipping unnecessary stages.
+- **Robust Server Restart Recovery**: QueueManager marks incomplete projects as "paused" for seamless resume.
+- **Translation Export Improvements**: Markdown exports strip artifacts, omit dividers, and use localized chapter labels.
+- **Immediate Continuity Validation**: Validates chapters after writing, enforcing consistency through targeted rewrites.
+- **Mandatory Continuity Constraints**: Ghostwriter receives structured constraints to prevent violations.
+- **DeepSeek-Based FinalReviewer with Tranche System**: Divides manuscripts into tranches for cost-efficient review, accumulating context and deduplicating issues.
 
 ### LitAgents 2.0 (Scene-Based Pipeline)
-- **Architecture**: New scene-based writing pipeline optimized for DeepSeek AI models, accessible via `POST /api/projects/:id/generate-v2`.
-- **6 New Agents** (located in `server/agents/v2/`):
-  - **Global Architect** (R1): Designs master novel structure, World Bible, and plot threads.
-  - **Chapter Architect** (R1): Plans 3-4 scenes per chapter with detailed beats.
-  - **Ghostwriter V2** (V3): Writes one scene at a time for better flow control.
-  - **Smart Editor** (V3): Evaluates chapters and generates JSON patches instead of full rewrites.
-  - **Summarizer** (V3): Compresses chapters for memory efficiency.
-  - **Narrative Director** (R1): Reviews progress every 5 chapters to maintain story coherence.
-- **Patcher Utility** (`server/utils/patcher.ts`): Uses fuse.js for fuzzy text matching to apply surgical edits without full rewrites, reducing token consumption.
-- **Model Assignment**: R1 (deepseek-reasoner) for planning agents, V3 (deepseek-chat) for writing/editing agents.
-- **Plot Threads API**: `GET /api/projects/:id/plot-threads` for accessing narrative thread status.
-- **Backward Compatibility**: Original v1 orchestrator and routes remain unchanged.
-- **Frontend v2 Integration** (added January 2026):
-  - **Pipeline Selection**: Checkbox in generation dialog allows users to choose between v1 (full-chapter) and v2 (scene-based) pipelines.
-  - **v2 Agent Names**: Dashboard displays v2 agent names (Arquitecto Global, Diseñador de Escenas, Escritor de Escenas, Editor Inteligente, Compresor, Director Narrativo).
-  - **Scene Progress Indicator**: Real-time badge shows current scene/chapter being written when using v2 pipeline.
-  - **SSE Event Handling**: Frontend handles `scene_complete` events for granular progress tracking, resetting on `chapter_complete`.
+- **Architecture**: Scene-based writing pipeline optimized for DeepSeek AI models.
+- **6 New Agents**: Global Architect, Chapter Architect, Ghostwriter V2, Smart Editor, Summarizer, Narrative Director.
+- **Patcher Utility**: Uses `fuse.js` for surgical JSON patching.
+- **Model Assignment**: R1 for planning, V3 for writing/editing.
+- **Frontend Integration**: Pipeline selection, v2 agent names, scene progress indicator, and SSE event handling for granular progress.
 
-### LitAgents 2.1 (Universal Consistency Module) - Added January 2026
-- **Purpose**: Prevents continuity violations (character identity contradictions, timeline errors, role inconsistencies) by injecting constraints before writing and validating after each chapter.
-- **Database Schema**: New tables `world_entities`, `world_rules`, `entity_relationships`, `consistency_violations` store the "truth database" for each project.
-- **Genre Definitions** (`server/agents/v2/genre-definitions.ts`): Tracking rules for 10+ genres including `crime_thriller`, `mystery`, `historical`, `fantasy`, `romance`, etc.
-- **UniversalConsistencyAgent** (`server/agents/v2/universal-consistency.ts`):
-  - `extractInitialEntities()`: Populates entities/rules from World Bible at generation start.
-  - `generateConstraints()`: Creates structured prompt injection for Ghostwriter with current entity states, rules, and relationships.
-  - `validateChapter()`: Checks for violations and extracts new facts after Smart Editor phase.
-  - `generateRewriteInstructions()`: Creates detailed feedback for surgical rewrites when violations detected.
-- **Orchestrator Integration**:
-  - Initializes consistency DB after World Bible creation.
-  - Injects constraints into Ghostwriter before scene writing.
-  - Validates chapter after Smart Editor, before Summarizer.
-  - Logs violations to `consistency_violations` table for audit.
-- **Constraint Format**: Prominent, structured block at top of Ghostwriter prompt listing dead characters, active injuries, last known locations, and genre-specific immutable facts.
+### LitAgents 2.1 (Universal Consistency Module)
+- **Purpose**: Prevents continuity violations by injecting constraints before writing and validating after each chapter.
+- **Database Schema**: New tables for `world_entities`, `world_rules`, `entity_relationships`, `consistency_violations`.
+- **Genre Definitions**: Tracks rules for 10+ genres.
+- **UniversalConsistencyAgent**: Extracts entities, generates constraints, validates chapters, and generates rewrite instructions for violations.
+- **Orchestrator Integration**: Initializes consistency DB, injects constraints, validates chapters, and logs violations.
+
+### Re-editor (LitEditors) Development Editor
+- **Purpose**: Transforms the Re-editor into a Development Editor with forensic consistency audits and commercial viability analysis.
+- **ForensicConsistencyAuditor**: Processes manuscripts in batches, detects 7 violation types, and builds incremental entity states.
+- **BetaReaderAgent**: Provides commercial viability analysis with scores and market comparisons.
+- **Pipeline Integration**: `forensic_audit` and `beta_reader` stages are integrated into the re-editing pipeline.
+- **Database Schema**: New fields in `reedit_projects` for audit results and beta reader reports.
 
 ## External Dependencies
 
 ### AI Services
-- **DeepSeek**: Primary AI provider for cost efficiency. Uses `DEEPSEEK_API_KEY` environment variable. Optional separate keys: `DEEPSEEK_TRANSLATOR_API_KEY`, `DEEPSEEK_REEDITOR_API_KEY`.
-- **Replit AI Integrations**: Provides access to the Gemini API using `AI_INTEGRATIONS_GEMINI_API_KEY` and `AI_INTEGRATIONS_GEMINI_BASE_URL` environment variables.
-- **Models**: `deepseek-chat` (V3) and `deepseek-reasoner` (R1) for DeepSeek; `gemini-3-pro-preview` for text generation, `gemini-2.5-flash-image` for image generation.
+- **DeepSeek**: Primary AI provider (`DEEPSEEK_API_KEY`, `DEEPSEEK_TRANSLATOR_API_KEY`, `DEEPSEEK_REEDITOR_API_KEY`).
+- **Replit AI Integrations**: Gemini API access (`AI_INTEGRATIONS_GEMINI_API_KEY`, `AI_INTEGRATIONS_GEMINI_BASE_URL`).
 
 ### Database
-- **PostgreSQL**: Accessed via the `DATABASE_URL` environment variable.
-- **Drizzle Kit**: Used for database migrations, stored in the `migrations/` directory.
+- **PostgreSQL**: Accessed via `DATABASE_URL`.
+- **Drizzle Kit**: Used for database migrations.
 
 ### Key NPM Packages
 - `@google/genai`: Google Gemini AI SDK.
-- `drizzle-orm` / `drizzle-zod`: ORM for database interaction and Zod for schema validation.
-- `express`: Web application framework for Node.js.
-- `@tanstack/react-query`: Library for asynchronous state management in React.
-- `wouter`: Lightweight routing library for React.
-- Radix UI primitives: Core components for building accessible UIs.
+- `drizzle-orm` / `drizzle-zod`: ORM and schema validation.
+- `express`: Node.js web framework.
+- `@tanstack/react-query`: React asynchronous state management.
+- `wouter`: Lightweight React routing.
+- Radix UI primitives: UI component foundation.

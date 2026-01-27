@@ -22,6 +22,13 @@
       "when": 1769249295566,
       "tag": "0002_parallel_dragon_man",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1769510648149,
+      "tag": "0003_volatile_doctor_spectrum",
+      "breakpoints": true
     }
   ]
 }

@@ -721,6 +721,12 @@ export const reeditProjects = pgTable("reedit_projects", {
   bestsellerScore: integer("bestseller_score"), // 1-10 final score
   finalReviewResult: jsonb("final_review_result"),
   structureAnalysis: jsonb("structure_analysis"), // Chapter order issues, duplicates detected
+  // LitEditors 3.0: Forensic Consistency Audit results
+  forensicAuditResult: jsonb("forensic_audit_result"), // { violations: [], entitiesExtracted: {}, consistencyScore: number, summary: string }
+  // LitEditors 3.0: Beta Reader commercial viability analysis
+  betaReaderReport: jsonb("beta_reader_report"), // { score, viability, strengths, weaknesses, flagged_chapters, etc. }
+  betaReaderScore: integer("beta_reader_score"), // 1-10 commercial viability score
+  commercialViability: text("commercial_viability"), // High, Medium, Low
   // LitEditors 3.0: Structural analysis from Story Mapper (R1)
   structuralReport: jsonb("structural_report"), // { critique, anachronisms_warning, plot_holes, redundancies }
   reconstructionPlan: jsonb("reconstruction_plan"), // Array of actions: KEEP, DELETE, INSERT, MERGE

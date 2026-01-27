@@ -13,6 +13,12 @@ import {
   type FinalReviewIssue 
 } from "../agents/final-reviewer";
 import { IssueResolutionValidatorAgent } from "../agents/issue-resolution-validator";
+import { 
+  ForensicConsistencyAuditor, 
+  type ForensicAuditResult, 
+  type ForensicViolation 
+} from "../agents/forensic-consistency-auditor";
+import { BetaReaderAgent, type BetaReaderReport } from "../agents/beta-reader";
 
 function getChapterSortOrder(chapterNumber: number): number {
   if (chapterNumber === 0) return -1000;
@@ -1371,6 +1377,8 @@ export class ReeditOrchestrator {
   private voiceRhythmAuditor: VoiceRhythmAuditorAgent;
   private semanticRepetitionDetector: SemanticRepetitionDetectorAgent;
   private anachronismDetector: AnachronismDetectorAgent;
+  private forensicAuditor: ForensicConsistencyAuditor;
+  private betaReader: BetaReaderAgent;
   private expansionAnalyzer: ChapterExpansionAnalyzer;
   private chapterExpander: ChapterExpanderAgent;
   private newChapterGenerator: NewChapterGeneratorAgent;
@@ -1397,6 +1405,8 @@ export class ReeditOrchestrator {
     this.voiceRhythmAuditor = new VoiceRhythmAuditorAgent();
     this.semanticRepetitionDetector = new SemanticRepetitionDetectorAgent();
     this.anachronismDetector = new AnachronismDetectorAgent();
+    this.forensicAuditor = new ForensicConsistencyAuditor();
+    this.betaReader = new BetaReaderAgent();
     this.expansionAnalyzer = new ChapterExpansionAnalyzer();
     this.chapterExpander = new ChapterExpanderAgent();
     this.newChapterGenerator = new NewChapterGeneratorAgent();
@@ -2735,7 +2745,7 @@ export class ReeditOrchestrator {
 
     // Detect resume stage - if project was interrupted, continue from where it left off
     const resumeStage = project.currentStage || "none";
-    const stageOrder = ["none", "analyzing", "editing", "world_bible", "expansion", "architect", "qa", "narrative_rewriting", "copyediting", "reviewing", "completed"];
+    const stageOrder = ["none", "analyzing", "forensic_audit", "editing", "world_bible", "expansion", "architect", "qa", "narrative_rewriting", "copyediting", "beta_reader", "reviewing", "completed"];
     const resumeStageIndex = stageOrder.indexOf(resumeStage);
     
     if (resumeStageIndex > 0 && resumeStage !== "completed") {
@@ -2803,6 +2813,99 @@ export class ReeditOrchestrator {
       const detectedLang = project.detectedLanguage || "es";
       const chapterSummaries: string[] = [];
       const editorFeedbacks: any[] = [];
+
+      // === STAGE 1.5: FORENSIC CONSISTENCY AUDIT ===
+      // Unlike the Guardian (which prevents errors), the Forensic Auditor DETECTS existing errors
+      const skipForensicAudit = resumeStageIndex > stageOrder.indexOf("forensic_audit");
+      let forensicAuditResult: ForensicAuditResult | null = (project as any).forensicAuditResult || null;
+
+      if (!skipForensicAudit) {
+        // Check for cancellation before forensic audit
+        if (await this.checkCancellation(projectId)) {
+          console.log(`[ReeditOrchestrator] Processing cancelled before forensic audit`);
+          return;
+        }
+
+        this.emitProgress({
+          projectId,
+          stage: "forensic_audit" as any,
+          currentChapter: 0,
+          totalChapters: validChapters.length,
+          message: "Auditoría forense de consistencia (detectando errores existentes)...",
+        });
+
+        const chaptersForAudit = validChapters.map(c => ({
+          chapterNumber: c.chapterNumber,
+          title: c.title || `Capítulo ${c.chapterNumber}`,
+          content: c.originalContent
+        }));
+
+        // Run Forensic Audit with error handling
+        try {
+          // Check if DeepSeek API key is configured (ForensicAuditor uses deepseek-reasoner)
+          if (!process.env.DEEPSEEK_API_KEY) {
+            console.warn(`[ReeditOrchestrator] DeepSeek API key not configured - skipping Forensic Audit`);
+            // Persist skipped status so UI can reflect completion state
+            await storage.updateReeditProject(projectId, {
+              currentStage: "forensic_audit",
+              forensicAuditResult: { 
+                skipped: true, 
+                reason: "DeepSeek API key not configured",
+                violations: [],
+                entitiesExtracted: { characters: [], locations: [], timeline: [] },
+                consistencyScore: null,
+                summary: "Auditoría forense omitida: API DeepSeek no configurada"
+              } as any,
+            });
+            this.emitProgress({
+              projectId,
+              stage: "forensic_audit" as any,
+              currentChapter: validChapters.length,
+              totalChapters: validChapters.length,
+              message: `Auditoría forense omitida: API DeepSeek no configurada`,
+            });
+          } else {
+            forensicAuditResult = await this.forensicAuditor.auditManuscript(
+              chaptersForAudit,
+              project.genre || "general",
+              detectedLang
+            );
+            this.trackTokens(forensicAuditResult);
+
+            await storage.updateReeditProject(projectId, {
+              currentStage: "forensic_audit",
+              forensicAuditResult: forensicAuditResult as any,
+            });
+
+            const violationCount = forensicAuditResult?.violations?.length || 0;
+            const criticalViolations = forensicAuditResult?.violations?.filter(v => v.severity === 'critical')?.length || 0;
+
+            console.log(`[ReeditOrchestrator] Forensic Audit complete: ${violationCount} violations (${criticalViolations} critical), score: ${forensicAuditResult?.consistencyScore}/10`);
+
+            this.emitProgress({
+              projectId,
+              stage: "forensic_audit" as any,
+              currentChapter: validChapters.length,
+              totalChapters: validChapters.length,
+              message: `Auditoría forense: ${violationCount} violaciones detectadas (${criticalViolations} críticas) - Puntuación: ${forensicAuditResult?.consistencyScore}/10`,
+            });
+          }
+        } catch (auditError: any) {
+          console.error(`[ReeditOrchestrator] Forensic Audit failed:`, auditError.message);
+          this.emitProgress({
+            projectId,
+            stage: "forensic_audit" as any,
+            currentChapter: validChapters.length,
+            totalChapters: validChapters.length,
+            message: `Auditoría forense falló (continuando sin análisis): ${auditError.message?.substring(0, 100)}`,
+          });
+          // Continue pipeline even if forensic audit fails
+        }
+
+        await this.updateHeartbeat(projectId);
+      } else {
+        console.log(`[ReeditOrchestrator] Skipping STAGE 1.5 (forensic_audit) - already completed`);
+      }
 
       // === STAGE 2: EDITOR REVIEW (all chapters first) ===
       await storage.updateReeditProject(projectId, { currentStage: "editing" });
@@ -3536,6 +3639,120 @@ export class ReeditOrchestrator {
       
       console.log(`[ReeditOrchestrator] CopyEditor stage complete: ${chaptersNeedingCopyEdit.length} chapters processed, ${skippedCount} skipped (already rewritten)`)
       } // End of skipCopyEditing else block
+
+      // === STAGE 6.5: BETA READER (Commercial Viability Analysis) ===
+      const skipBetaReader = resumeStageIndex > stageOrder.indexOf("beta_reader");
+      let betaReaderReport: BetaReaderReport | null = (project as any).betaReaderReport || null;
+
+      if (!skipBetaReader) {
+        // Check for cancellation before beta reader analysis
+        if (await this.checkCancellation(projectId)) {
+          console.log(`[ReeditOrchestrator] Processing cancelled before Beta Reader analysis`);
+          return;
+        }
+
+        this.emitProgress({
+          projectId,
+          stage: "beta_reader" as any,
+          currentChapter: 0,
+          totalChapters: validChapters.length,
+          message: "Análisis de viabilidad comercial (Lector Beta)...",
+        });
+
+        await storage.updateReeditProject(projectId, { currentStage: "beta_reader" });
+
+        // Get updated chapters with edited content
+        const updatedChaptersForBeta = await storage.getReeditChaptersByProject(projectId);
+        const chaptersWithContent = updatedChaptersForBeta
+          .filter(c => c.editedContent || c.originalContent)
+          .sort((a, b) => getChapterSortOrder(a.chapterNumber) - getChapterSortOrder(b.chapterNumber));
+
+        // Calculate total word count
+        const totalWordCount = chaptersWithContent.reduce((acc, c) => {
+          const content = c.editedContent || c.originalContent;
+          return acc + (content?.split(/\s+/).length || 0);
+        }, 0);
+
+        // Get summaries for beta reader
+        const summariesForBeta = chaptersWithContent.map(c => c.summary || "");
+        const firstChapterContent = chaptersWithContent[0]?.editedContent || chaptersWithContent[0]?.originalContent || "";
+        const lastChapterContent = chaptersWithContent[chaptersWithContent.length - 1]?.editedContent || 
+          chaptersWithContent[chaptersWithContent.length - 1]?.originalContent || "";
+
+        // Run Beta Reader evaluation with error handling
+        try {
+          // Check if DeepSeek API key is configured
+          if (!process.env.DEEPSEEK_API_KEY) {
+            console.warn(`[ReeditOrchestrator] DeepSeek API key not configured - skipping Beta Reader analysis`);
+            // Persist skipped status so UI can reflect completion state
+            await storage.updateReeditProject(projectId, {
+              currentStage: "beta_reader",
+              betaReaderReport: {
+                skipped: true,
+                reason: "DeepSeek API key not configured",
+                score: null,
+                viability: null,
+                critique_summary: "Análisis de lector beta omitido: API DeepSeek no configurada",
+                strengths: [],
+                weaknesses: [],
+                flagged_chapters: [],
+                market_comparison: null
+              } as any,
+              betaReaderScore: null,
+              commercialViability: null,
+            });
+            this.emitProgress({
+              projectId,
+              stage: "beta_reader" as any,
+              currentChapter: validChapters.length,
+              totalChapters: validChapters.length,
+              message: `Lector Beta omitido: API DeepSeek no configurada`,
+            });
+          } else {
+            const betaResult = await this.betaReader.evaluateNovel(
+              projectId,
+              project.genre || "general",
+              summariesForBeta,
+              firstChapterContent.substring(0, 6000),
+              lastChapterContent.substring(0, 6000)
+            );
+
+            betaReaderReport = betaResult.report;
+            this.trackTokens({ tokenUsage: betaResult.tokenUsage });
+
+            await storage.updateReeditProject(projectId, {
+              currentStage: "beta_reader",
+              betaReaderReport: betaReaderReport as any,
+              betaReaderScore: betaReaderReport?.score || 5,
+              commercialViability: betaReaderReport?.viability || "Medium",
+            });
+
+            console.log(`[ReeditOrchestrator] Beta Reader complete: Score ${betaReaderReport?.score}/10, Viability: ${betaReaderReport?.viability}`);
+
+            this.emitProgress({
+              projectId,
+              stage: "beta_reader" as any,
+              currentChapter: validChapters.length,
+              totalChapters: validChapters.length,
+              message: `Lector Beta: Viabilidad ${betaReaderReport?.viability} (${betaReaderReport?.score}/10) - ${betaReaderReport?.flagged_chapters?.length || 0} capítulos marcados`,
+            });
+          }
+        } catch (betaError: any) {
+          console.error(`[ReeditOrchestrator] Beta Reader failed:`, betaError.message);
+          this.emitProgress({
+            projectId,
+            stage: "beta_reader" as any,
+            currentChapter: validChapters.length,
+            totalChapters: validChapters.length,
+            message: `Lector Beta falló (continuando sin análisis comercial): ${betaError.message?.substring(0, 100)}`,
+          });
+          // Continue pipeline even if beta reader fails
+        }
+
+        await this.updateHeartbeat(projectId);
+      } else {
+        console.log(`[ReeditOrchestrator] Skipping STAGE 6.5 (beta_reader) - already completed`);
+      }
 
       // === STAGE 7: FINAL REVIEW (with 10/10 twice consecutive logic using full content reviewer) ===
       await storage.updateReeditProject(projectId, { currentStage: "reviewing" });

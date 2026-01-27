@@ -6299,6 +6299,44 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     }
   });
 
+  // LitEditors 3.0: Forensic Consistency Audit results
+  app.get("/api/reedit-projects/:id/forensic-audit", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getReeditProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      res.json({
+        forensicAuditResult: project.forensicAuditResult || null,
+        currentStage: project.currentStage,
+      });
+    } catch (error) {
+      console.error("Error fetching forensic audit:", error);
+      res.status(500).json({ error: "Failed to fetch forensic audit results" });
+    }
+  });
+
+  // LitEditors 3.0: Beta Reader commercial viability analysis
+  app.get("/api/reedit-projects/:id/beta-reader", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getReeditProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      res.json({
+        betaReaderReport: project.betaReaderReport || null,
+        betaReaderScore: project.betaReaderScore || null,
+        commercialViability: project.commercialViability || null,
+        currentStage: project.currentStage,
+      });
+    } catch (error) {
+      console.error("Error fetching beta reader results:", error);
+      res.status(500).json({ error: "Failed to fetch beta reader results" });
+    }
+  });
+
   app.post("/api/reedit-projects", upload.single("manuscript"), async (req: Request, res: Response) => {
     try {
       if (!req.file) {

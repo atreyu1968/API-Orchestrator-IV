@@ -117,7 +117,7 @@ RESPONDE SOLO EN JSON:
     const entityState = {
       characters: new Map<string, { status: string; injuries: string[]; firstAppearance: number; lastAppearance: number }>(),
       locations: new Map<string, { firstMention: number; characteristics: string[] }>(),
-      timeline: [] as Array<{ event: string; chapter: number; importance: string }>()
+      timeline: [] as Array<{ event: string; chapter: number; importance: string }>
     };
     
     const totalBatches = Math.ceil(chapters.length / BATCH_SIZE);
