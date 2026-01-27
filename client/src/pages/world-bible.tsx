@@ -9,9 +9,13 @@ import type { WorldBible } from "@shared/schema";
 export default function WorldBiblePage() {
   const { currentProject, isLoading: projectsLoading } = useProject();
 
+  const isGenerating = currentProject?.status === "generating" || currentProject?.status === "pending" || currentProject?.status === "planning";
+  
   const { data: worldBible, isLoading: worldBibleLoading, error } = useQuery<WorldBible>({
     queryKey: ["/api/projects", currentProject?.id, "world-bible"],
     enabled: !!currentProject?.id,
+    staleTime: isGenerating ? 0 : 60000,
+    refetchInterval: isGenerating ? 5000 : false,
   });
 
   if (projectsLoading) {
@@ -37,9 +41,6 @@ export default function WorldBiblePage() {
     );
   }
 
-  // Show generating state when project is in progress
-  const isGenerating = currentProject.status === "generating" || currentProject.status === "pending" || currentProject.status === "planning";
-  
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-6">
