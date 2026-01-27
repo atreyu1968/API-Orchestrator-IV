@@ -31,13 +31,10 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setIsLoading(true);
     
     try {
-      const response = await apiRequest("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
+      const response = await apiRequest("POST", "/api/auth/login", { password });
 
-      if (response.success) {
+      const data = await response.json();
+      if (data.success) {
         toast({
           title: "Acceso concedido",
           description: "Bienvenido a LitAgents",
