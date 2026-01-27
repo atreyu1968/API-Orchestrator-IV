@@ -1413,7 +1413,11 @@ export class OrchestratorV2 {
 
         // Auto-correct problematic chapters
         if (capitulos_para_reescribir && capitulos_para_reescribir.length > 0 && currentCycle < maxCycles) {
+          console.log(`[OrchestratorV2] Starting auto-correction for ${capitulos_para_reescribir.length} chapters`);
           this.callbacks.onAgentStatus("smart-editor", "active", `Auto-corrigiendo ${capitulos_para_reescribir.length} capítulo(s)...`);
+
+          let correctedCount = 0;
+          let failedCount = 0;
 
           for (const chapNum of capitulos_para_reescribir) {
             if (await isProjectCancelledFromDb(project.id)) {
@@ -1423,15 +1427,22 @@ export class OrchestratorV2 {
             }
 
             const chapter = currentChapters.find(c => c.chapterNumber === chapNum);
-            if (!chapter) continue;
+            if (!chapter) {
+              console.log(`[OrchestratorV2] Chapter ${chapNum} not found, skipping`);
+              continue;
+            }
 
             // Get issues for this chapter
             const chapterIssues = issues.filter(i => i.capitulos_afectados?.includes(chapNum));
-            if (chapterIssues.length === 0) continue;
+            if (chapterIssues.length === 0) {
+              console.log(`[OrchestratorV2] No issues found for Chapter ${chapNum}, skipping`);
+              continue;
+            }
 
             // Check if any issue is critical - if so, use surgicalFix instead
             const hasCriticalIssue = chapterIssues.some(i => i.severidad === "critica");
 
+            console.log(`[OrchestratorV2] Correcting Chapter ${chapNum}: ${chapterIssues.length} issues (critical: ${hasCriticalIssue})`);
             this.callbacks.onAgentStatus("smart-editor", "active", `Corrigiendo capítulo ${chapNum}${hasCriticalIssue ? ' (crítico)' : ''}...`);
 
             // Build correction prompt from issues
@@ -1441,57 +1452,88 @@ export class OrchestratorV2 {
 
             let correctedContent: string | null = null;
 
-            if (hasCriticalIssue) {
-              // Use surgicalFix for critical issues - it does a more thorough rewrite
-              const fixResult = await this.smartEditor.surgicalFix({
-                chapterContent: chapter.content || "",
-                errorDescription: issuesDescription,
-                consistencyConstraints: JSON.stringify(worldBibleData.characters?.slice(0, 5) || []),
-              });
+            try {
+              if (hasCriticalIssue) {
+                // Use surgicalFix for critical issues - it does a more thorough rewrite
+                console.log(`[OrchestratorV2] Using surgicalFix for critical issue in Chapter ${chapNum}`);
+                const fixResult = await this.smartEditor.surgicalFix({
+                  chapterContent: chapter.content || "",
+                  errorDescription: issuesDescription,
+                  consistencyConstraints: JSON.stringify(worldBibleData.characters?.slice(0, 5) || []),
+                });
 
-              this.addTokenUsage(fixResult.tokenUsage);
-              await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, chapNum);
+                this.addTokenUsage(fixResult.tokenUsage);
+                await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, chapNum);
 
-              if (fixResult.parsed?.corrected_text) {
-                correctedContent = fixResult.parsed.corrected_text;
-              }
-            } else {
-              // Use SmartEditor patches for non-critical issues
-              const editResult = await this.smartEditor.execute({
-                chapterContent: chapter.content || "",
-                sceneBreakdown: chapter.sceneBreakdown as any || { scenes: [] },
-                worldBible: worldBibleData,
-                additionalContext: `PROBLEMAS DETECTADOS POR EL CRÍTICO (CORREGIR OBLIGATORIAMENTE):\n${issuesDescription}`,
-              });
+                if (fixResult.parsed?.corrected_text && fixResult.parsed.corrected_text.length > 100) {
+                  correctedContent = fixResult.parsed.corrected_text;
+                  console.log(`[OrchestratorV2] surgicalFix returned ${correctedContent.length} chars for Chapter ${chapNum}`);
+                } else {
+                  console.error(`[OrchestratorV2] surgicalFix returned empty/invalid content for Chapter ${chapNum}`);
+                }
+              } else {
+                // Use SmartEditor patches for non-critical issues
+                console.log(`[OrchestratorV2] Using SmartEditor patches for Chapter ${chapNum}`);
+                const editResult = await this.smartEditor.execute({
+                  chapterContent: chapter.content || "",
+                  sceneBreakdown: chapter.sceneBreakdown as any || { scenes: [] },
+                  worldBible: worldBibleData,
+                  additionalContext: `PROBLEMAS DETECTADOS POR EL CRÍTICO (CORREGIR OBLIGATORIAMENTE):\n${issuesDescription}`,
+                });
 
-              this.addTokenUsage(editResult.tokenUsage);
-              await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", editResult.tokenUsage, chapNum);
+                this.addTokenUsage(editResult.tokenUsage);
+                await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", editResult.tokenUsage, chapNum);
 
-              if (editResult.parsed) {
-                // Apply patches if available
-                if (editResult.parsed.patches && editResult.parsed.patches.length > 0) {
-                  const patchResult = applyPatches(chapter.content || "", editResult.parsed.patches);
-                  if (patchResult.appliedPatches > 0) {
-                    correctedContent = patchResult.patchedText;
+                if (editResult.parsed) {
+                  // Apply patches if available
+                  if (editResult.parsed.patches && editResult.parsed.patches.length > 0) {
+                    console.log(`[OrchestratorV2] Applying ${editResult.parsed.patches.length} patches to Chapter ${chapNum}`);
+                    const patchResult = applyPatches(chapter.content || "", editResult.parsed.patches);
+                    if (patchResult.appliedPatches > 0) {
+                      correctedContent = patchResult.patchedText;
+                      console.log(`[OrchestratorV2] Applied ${patchResult.appliedPatches} patches to Chapter ${chapNum}`);
+                    } else {
+                      console.log(`[OrchestratorV2] No patches applied to Chapter ${chapNum}`);
+                    }
+                  }
+                  
+                  // If no patches applied but needs_rewrite is true, use surgicalFix as fallback
+                  if (!correctedContent && editResult.parsed.needs_rewrite) {
+                    console.log(`[OrchestratorV2] Using surgicalFix as fallback for Chapter ${chapNum}`);
+                    const fixResult = await this.smartEditor.surgicalFix({
+                      chapterContent: chapter.content || "",
+                      errorDescription: issuesDescription,
+                    });
+                    this.addTokenUsage(fixResult.tokenUsage);
+                    if (fixResult.parsed?.corrected_text && fixResult.parsed.corrected_text.length > 100) {
+                      correctedContent = fixResult.parsed.corrected_text;
+                      console.log(`[OrchestratorV2] Fallback surgicalFix returned ${correctedContent.length} chars`);
+                    }
+                  }
+
+                  // FALLBACK: If still no content and we have issues, force surgicalFix
+                  if (!correctedContent) {
+                    console.log(`[OrchestratorV2] Forcing surgicalFix as last resort for Chapter ${chapNum}`);
+                    const fixResult = await this.smartEditor.surgicalFix({
+                      chapterContent: chapter.content || "",
+                      errorDescription: issuesDescription,
+                    });
+                    this.addTokenUsage(fixResult.tokenUsage);
+                    if (fixResult.parsed?.corrected_text && fixResult.parsed.corrected_text.length > 100) {
+                      correctedContent = fixResult.parsed.corrected_text;
+                    }
                   }
                 }
-                
-                // If no patches applied but needs_rewrite is true, use surgicalFix as fallback
-                if (!correctedContent && editResult.parsed.needs_rewrite) {
-                  const fixResult = await this.smartEditor.surgicalFix({
-                    chapterContent: chapter.content || "",
-                    errorDescription: issuesDescription,
-                  });
-                  this.addTokenUsage(fixResult.tokenUsage);
-                  if (fixResult.parsed?.corrected_text) {
-                    correctedContent = fixResult.parsed.corrected_text;
-                  }
-                }
               }
+            } catch (error) {
+              console.error(`[OrchestratorV2] Error correcting Chapter ${chapNum}:`, error);
+              this.callbacks.onAgentStatus("smart-editor", "error", `Error en capítulo ${chapNum}: ${error instanceof Error ? error.message : 'desconocido'}`);
+              failedCount++;
+              continue;
             }
 
             // Update chapter if we have corrected content
-            if (correctedContent) {
+            if (correctedContent && correctedContent !== chapter.content) {
               const wordCount = correctedContent.split(/\s+/).length;
               await storage.updateChapter(chapter.id, {
                 content: correctedContent,
@@ -1499,13 +1541,22 @@ export class OrchestratorV2 {
                 qualityScore: 8, // Assume improvement
               });
               
+              console.log(`[OrchestratorV2] Successfully updated Chapter ${chapNum} (${wordCount} words)`);
+              this.callbacks.onAgentStatus("smart-editor", "active", `Capítulo ${chapNum} corregido (${wordCount} palabras)`);
               this.callbacks.onChapterComplete(
                 chapter.chapterNumber,
                 wordCount,
                 chapter.title || `Capítulo ${chapter.chapterNumber}`
               );
+              correctedCount++;
+            } else {
+              console.log(`[OrchestratorV2] Chapter ${chapNum} unchanged or empty response`);
+              failedCount++;
             }
           }
+
+          console.log(`[OrchestratorV2] Auto-correction complete: ${correctedCount} corrected, ${failedCount} failed`);
+          this.callbacks.onAgentStatus("smart-editor", "completed", `${correctedCount}/${capitulos_para_reescribir.length} capítulos corregidos`);
         }
       }
 
