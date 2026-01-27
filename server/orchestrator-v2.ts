@@ -1146,9 +1146,21 @@ export class OrchestratorV2 {
         await this.updateProjectTokens(project.id);
       }
 
-      // Complete
-      await storage.updateProject(project.id, { status: "completed" });
-      this.callbacks.onProjectComplete();
+      // After all chapters are written, check if we need to run FinalReviewer
+      // Get fresh project data to check current score
+      const freshProject = await storage.getProject(project.id);
+      const currentScore = freshProject?.finalScore || 0;
+      
+      if (currentScore >= 9) {
+        // Already has a passing score, mark as completed
+        console.log(`[OrchestratorV2] Project already has score ${currentScore}/10, marking as completed`);
+        await storage.updateProject(project.id, { status: "completed" });
+        this.callbacks.onProjectComplete();
+      } else {
+        // Need to run FinalReviewer to get/improve score
+        console.log(`[OrchestratorV2] Project has score ${currentScore}/10 (< 9), running FinalReviewer...`);
+        await this.runFinalReviewOnly(project, 3);
+      }
 
     } catch (error) {
       console.error(`[OrchestratorV2] Error:`, error);
