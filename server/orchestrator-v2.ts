@@ -22,6 +22,9 @@ import { universalConsistencyAgent } from "./agents/v2/universal-consistency";
 import { applyPatches, type PatchResult } from "./utils/patcher";
 import type { TokenUsage } from "./agents/base-agent";
 import type { Project, Chapter, InsertPlotThread, WorldEntity, WorldRuleRecord, EntityRelationship } from "@shared/schema";
+import { consistencyViolations } from "@shared/schema";
+import { db } from "./db";
+import { eq, and, desc } from "drizzle-orm";
 import { isProjectCancelledFromDb } from "./agents";
 import { calculateRealCost, formatCostForStorage } from "./cost-calculator";
 
@@ -913,8 +916,59 @@ export class OrchestratorV2 {
           project.genre
         );
 
-        if (!consistencyResult.isValid) {
-          console.warn(`[OrchestratorV2] Consistency violation in Chapter ${chapterNumber}: ${consistencyResult.error}`);
+        if (!consistencyResult.isValid && consistencyResult.error) {
+          console.warn(`[OrchestratorV2] CRITICAL consistency violation in Chapter ${chapterNumber}: ${consistencyResult.error}`);
+          this.callbacks.onAgentStatus("consistency", "warning", "Forcing rewrite due to critical violation");
+          
+          // Force rewrite with correction instructions as a single scene
+          const correctionScene: ScenePlan = {
+            scene_num: 1,
+            setting: "Reescritura correctiva",
+            characters: [],
+            plot_beat: `CORRECCIÓN OBLIGATORIA: ${consistencyResult.error}`,
+            dialogue_focus: "",
+            emotional_beat: "Mantener la esencia emocional del capítulo original",
+            sensory_details: [],
+            word_target: finalText.split(/\s+/).length,
+            ending_hook: "Continuar con la trama establecida"
+          };
+          
+          // Rewrite the chapter with corrections
+          this.callbacks.onAgentStatus("ghostwriter-v2", "active", "Rewriting to fix continuity error...");
+          
+          const rewriteResult = await this.ghostwriter.execute({
+            scenePlan: correctionScene,
+            prevSceneContext: `CONTENIDO ORIGINAL CON ERROR DE CONTINUIDAD:\n${finalText}\n\nINSTRUCCIONES: Reescribe este capítulo CORRIGIENDO el siguiente error: ${consistencyResult.error}. Mantén la esencia narrativa pero corrige la contradicción.`,
+            rollingSummary,
+            worldBible,
+            guiaEstilo,
+            consistencyConstraints,
+          });
+          
+          this.addTokenUsage(rewriteResult.tokenUsage);
+          await this.logAiUsage(project.id, "ghostwriter-v2", "deepseek-chat", rewriteResult.tokenUsage, chapterNumber);
+          
+          if (rewriteResult.content) {
+            finalText = rewriteResult.content;
+            console.log(`[OrchestratorV2] Chapter ${chapterNumber} rewritten to fix consistency violation`);
+            
+            // Mark violation as auto-fixed
+            const violations = await db.select().from(consistencyViolations)
+              .where(and(
+                eq(consistencyViolations.projectId, project.id),
+                eq(consistencyViolations.chapterNumber, chapterNumber)
+              ))
+              .orderBy(desc(consistencyViolations.createdAt))
+              .limit(1);
+            
+            if (violations.length > 0) {
+              await db.update(consistencyViolations)
+                .set({ wasAutoFixed: true, fixDescription: "Capítulo reescrito automáticamente para corregir violación de continuidad" })
+                .where(eq(consistencyViolations.id, violations[0].id));
+            }
+          }
+          
+          this.callbacks.onAgentStatus("ghostwriter-v2", "completed", "Continuity error fixed");
         }
 
         // 2d: Summarizer - Compress for memory
