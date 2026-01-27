@@ -1648,6 +1648,57 @@ export async function registerRoutes(
     }
   });
 
+  // LitAgents 2.1: Mark consistency violations as resolved
+  app.patch("/api/projects/:id/consistency-violations/resolve", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { chapterNumber, violationIds } = req.body;
+      
+      let query = db.update(consistencyViolations)
+        .set({ 
+          status: "resolved",
+          resolvedAt: new Date(),
+          fixDescription: "Marcado como resuelto manualmente tras reescritura del capítulo"
+        });
+      
+      if (violationIds && Array.isArray(violationIds) && violationIds.length > 0) {
+        // Resolve specific violations by ID
+        for (const vid of violationIds) {
+          await db.update(consistencyViolations)
+            .set({ 
+              status: "resolved",
+              resolvedAt: new Date(),
+              fixDescription: "Marcado como resuelto manualmente"
+            })
+            .where(and(
+              eq(consistencyViolations.id, vid),
+              eq(consistencyViolations.projectId, id)
+            ));
+        }
+        res.json({ message: `${violationIds.length} violation(s) marked as resolved` });
+      } else if (chapterNumber !== undefined) {
+        // Resolve all pending violations for a chapter
+        const result = await db.update(consistencyViolations)
+          .set({ 
+            status: "resolved",
+            resolvedAt: new Date(),
+            fixDescription: "Marcado como resuelto tras reescritura del capítulo"
+          })
+          .where(and(
+            eq(consistencyViolations.projectId, id),
+            eq(consistencyViolations.chapterNumber, chapterNumber),
+            eq(consistencyViolations.status, "pending")
+          ));
+        res.json({ message: `Violations for chapter ${chapterNumber} marked as resolved` });
+      } else {
+        res.status(400).json({ error: "Provide chapterNumber or violationIds" });
+      }
+    } catch (error) {
+      console.error("Error resolving consistency violations:", error);
+      res.status(500).json({ error: "Failed to resolve consistency violations" });
+    }
+  });
+
   // LitAgents 2.1: Get consistency database (entities + rules)
   app.get("/api/projects/:id/consistency-database", async (req: Request, res: Response) => {
     try {

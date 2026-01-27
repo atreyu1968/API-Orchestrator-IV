@@ -975,19 +975,26 @@ export class OrchestratorV2 {
             finalText = rewriteResult.content;
             console.log(`[OrchestratorV2] Chapter ${chapterNumber} rewritten to fix consistency violation`);
             
-            // Mark violation as auto-fixed
+            // Mark ALL violations for this chapter as auto-fixed
             const violations = await db.select().from(consistencyViolations)
               .where(and(
                 eq(consistencyViolations.projectId, project.id),
-                eq(consistencyViolations.chapterNumber, chapterNumber)
-              ))
-              .orderBy(desc(consistencyViolations.createdAt))
-              .limit(1);
+                eq(consistencyViolations.chapterNumber, chapterNumber),
+                eq(consistencyViolations.status, "pending")
+              ));
             
             if (violations.length > 0) {
-              await db.update(consistencyViolations)
-                .set({ wasAutoFixed: true, fixDescription: "Capítulo reescrito automáticamente para corregir violación de continuidad" })
-                .where(eq(consistencyViolations.id, violations[0].id));
+              for (const violation of violations) {
+                await db.update(consistencyViolations)
+                  .set({ 
+                    wasAutoFixed: true, 
+                    status: "resolved",
+                    resolvedAt: new Date(),
+                    fixDescription: "Capítulo reescrito automáticamente para corregir violación de continuidad" 
+                  })
+                  .where(eq(consistencyViolations.id, violation.id));
+              }
+              console.log(`[OrchestratorV2] Marked ${violations.length} consistency violation(s) as RESOLVED for Chapter ${chapterNumber}`);
             }
           }
           

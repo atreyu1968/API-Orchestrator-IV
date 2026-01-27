@@ -492,8 +492,10 @@ export const consistencyViolations = pgTable("consistency_violations", {
   description: text("description").notNull(),
   affectedEntities: jsonb("affected_entities").default([]), // [{entityId, name}]
   brokenRuleId: integer("broken_rule_id").references(() => worldRulesTable.id, { onDelete: "set null" }),
+  status: text("status").notNull().default("pending"), // pending, resolved, ignored
   wasAutoFixed: boolean("was_auto_fixed").notNull().default(false),
   fixDescription: text("fix_description"),
+  resolvedAt: timestamp("resolved_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
