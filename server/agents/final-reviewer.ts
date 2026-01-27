@@ -471,6 +471,159 @@ export class FinalReviewerAgent extends BaseAgent {
     );
   }
 
+  // Pre-analyze the entire manuscript for global patterns that require cross-chapter analysis
+  private preAnalyzeGlobalPatterns(
+    chapters: Array<{ numero: number; titulo: string; contenido: string }>
+  ): string {
+    const patternReport: string[] = [];
+    
+    // 1. Detect "Deus Ex Machina Digital" - anonymous messages, mysterious calls, etc.
+    const deusExPatterns = [
+      /mensaje\s+(an[oó]nimo|encriptado|misterioso|sin\s+remitente)/gi,
+      /n[uú]mero\s+(oculto|desconocido|privado)/gi,
+      /llamada\s+(an[oó]nima|misteriosa|de\s+n[uú]mero\s+oculto)/gi,
+      /texto\s+(encriptado|cifrado|an[oó]nimo)/gi,
+      /alguien\s+(le\s+)?env[ií][oó]/gi,
+      /informante\s+(an[oó]nimo|misterioso)/gi,
+      /coordenadas\s+(en\s+el\s+)?tel[eé]fono/gi,
+      /recibi[oó]\s+un\s+(mensaje|correo|email)/gi,
+    ];
+    
+    const deusExChapters: Map<number, string[]> = new Map();
+    for (const ch of chapters) {
+      const matches: string[] = [];
+      for (const pattern of deusExPatterns) {
+        const found = ch.contenido.match(pattern);
+        if (found) {
+          matches.push(...found.slice(0, 2)); // Limit to 2 examples per pattern
+        }
+      }
+      if (matches.length > 0) {
+        deusExChapters.set(ch.numero, matches);
+      }
+    }
+    
+    if (deusExChapters.size >= 3) {
+      const chapList = Array.from(deusExChapters.keys()).sort((a, b) => a - b);
+      const examples = Array.from(deusExChapters.entries())
+        .slice(0, 3)
+        .map(([num, matches]) => `Cap ${num}: "${matches[0]}"`)
+        .join("; ");
+      patternReport.push(
+        `⚠️ DEUS EX MACHINA DIGITAL detectado en ${deusExChapters.size} capítulos: [${chapList.join(", ")}]. ` +
+        `Ejemplos: ${examples}. ` +
+        `El protagonista recibe información pasivamente en lugar de descubrirla activamente.`
+      );
+    }
+    
+    // 2. Detect repetitive physical gestures/mannerisms
+    const gesturePatterns = [
+      { pattern: /toc[aó]\s+(el|su)\s+anillo/gi, name: "tocarse el anillo" },
+      { pattern: /gir[oó]\s+(el|su)\s+anillo/gi, name: "girar el anillo" },
+      { pattern: /acarici[oó]\s+(la|su)\s+cicatriz/gi, name: "acariciar cicatriz" },
+      { pattern: /cicatriz\s+(de\s+)?quemadura/gi, name: "cicatriz de quemadura" },
+      { pattern: /manchas?\s+(qu[ií]micas?|indelebles?)/gi, name: "manchas químicas" },
+      { pattern: /se\s+frot[oó]\s+(los|las)\s+(ojos|sienes)/gi, name: "frotarse" },
+      { pattern: /apret[oó]\s+(los|la)\s+(dientes|mand[ií]bula)/gi, name: "apretar mandíbula" },
+      { pattern: /escalofrío\s+(le\s+)?recorri[oó]/gi, name: "escalofrío" },
+    ];
+    
+    for (const { pattern, name } of gesturePatterns) {
+      const gestureChapters: number[] = [];
+      for (const ch of chapters) {
+        if (pattern.test(ch.contenido)) {
+          gestureChapters.push(ch.numero);
+        }
+        // Reset regex lastIndex
+        pattern.lastIndex = 0;
+      }
+      
+      if (gestureChapters.length >= 5) {
+        patternReport.push(
+          `⚠️ MULETILLA FÍSICA EXCESIVA: "${name}" aparece en ${gestureChapters.length} capítulos: [${gestureChapters.sort((a, b) => a - b).join(", ")}]. ` +
+          `Reducir al 30% de las apariciones.`
+        );
+      }
+    }
+    
+    // 3. Detect repetitive scene structure patterns
+    const structurePatterns = [
+      { pattern: /condujo|conduc[ií]a|al\s+volante/gi, name: "conducir" },
+      { pattern: /lluvia|llovía|llovi[oó]|gotas/gi, name: "lluvia" },
+      { pattern: /fr[ií]o|helado|congelado|temblaba\s+de/gi, name: "frío" },
+    ];
+    
+    let consecutiveWeatherChapters = 0;
+    let maxConsecutive = 0;
+    const weatherHeavyChapters: number[] = [];
+    
+    for (const ch of chapters) {
+      let weatherMentions = 0;
+      for (const { pattern } of structurePatterns) {
+        const matches = ch.contenido.match(pattern);
+        if (matches) weatherMentions += matches.length;
+        pattern.lastIndex = 0;
+      }
+      
+      if (weatherMentions >= 5) {
+        consecutiveWeatherChapters++;
+        weatherHeavyChapters.push(ch.numero);
+        maxConsecutive = Math.max(maxConsecutive, consecutiveWeatherChapters);
+      } else {
+        consecutiveWeatherChapters = 0;
+      }
+    }
+    
+    if (maxConsecutive >= 3) {
+      patternReport.push(
+        `⚠️ PATRÓN REPETITIVO: Exceso de descripciones climáticas/atmosféricas en capítulos consecutivos: [${weatherHeavyChapters.slice(0, 10).join(", ")}]. ` +
+        `Varía la estructura narrativa.`
+      );
+    }
+    
+    // 4. Detect villain monologues
+    const villainPatterns = [
+      /d[eé]jame\s+(explicarte|contarte)/gi,
+      /te\s+preguntar[aá]s\s+por\s+qu[eé]/gi,
+      /mi\s+plan\s+(es|era|consiste)/gi,
+      /antes\s+de\s+(matarte|acabar\s+contigo)/gi,
+      /somos\s+(el|los)\s+(dique|guardianes|protectores)/gi,
+      /cuando\s+esto\s+termine/gi,
+    ];
+    
+    const villainChapters: number[] = [];
+    for (const ch of chapters) {
+      for (const pattern of villainPatterns) {
+        if (pattern.test(ch.contenido)) {
+          villainChapters.push(ch.numero);
+          break;
+        }
+        pattern.lastIndex = 0;
+      }
+    }
+    
+    if (villainChapters.length >= 2) {
+      patternReport.push(
+        `⚠️ VILLANO EXPLICATIVO: Posibles monólogos de antagonista explicando planes en capítulos: [${villainChapters.sort((a, b) => a - b).join(", ")}]. ` +
+        `Verificar si el villano explica demasiado en lugar de actuar.`
+      );
+    }
+    
+    if (patternReport.length === 0) {
+      return "";
+    }
+    
+    return `
+═══════════════════════════════════════════════════════════════════
+🔍 PRE-ANÁLISIS GLOBAL DE PATRONES (TODA LA NOVELA)
+═══════════════════════════════════════════════════════════════════
+${patternReport.join("\n\n")}
+
+INSTRUCCIÓN: Usa esta información para reportar issues con los CAPÍTULOS ESPECÍFICOS listados arriba.
+═══════════════════════════════════════════════════════════════════
+`;
+  }
+
   // Review a single tranche of chapters
   private async reviewTranche(
     input: FinalReviewerInput,
@@ -600,10 +753,17 @@ REGLAS:
     
     console.log(`[FinalReviewer] Dividiendo ${totalChapters} capítulos en ${numTranches} tramos de ~${CHAPTERS_PER_TRANCHE} capítulos`);
 
+    // Pre-analyze entire manuscript for global patterns (Deus Ex Machina, repetitions, etc.)
+    const globalPatternsReport = this.preAnalyzeGlobalPatterns(sortedChapters);
+    if (globalPatternsReport) {
+      console.log(`[FinalReviewer] Pre-análisis global completado. Patrones detectados.`);
+    }
+
     // Process each tranche with accumulated context from previous tranches
     const trancheResults: Partial<FinalReviewerResult>[] = [];
     let totalTokenUsage = { inputTokens: 0, outputTokens: 0, thinkingTokens: 0 };
-    let accumulatedIssuesSummary = "";
+    // Include global patterns in the accumulated summary so all tranches see it
+    let accumulatedIssuesSummary = globalPatternsReport;
     
     for (let t = 0; t < numTranches; t++) {
       const startIdx = t * CHAPTERS_PER_TRANCHE;
