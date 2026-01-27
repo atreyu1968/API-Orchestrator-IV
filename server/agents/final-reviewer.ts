@@ -335,6 +335,71 @@ Debes detectar y reportar estos problemas que SOLO se ven leyendo toda la novela
       - Severidad: CRÍTICA (el lector pierde confianza)
 
 ═══════════════════════════════════════════════════════════════════
+🕐 COHERENCIA TEMPORAL Y GEOGRÁFICA (OBLIGATORIO)
+═══════════════════════════════════════════════════════════════════
+
+5. **INCONSISTENCIAS TEMPORALES (timeline)** - Categoría: timeline
+   - ¿Cuánto tiempo pasa entre escenas/capítulos? ¿Es físicamente posible?
+   - Viajes: Verifica distancias vs tiempo de viaje declarado
+     * Ejemplo: "Llegó a París desde Madrid en una hora en coche" → CRÍTICO (imposible)
+     * Ejemplo: "Esa misma noche cruzó el Atlántico" → CRÍTICO (sin explicación)
+   - Actividades simultáneas imposibles:
+     * Ejemplo: "A las 10am estaba en Barcelona, a las 11am almorzó en Nueva York" → CRÍTICO
+   - Tiempos de recuperación:
+     * Operaciones quirúrgicas, heridas graves, agotamiento → requieren días/semanas
+     * Ejemplo: "Tras la cirugía de 8 horas, al día siguiente escaló la montaña" → CRÍTICO
+   - Verificar: amanecer/atardecer, día de la semana, fechas mencionadas
+   - Severidad: CRÍTICA si es obvio para el lector
+   - Instrucciones: Indicar tiempo real necesario y sugerir ajuste específico
+
+6. **INCONSISTENCIAS GEOGRÁFICAS (ubicacion)** - Categoría: ubicacion
+   - ¿Las ubicaciones son coherentes dentro del capítulo y entre capítulos?
+   - Teletransportación accidental:
+     * Ejemplo: "Salió del edificio por la puerta sur" pero luego "entró por la norte sin haber rodeado"
+     * Ejemplo: "Estaba en el sótano" y de repente "miró por la ventana del tercer piso"
+   - Geografía imposible:
+     * Ejemplo: "Desde Madrid caminó hasta la playa" (Madrid no tiene playa cercana)
+     * Ejemplo: "Cruzó la frontera española hacia Italia" (no son países fronterizos)
+   - Direcciones contradictorias:
+     * Ejemplo: "Giró a la izquierda" pero termina en lugar que está a la derecha
+   - Severidad: CRÍTICA si rompe la lógica espacial
+   - Instrucciones: Indicar ubicación real y cómo corregir la transición
+
+7. **TRANSICIONES BRUSCAS DE TRAMA** - Categoría: ritmo
+   - ¿Hay saltos abruptos sin contexto que confunden al lector?
+   - Escenas sin transición:
+     * Ejemplo: Párrafo 1: "Discutían acaloradamente" → Párrafo 2: "Tres meses después, en París..."
+     * Falta: indicador de tiempo/lugar, cierre de escena anterior
+   - Cambios de tono sin preparación:
+     * Ejemplo: De escena romántica a escena de acción sin puente narrativo
+   - Resoluciones saltadas:
+     * Ejemplo: Conflicto intenso en Cap 5 → Cap 6 empieza como si no hubiera pasado nada
+   - Severidad: MAYOR si el lector dice "¿qué pasó aquí?"
+   - Instrucciones: Sugerir frase de transición específica o escena puente breve
+
+8. **REALISMO DE ACCIONES FÍSICAS (continuidad_fisica)** - Categoría: continuidad_fisica
+   - ¿Las acciones de los personajes son físicamente posibles dado su estado?
+   - Lesiones activas:
+     * Pierna rota → no puede correr, cojea, necesita apoyo
+     * Brazo herido → no puede levantar objetos pesados con ese brazo
+     * Costillas rotas → dolor al respirar profundo, no puede hacer esfuerzos
+     * Conmoción cerebral → mareos, visión borrosa, no puede pensar claramente
+   - Agotamiento físico:
+     * Después de correr 10km → no puede inmediatamente pelear durante 1 hora
+     * Sin dormir 48h → reflejos lentos, errores de juicio
+     * Pérdida de sangre → debilidad, palidez, posible desmayo
+   - Limitaciones del entorno:
+     * Oscuridad total → no puede ver, tropieza
+     * Atado de manos → no puede abrir puertas ni luchar normalmente
+     * Bajo el agua → no puede hablar, tiempo de aire limitado
+   - Severidad: CRÍTICA si la acción es imposible, MAYOR si es improbable
+   - Instrucciones: 
+     * Opción A: Reducir gravedad de lesión original
+     * Opción B: Añadir referencia al dolor/dificultad durante la acción
+     * Opción C: Modificar la acción para que sea posible con la limitación
+     * Incluir CITA TEXTUAL del momento problemático y texto corregido
+
+═══════════════════════════════════════════════════════════════════
 PROTOCOLO DE PASADAS - OBJETIVO: PUNTUACIÓN 10/10
 ═══════════════════════════════════════════════════════════════════
 
