@@ -122,10 +122,13 @@ export function setupAuthRoutes(app: any): void {
 
     const token = createSession();
     
+    // Use SECURE_COOKIES env var to control secure flag (for HTTP deployments without HTTPS)
+    const useSecureCookies = process.env.SECURE_COOKIES === "true";
+    
     res.cookie(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: useSecureCookies,
+      sameSite: useSecureCookies ? "strict" : "lax",
       maxAge: SESSION_DURATION_MS,
     });
 
