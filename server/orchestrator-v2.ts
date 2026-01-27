@@ -1393,14 +1393,15 @@ export class OrchestratorV2 {
         this.addTokenUsage(reviewResult.tokenUsage);
         await this.logAiUsage(project.id, "final-reviewer", "deepseek-reasoner", reviewResult.tokenUsage);
 
-        if (!reviewResult.parsed) {
+        // FinalReviewer returns 'result' not 'parsed'
+        if (!reviewResult.result) {
           console.error("[OrchestratorV2] FinalReviewer failed to parse result");
           this.callbacks.onError("Error al analizar el manuscrito");
           await storage.updateProject(project.id, { status: "error" });
           return;
         }
 
-        finalResult = reviewResult.parsed;
+        finalResult = reviewResult.result;
         const { veredicto, puntuacion_global, issues, capitulos_para_reescribir } = finalResult;
 
         console.log(`[OrchestratorV2] Review result: ${veredicto}, score: ${puntuacion_global}, chapters to rewrite: ${capitulos_para_reescribir?.length || 0}`);
