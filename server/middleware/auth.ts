@@ -122,13 +122,20 @@ export function setupAuthRoutes(app: any): void {
 
     const token = createSession();
     
-    // Use SECURE_COOKIES env var to control secure flag (for HTTP deployments without HTTPS)
-    const useSecureCookies = process.env.SECURE_COOKIES === "true";
+    // Determine if we should use secure cookies:
+    // 1. If SECURE_COOKIES env var is explicitly set, use that
+    // 2. If request came through HTTPS (via proxy like Cloudflare), use secure cookies
+    // 3. Otherwise, don't use secure cookies (for local HTTP development)
+    const isProxiedHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const useSecureCookies = process.env.SECURE_COOKIES === "true" || 
+                             (process.env.SECURE_COOKIES !== "false" && isProxiedHttps);
+    
+    console.log(`[Auth] Setting cookie: secure=${useSecureCookies}, isProxiedHttps=${isProxiedHttps}, x-forwarded-proto=${req.headers['x-forwarded-proto']}`);
     
     res.cookie(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       secure: useSecureCookies,
-      sameSite: useSecureCookies ? "strict" : "lax",
+      sameSite: useSecureCookies ? "none" : "lax", // "none" required for cross-site with secure
       maxAge: SESSION_DURATION_MS,
     });
 

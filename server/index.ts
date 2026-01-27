@@ -39,6 +39,11 @@ if (process.env.NODE_ENV === "production") {
 }
 
 const app = express();
+
+// Trust proxy for Cloudflare Tunnel and other reverse proxies
+// This allows Express to correctly read X-Forwarded-* headers
+app.set('trust proxy', 1);
+
 const httpServer = createServer(app);
 
 declare module "http" {
