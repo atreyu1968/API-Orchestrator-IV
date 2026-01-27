@@ -706,7 +706,7 @@ export default function Dashboard() {
                       Escena {sceneProgress.sceneNumber}/{sceneProgress.totalScenes} - Cap. {sceneProgress.chapterNumber}
                     </Badge>
                   )}
-                  {currentProject.status === "completed" && (
+                  {(currentProject.status === "completed" || currentProject.status === "awaiting_final_review") && (
                     <>
                       <Button
                         variant="outline"
