@@ -94,13 +94,30 @@ else
 fi
 
 echo ""
-print_status "Configuración de claves API (opcional):"
+print_status "Configuración de claves API DeepSeek:"
+echo -e "  ${CYAN}LitAgents usa 3 claves API separadas para mejor gestión de cuotas:${NC}"
+echo -e "  - Escritor: Para generación de novelas (DEEPSEEK_API_KEY)"
+echo -e "  - Traductor: Para traducción de manuscritos (DEEPSEEK_TRANSLATOR_API_KEY)"
+echo -e "  - Re-editor: Para edición de manuscritos (DEEPSEEK_REEDITOR_API_KEY)"
 echo ""
 
 if [ "$IS_UPDATE" = false ] || [ -z "$DEEPSEEK_API_KEY" ]; then
-    read -p "$(echo -e ${YELLOW}DeepSeek API Key${NC} [Enter para omitir]: )" INPUT_DEEPSEEK
+    read -p "$(echo -e ${YELLOW}DeepSeek API Key - Escritor${NC} [Enter para omitir]: )" INPUT_DEEPSEEK
     DEEPSEEK_API_KEY="${INPUT_DEEPSEEK:-$DEEPSEEK_API_KEY}"
 fi
+
+if [ "$IS_UPDATE" = false ] || [ -z "$DEEPSEEK_TRANSLATOR_API_KEY" ]; then
+    read -p "$(echo -e ${YELLOW}DeepSeek API Key - Traductor${NC} [Enter para omitir]: )" INPUT_DEEPSEEK_TRANS
+    DEEPSEEK_TRANSLATOR_API_KEY="${INPUT_DEEPSEEK_TRANS:-$DEEPSEEK_TRANSLATOR_API_KEY}"
+fi
+
+if [ "$IS_UPDATE" = false ] || [ -z "$DEEPSEEK_REEDITOR_API_KEY" ]; then
+    read -p "$(echo -e ${YELLOW}DeepSeek API Key - Re-editor${NC} [Enter para omitir]: )" INPUT_DEEPSEEK_REEDIT
+    DEEPSEEK_REEDITOR_API_KEY="${INPUT_DEEPSEEK_REEDIT:-$DEEPSEEK_REEDITOR_API_KEY}"
+fi
+
+echo ""
+print_status "Configuración de Gemini (opcional - alternativa a DeepSeek):"
 
 if [ "$IS_UPDATE" = false ] || [ -z "$GEMINI_API_KEY" ]; then
     read -p "$(echo -e ${YELLOW}Gemini API Key${NC} [Enter para omitir]: )" INPUT_GEMINI
@@ -120,7 +137,11 @@ PORT=$APP_PORT
 DATABASE_URL=$DATABASE_URL
 SESSION_SECRET=$SESSION_SECRET
 SECURE_COOKIES=$CURRENT_SECURE_COOKIES
+# DeepSeek API Keys (3 claves para gestión de cuotas)
 DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY
+DEEPSEEK_TRANSLATOR_API_KEY=$DEEPSEEK_TRANSLATOR_API_KEY
+DEEPSEEK_REEDITOR_API_KEY=$DEEPSEEK_REEDITOR_API_KEY
+# Gemini API (alternativa)
 GEMINI_API_KEY=$GEMINI_API_KEY
 AI_INTEGRATIONS_GEMINI_API_KEY=$GEMINI_API_KEY
 AI_INTEGRATIONS_GEMINI_BASE_URL=https://generativelanguage.googleapis.com

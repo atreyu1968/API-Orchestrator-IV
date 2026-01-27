@@ -33,6 +33,37 @@ Sistema autónomo de orquestación de agentes de IA para la escritura, edición 
 - 20GB espacio en disco
 - Conexión a internet
 
+## Preparación del Servidor Ubuntu
+
+Antes de instalar LitAgents, asegúrate de que tu servidor Ubuntu esté actualizado y tenga las herramientas básicas instaladas.
+
+### Actualizar el sistema
+
+```bash
+# Actualizar lista de paquetes
+sudo apt update
+
+# Actualizar todos los paquetes instalados
+sudo apt upgrade -y
+
+# (Opcional) Actualizar el sistema completo incluyendo kernel
+sudo apt full-upgrade -y
+
+# Limpiar paquetes obsoletos
+sudo apt autoremove -y
+```
+
+### Instalar herramientas necesarias
+
+```bash
+# Instalar curl, git y otras herramientas básicas
+sudo apt install -y curl git wget nano build-essential
+
+# Verificar instalación
+curl --version
+git --version
+```
+
 ## Instalación Rápida
 
 ### 1. Descargar e instalar
@@ -48,10 +79,18 @@ sudo bash install.sh
 
 ### 2. Durante la instalación
 
-El instalador te pedirá (opcional):
-- **DeepSeek API Key**: Para generación y análisis de texto
-- **Gemini API Key**: Para funciones alternativas de IA
+El instalador te pedirá las siguientes claves API (todas opcionales):
+
+**DeepSeek (3 claves separadas para gestión de cuotas):**
+- **DEEPSEEK_API_KEY (Escritor)**: Para generación de novelas
+- **DEEPSEEK_TRANSLATOR_API_KEY (Traductor)**: Para traducción de manuscritos
+- **DEEPSEEK_REEDITOR_API_KEY (Re-editor)**: Para edición de manuscritos
+
+**Otras:**
+- **Gemini API Key**: Alternativa a DeepSeek
 - **Cloudflare Tunnel Token**: Para acceso HTTPS externo
+
+> **Nota:** Puedes usar la misma clave de DeepSeek para las tres funciones, o crear claves separadas en la plataforma DeepSeek para mejor control de cuotas y costos.
 
 ### 3. Acceder a la aplicación
 
@@ -68,8 +107,15 @@ Si omitiste las claves durante la instalación:
 sudo nano /etc/litagents/env
 
 # Agregar/modificar estas líneas:
-DEEPSEEK_API_KEY=tu_clave_deepseek
+# DeepSeek (puedes usar la misma clave para las 3, o diferentes)
+DEEPSEEK_API_KEY=tu_clave_escritor
+DEEPSEEK_TRANSLATOR_API_KEY=tu_clave_traductor
+DEEPSEEK_REEDITOR_API_KEY=tu_clave_reeditor
+
+# Gemini (alternativa)
 GEMINI_API_KEY=tu_clave_gemini
+
+# Guardar y salir (Ctrl+O, Enter, Ctrl+X)
 
 # Reiniciar servicio
 sudo systemctl restart litagents
@@ -181,10 +227,14 @@ sudo chown -R litagents:litagents /var/www/litagents
 |----------|-------------|-----------|
 | `DATABASE_URL` | URL de conexión PostgreSQL | Sí (auto) |
 | `SESSION_SECRET` | Secreto para sesiones | Sí (auto) |
-| `DEEPSEEK_API_KEY` | API key de DeepSeek | Recomendado |
+| `DEEPSEEK_API_KEY` | API key de DeepSeek - Escritor | Recomendado |
+| `DEEPSEEK_TRANSLATOR_API_KEY` | API key de DeepSeek - Traductor | Opcional* |
+| `DEEPSEEK_REEDITOR_API_KEY` | API key de DeepSeek - Re-editor | Opcional* |
 | `GEMINI_API_KEY` | API key de Google Gemini | Opcional |
 | `SECURE_COOKIES` | true/false para cookies seguras | Sí (auto) |
 | `PORT` | Puerto de la aplicación | Sí (auto: 5000) |
+
+*Si no se configuran, se usa `DEEPSEEK_API_KEY` como fallback.
 
 ## Backup de Base de Datos
 
