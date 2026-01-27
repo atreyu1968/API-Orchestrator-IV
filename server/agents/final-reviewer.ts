@@ -650,15 +650,41 @@ REGLAS:
       }
     }
 
-    // Calculate average score
-    const avgScore = scoreCount > 0 ? Math.round(totalScore / scoreCount) : 8;
+    // Calculate average score from tranches
+    let avgScore = scoreCount > 0 ? Math.round(totalScore / scoreCount) : 8;
     
     // Deduplicate similar issues (same category and overlapping chapters)
     const deduplicatedIssues = this.deduplicateIssues(allIssues);
     
-    // Determine verdict based on combined results
-    const hasCriticalIssues = deduplicatedIssues.some(i => i.severidad === "critica");
-    const veredicto = (avgScore >= 9 && !hasCriticalIssues) ? "APROBADO" : "REQUIERE_REVISION";
+    // ═══════════════════════════════════════════════════════════════════
+    // COHERENCE VALIDATION: Adjust score based on detected issues
+    // This prevents the AI from giving 10/10 while reporting problems
+    // ═══════════════════════════════════════════════════════════════════
+    const criticalCount = deduplicatedIssues.filter(i => i.severidad === "critica").length;
+    const majorCount = deduplicatedIssues.filter(i => i.severidad === "mayor").length;
+    const minorCount = deduplicatedIssues.filter(i => i.severidad === "menor").length;
+    
+    // Calculate maximum allowed score based on issues
+    // Rule: Each issue type caps the maximum score
+    let maxAllowedScore = 10;
+    if (criticalCount > 0) maxAllowedScore = Math.min(maxAllowedScore, 6); // Critical = max 6
+    else if (majorCount >= 3) maxAllowedScore = Math.min(maxAllowedScore, 7);
+    else if (majorCount >= 2) maxAllowedScore = Math.min(maxAllowedScore, 7.5);
+    else if (majorCount >= 1) maxAllowedScore = Math.min(maxAllowedScore, 8);
+    else if (minorCount >= 3) maxAllowedScore = Math.min(maxAllowedScore, 8);
+    else if (minorCount >= 2) maxAllowedScore = Math.min(maxAllowedScore, 8.5);
+    else if (minorCount >= 1) maxAllowedScore = Math.min(maxAllowedScore, 9);
+    
+    // If model gave higher score than allowed, adjust down
+    const originalScore = avgScore;
+    if (avgScore > maxAllowedScore) {
+      avgScore = Math.round(maxAllowedScore);
+      console.log(`[FinalReviewer] COHERENCE CHECK: Score adjusted from ${originalScore} to ${avgScore} (${criticalCount} critical, ${majorCount} major, ${minorCount} minor issues)`);
+    }
+    
+    // Determine verdict based on adjusted score and issues
+    const hasCriticalIssues = criticalCount > 0;
+    const veredicto = (avgScore >= 9 && !hasCriticalIssues && deduplicatedIssues.length === 0) ? "APROBADO" : "REQUIERE_REVISION";
 
     console.log(`[FinalReviewer] Combinando ${numTranches} tramos: score promedio ${avgScore}/10, issues totales: ${allIssues.length} (${deduplicatedIssues.length} únicos), veredicto: ${veredicto}`);
 
