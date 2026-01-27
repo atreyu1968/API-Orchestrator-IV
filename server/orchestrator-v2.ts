@@ -1158,7 +1158,9 @@ export class OrchestratorV2 {
         this.callbacks.onProjectComplete();
       } else {
         // Need to run FinalReviewer to get/improve score
+        // CRITICAL: Set status to final_review_in_progress to prevent auto-recovery from interrupting
         console.log(`[OrchestratorV2] Project has score ${currentScore}/10 (< 9), running FinalReviewer...`);
+        await storage.updateProject(project.id, { status: "final_review_in_progress" });
         await this.runFinalReviewOnly(project, 3);
       }
 

@@ -292,7 +292,12 @@ export class QueueManager {
         
         const timeSinceActivity = Date.now() - new Date(activityTime).getTime();
         
-        if (timeSinceActivity > HEARTBEAT_TIMEOUT_MS) {
+        // Use extended timeout for final_review_in_progress since it can take longer (20 min vs 5 min)
+        const effectiveTimeout = project.status === "final_review_in_progress" 
+          ? HEARTBEAT_TIMEOUT_MS * 4  // 20 minutes for final review
+          : HEARTBEAT_TIMEOUT_MS;     // 5 minutes for other states
+        
+        if (timeSinceActivity > effectiveTimeout) {
             console.log(`[QueueManager] FROZEN PROJECT DETECTED: "${project.title}" (ID: ${project.id}) - no activity for ${Math.round(timeSinceActivity / 60000)} minutes`);
             
             // CRITICAL: Cancel any pending API connections FIRST
