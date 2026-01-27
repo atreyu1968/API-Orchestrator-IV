@@ -272,12 +272,28 @@ export class OrchestratorV2 {
       console.log(`[OrchestratorV2] Added ${result.newRelationships.length} new relationships`);
     }
 
+    // Any warning is also a violation that must be corrected
     if (result.warnings && result.warnings.length > 0) {
-      this.callbacks.onAgentStatus("consistency", "completed", `Passed with ${result.warnings.length} warnings`);
-    } else {
-      this.callbacks.onAgentStatus("consistency", "completed", "Continuity validated");
+      const warningText = result.warnings.join("; ");
+      
+      // Log each warning as a violation
+      for (const warning of result.warnings) {
+        await storage.createConsistencyViolation({
+          projectId,
+          chapterNumber,
+          violationType: 'WARNING',
+          severity: 'major',
+          description: warning,
+          affectedEntities: [],
+          wasAutoFixed: false,
+        });
+      }
+      
+      this.callbacks.onAgentStatus("consistency", "warning", `${result.warnings.length} issues detected - forcing rewrite`);
+      return { isValid: false, error: warningText };
     }
-
+    
+    this.callbacks.onAgentStatus("consistency", "completed", "Continuity validated");
     return { isValid: true };
   }
 
