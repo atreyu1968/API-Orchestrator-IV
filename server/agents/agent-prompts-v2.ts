@@ -67,13 +67,16 @@ export const PROMPTS_V2 = {
     ╔══════════════════════════════════════════════════════════════════╗
     ║ REGLA CRÍTICA E INVIOLABLE: NÚMERO EXACTO DE CAPÍTULOS          ║
     ╠══════════════════════════════════════════════════════════════════╣
-    ║ DEBES generar EXACTAMENTE ${chapters} capítulos en el outline.   ║
-    ║ - NO generes menos capítulos aunque creas que la trama cierra   ║
-    ║ - NO generes más capítulos de los solicitados                   ║
-    ║ - El prólogo (si existe) es chapter_num: 0, NO cuenta como cap. ║
-    ║ - El epílogo (si existe) es chapter_num: 998, NO cuenta como cap║
-    ║ - Los ${chapters} capítulos REGULARES son: chapter_num 1 a ${chapters}     ║
-    ║ - VERIFICA antes de finalizar que tienes EXACTAMENTE ${chapters} caps     ║
+    ║ El usuario solicita ${chapters} CAPÍTULOS REGULARES (numerados 1-${chapters}).    ║
+    ║                                                                  ║
+    ║ El prólogo y epílogo son ADICIONALES, NO cuentan en esos ${chapters}:   ║
+    ║ ${hasPrologue ? '  - Prólogo = chapter_num: 0 (ADICIONAL, no cuenta)' : '  - Sin prólogo'}         ║
+    ║ ${hasEpilogue ? '  - Epílogo = chapter_num: 998 (ADICIONAL, no cuenta)' : '  - Sin epílogo'}       ║
+    ║                                                                  ║
+    ║ TOTAL en tu outline:                                             ║
+    ║   ${hasPrologue ? '1 prólogo + ' : ''}${chapters} capítulos regulares${hasEpilogue ? ' + 1 epílogo' : ''} = ${(hasPrologue ? 1 : 0) + chapters + (hasEpilogue ? 1 : 0)} entradas en outline  ║
+    ║                                                                  ║
+    ║ VERIFICA: chapter_num 1, 2, 3... hasta ${chapters} DEBEN existir.        ║
     ╚══════════════════════════════════════════════════════════════════╝
 
     SALIDA REQUERIDA (JSON Estricto):
