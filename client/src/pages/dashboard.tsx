@@ -1011,7 +1011,7 @@ export default function Dashboard() {
                     </>
                   )}
 
-                  {["paused", "cancelled", "error", "failed_final_review"].includes(currentProject.status) && (
+                  {["paused", "cancelled", "error", "failed_final_review", "final_review_in_progress"].includes(currentProject.status) && (
                     <Button
                       variant="default"
                       size="sm"

@@ -272,7 +272,7 @@ export class QueueManager {
       // Get all projects in active processing states that might freeze
       const projects = await storage.getAllProjects();
       // Extended list: include all states where generation could be happening
-      const monitoredStatuses = ["generating", "failed_final_review", "paused", "awaiting_instructions"];
+      const monitoredStatuses = ["generating", "failed_final_review", "paused", "awaiting_instructions", "final_review_in_progress"];
       const generatingProjects = projects.filter((p: Project) => monitoredStatuses.includes(p.status));
       
       // Debug log every 5 minutes (every 5th check)

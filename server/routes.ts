@@ -974,11 +974,11 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Project is already generating" });
       }
 
-      const validStatuses = ["paused", "cancelled", "error", "failed_final_review", "idle", "planning", "awaiting_instructions"];
+      const validStatuses = ["paused", "cancelled", "error", "failed_final_review", "idle", "planning", "awaiting_instructions", "final_review_in_progress"];
       if (!validStatuses.includes(project.status)) {
         console.log(`[Resume] Project ${id} has invalid status: ${project.status}`);
         return res.status(400).json({ 
-          error: `No se puede reanudar un proyecto con estado "${project.status}". Estados válidos: pausado, cancelado, error, idle, planning, awaiting_instructions.` 
+          error: `No se puede reanudar un proyecto con estado "${project.status}". Estados válidos: pausado, cancelado, error, idle, planning, awaiting_instructions, final_review_in_progress.` 
         });
       }
 
