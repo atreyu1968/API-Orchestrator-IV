@@ -1423,13 +1423,18 @@ export class OrchestratorV2 {
           }
         }
 
-        // If score >= 9 and approved, we're done. Otherwise continue correcting if possible.
-        const meetsQualityThreshold = puntuacion_global >= 9 && (veredicto === "APROBADO" || veredicto === "APROBADO_CON_RESERVAS");
+        // STRICT QUALITY GATE: Only consider done if score >= 9
+        const meetsQualityThreshold = puntuacion_global >= 9;
         
-        if (meetsQualityThreshold || (capitulos_para_reescribir?.length || 0) === 0) {
-          if (!meetsQualityThreshold && puntuacion_global < 9) {
-            console.log(`[OrchestratorV2] Score ${puntuacion_global} < 9 but no chapters to rewrite. Manual intervention needed.`);
-          }
+        // If score >= 9, we're done regardless of veredicto
+        if (meetsQualityThreshold) {
+          console.log(`[OrchestratorV2] Score ${puntuacion_global} >= 9. Quality threshold met.`);
+          break;
+        }
+        
+        // Score < 9: need to correct. If no chapters extracted, mark for manual intervention
+        if ((capitulos_para_reescribir?.length || 0) === 0) {
+          console.log(`[OrchestratorV2] Score ${puntuacion_global} < 9 but no chapters to rewrite. Will mark as failed_final_review for manual intervention.`);
           break;
         }
 
