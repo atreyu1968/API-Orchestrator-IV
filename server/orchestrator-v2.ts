@@ -813,30 +813,8 @@ export class OrchestratorV2 {
 
         console.log(`[OrchestratorV2] Generating Chapter ${chapterNumber}: "${chapterOutline.title}"`);
 
-        // 2a: Chapter Architect - Plan scenes
-        this.callbacks.onAgentStatus("chapter-architect", "active", `Planning scenes for Chapter ${chapterNumber}...`);
-        
-        const previousSummary = i > 0 ? chapterSummaries[i - 1] : "";
-        const storyState = rollingSummary;
-
-        const chapterPlan = await this.chapterArchitect.execute({
-          chapterOutline,
-          worldBible,
-          previousChapterSummary: previousSummary,
-          storyState,
-        });
-
-        if (chapterPlan.error || !chapterPlan.parsed) {
-          throw new Error(`Chapter Architect failed for Chapter ${chapterNumber}: ${chapterPlan.error || "No parsed output"}`);
-        }
-
-        this.addTokenUsage(chapterPlan.tokenUsage);
-        await this.logAiUsage(project.id, "chapter-architect", "deepseek-reasoner", chapterPlan.tokenUsage, chapterNumber);
-        this.callbacks.onAgentStatus("chapter-architect", "completed", `${chapterPlan.parsed.scenes.length} scenes planned`);
-
-        const sceneBreakdown = chapterPlan.parsed;
-
-        // 2a.5: LitAgents 2.1 - Generate consistency constraints
+        // 2a.0: LitAgents 2.1 - Generate consistency constraints BEFORE planning
+        // This prevents the Chapter Architect from planning scenes that violate consistency
         let consistencyConstraints = "";
         try {
           const context = await this.getConsistencyContext(project.id);
@@ -848,11 +826,35 @@ export class OrchestratorV2 {
               context.relationships,
               chapterNumber
             );
-            console.log(`[OrchestratorV2] Generated consistency constraints (${consistencyConstraints.length} chars)`);
+            console.log(`[OrchestratorV2] Generated consistency constraints (${consistencyConstraints.length} chars) - Will inject to ChapterArchitect AND Ghostwriter`);
           }
         } catch (err) {
           console.error(`[OrchestratorV2] Failed to generate constraints:`, err);
         }
+
+        // 2a: Chapter Architect - Plan scenes (now WITH constraints)
+        this.callbacks.onAgentStatus("chapter-architect", "active", `Planning scenes for Chapter ${chapterNumber}...`);
+        
+        const previousSummary = i > 0 ? chapterSummaries[i - 1] : "";
+        const storyState = rollingSummary;
+
+        const chapterPlan = await this.chapterArchitect.execute({
+          chapterOutline,
+          worldBible,
+          previousChapterSummary: previousSummary,
+          storyState,
+          consistencyConstraints, // LitAgents 2.1: Inject constraints to planning phase
+        });
+
+        if (chapterPlan.error || !chapterPlan.parsed) {
+          throw new Error(`Chapter Architect failed for Chapter ${chapterNumber}: ${chapterPlan.error || "No parsed output"}`);
+        }
+
+        this.addTokenUsage(chapterPlan.tokenUsage);
+        await this.logAiUsage(project.id, "chapter-architect", "deepseek-reasoner", chapterPlan.tokenUsage, chapterNumber);
+        this.callbacks.onAgentStatus("chapter-architect", "completed", `${chapterPlan.parsed.scenes.length} scenes planned`);
+
+        const sceneBreakdown = chapterPlan.parsed;
 
         // 2b: Ghostwriter - Write scene by scene
         let fullChapterText = "";
@@ -1233,12 +1235,13 @@ export class OrchestratorV2 {
     guiaEstilo: string
   ): Promise<{ content: string; summary: string; wordCount: number; sceneBreakdown: ChapterArchitectOutput }> {
     
-    // Plan scenes
+    // Plan scenes (note: this helper doesn't have consistency constraints context)
     const chapterPlan = await this.chapterArchitect.execute({
       chapterOutline,
       worldBible,
       previousChapterSummary,
       storyState: rollingSummary,
+      // consistencyConstraints not available in this simplified helper
     });
 
     if (!chapterPlan.parsed) {
@@ -1258,6 +1261,7 @@ export class OrchestratorV2 {
         rollingSummary,
         worldBible,
         guiaEstilo,
+        // Note: consistencyConstraints not available in this simplified helper
       });
 
       if (!sceneResult.error) {
@@ -1462,7 +1466,24 @@ export class OrchestratorV2 {
 
         const previousSummary = rollingSummary;
 
-        // Plan scenes for this chapter
+        // LitAgents 2.1: Generate constraints BEFORE planning
+        let consistencyConstraints = "";
+        try {
+          const context = await this.getConsistencyContext(project.id);
+          if (context.entities.length > 0) {
+            consistencyConstraints = universalConsistencyAgent.generateConstraints(
+              project.genre,
+              context.entities,
+              context.rules,
+              context.relationships,
+              chapterNum
+            );
+          }
+        } catch (err) {
+          console.error(`[OrchestratorV2] Failed to generate constraints for extend:`, err);
+        }
+
+        // Plan scenes for this chapter (WITH constraints)
         this.callbacks.onAgentStatus("chapter-architect", "active", `Planificando escenas para Capítulo ${chapterNum}...`);
         
         const chapterPlan = await this.chapterArchitect.execute({
@@ -1470,6 +1491,7 @@ export class OrchestratorV2 {
           worldBible: worldBibleData,
           previousChapterSummary: previousSummary,
           storyState: rollingSummary,
+          consistencyConstraints,
         });
 
         if (!chapterPlan.parsed) {
@@ -1512,6 +1534,7 @@ export class OrchestratorV2 {
             rollingSummary,
             worldBible: worldBibleData,
             guiaEstilo,
+            consistencyConstraints, // LitAgents 2.1: Inject to writing stage
           });
 
           if (!sceneResult.error) {
@@ -1653,12 +1676,30 @@ export class OrchestratorV2 {
           key_event: "Continuación de la historia",
         };
 
-        // Plan new scenes
+        // LitAgents 2.1: Generate constraints BEFORE planning
+        let consistencyConstraints = "";
+        try {
+          const context = await this.getConsistencyContext(project.id);
+          if (context.entities.length > 0) {
+            consistencyConstraints = universalConsistencyAgent.generateConstraints(
+              project.genre,
+              context.entities,
+              context.rules,
+              context.relationships,
+              chapter.chapterNumber
+            );
+          }
+        } catch (err) {
+          console.error(`[OrchestratorV2] Failed to generate constraints for truncated regen:`, err);
+        }
+
+        // Plan new scenes (WITH constraints)
         const chapterPlan = await this.chapterArchitect.execute({
           chapterOutline,
           worldBible: worldBibleData,
           previousChapterSummary: rollingSummary,
           storyState: rollingSummary,
+          consistencyConstraints,
         });
 
         if (!chapterPlan.parsed) {
@@ -1689,6 +1730,7 @@ export class OrchestratorV2 {
             rollingSummary,
             worldBible: worldBibleData,
             guiaEstilo,
+            consistencyConstraints, // LitAgents 2.1: Inject to writing stage
           });
 
           if (!sceneResult.error) {
@@ -2003,7 +2045,24 @@ export class OrchestratorV2 {
         const prevChapter = sortedExisting.find(c => c.chapterNumber === chapterNumber - 1);
         const previousSummary = prevChapter?.summary || rollingSummary;
 
-        // Chapter Architect
+        // LitAgents 2.1: Generate constraints BEFORE planning
+        let consistencyConstraints = "";
+        try {
+          const context = await this.getConsistencyContext(project.id);
+          if (context.entities.length > 0) {
+            consistencyConstraints = universalConsistencyAgent.generateConstraints(
+              project.genre,
+              context.entities,
+              context.rules,
+              context.relationships,
+              chapterNumber
+            );
+          }
+        } catch (err) {
+          console.error(`[OrchestratorV2] Failed to generate constraints for fill missing:`, err);
+        }
+
+        // Chapter Architect (WITH constraints)
         this.callbacks.onAgentStatus("chapter-architect", "active", `Planning scenes for Chapter ${chapterNumber}...`);
         
         const chapterPlan = await this.chapterArchitect.execute({
@@ -2011,6 +2070,7 @@ export class OrchestratorV2 {
           worldBible: worldBible as any,
           previousChapterSummary: previousSummary,
           storyState: rollingSummary,
+          consistencyConstraints,
         });
 
         if (chapterPlan.error || !chapterPlan.parsed) {
@@ -2037,6 +2097,7 @@ export class OrchestratorV2 {
             rollingSummary,
             worldBible: worldBible as any,
             guiaEstilo,
+            consistencyConstraints, // LitAgents 2.1: Inject to writing stage
           });
 
           this.addTokenUsage(sceneResult.tokenUsage);

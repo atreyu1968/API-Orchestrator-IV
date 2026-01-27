@@ -756,10 +756,15 @@ RESPONDE SOLO EN JSON:
   }
 
   async execute(input: any): Promise<any> {
-    return this.analyzeArchitecture(input.worldBible, input.chapters, input.structureAnalysis);
+    return this.analyzeArchitecture(input.worldBible, input.chapters, input.structureAnalysis, input.consistencyConstraints);
   }
 
-  async analyzeArchitecture(worldBible: any, chapters: { num: number; content: string; feedback?: any }[], structureAnalysis: any): Promise<any> {
+  async analyzeArchitecture(
+    worldBible: any, 
+    chapters: { num: number; content: string; feedback?: any }[], 
+    structureAnalysis: any,
+    consistencyConstraints?: string
+  ): Promise<any> {
     const bibleSummary = JSON.stringify({
       personajes: worldBible.personajes?.slice(0, 10) || [],
       ubicaciones: worldBible.ubicaciones?.slice(0, 5) || [],
@@ -772,7 +777,12 @@ RESPONDE SOLO EN JSON:
       `Cap ${c.num}: ${c.content.substring(0, 500)}... [Feedback: ${c.feedback?.strengths?.slice(0, 1).join(", ") || "N/A"}]`
     ).join("\n");
 
-    const prompt = `Analiza la arquitectura narrativa de este manuscrito:
+    // LitAgents 2.1: Inject consistency constraints if available
+    const constraintsBlock = consistencyConstraints 
+      ? `\n\n${consistencyConstraints}\n\nTEN EN CUENTA LAS RESTRICCIONES DE CONSISTENCIA ANTERIORES AL ANALIZAR:\n`
+      : "";
+
+    const prompt = `${constraintsBlock}Analiza la arquitectura narrativa de este manuscrito:
 
 BIBLIA DEL MUNDO:
 ${bibleSummary}
@@ -3126,10 +3136,29 @@ export class ReeditOrchestrator {
 
         await storage.updateReeditProject(projectId, { currentStage: "architect" });
 
+        // LitAgents 2.1: Generate consistency constraints for Architect analysis
+        let architectConstraints = "";
+        if (forensicAuditResult && !forensicAuditResult.skipped) {
+          // Build constraints from forensic audit findings
+          const violationsSummary = forensicAuditResult.violations?.slice(0, 20).map((v: any) => 
+            `- [${v.type}] Cap ${v.chapter}: ${v.description}`
+          ).join("\n") || "";
+          
+          if (violationsSummary) {
+            architectConstraints = `
+⛔ VIOLACIONES DE CONSISTENCIA DETECTADAS POR AUDITORÍA FORENSE:
+${violationsSummary}
+
+Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomienda correcciones.
+`;
+          }
+        }
+
         architectResult = await this.architectAnalyzer.analyzeArchitecture(
           worldBibleResult,
           chaptersForArchitect,
-          structureAnalysis
+          structureAnalysis,
+          architectConstraints
         );
         this.trackTokens(architectResult);
 

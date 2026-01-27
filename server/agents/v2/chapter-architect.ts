@@ -15,6 +15,7 @@ export interface ChapterArchitectInput {
   worldBible: any;
   previousChapterSummary: string;
   storyState: string;
+  consistencyConstraints?: string;
 }
 
 export interface ScenePlan {
@@ -69,12 +70,18 @@ export class ChapterArchitectAgent extends BaseAgent {
   async execute(input: ChapterArchitectInput): Promise<AgentResponse & { parsed?: ChapterArchitectOutput }> {
     console.log(`[ChapterArchitect] Planning scenes for Chapter ${input.chapterOutline.chapter_num}: "${input.chapterOutline.title}"...`);
     
-    const prompt = PROMPTS_V2.CHAPTER_ARCHITECT(
+    let prompt = PROMPTS_V2.CHAPTER_ARCHITECT(
       input.chapterOutline,
       input.worldBible,
       input.previousChapterSummary,
       input.storyState
     );
+
+    // LitAgents 2.1: Inject consistency constraints before planning scenes
+    if (input.consistencyConstraints) {
+      prompt = `${input.consistencyConstraints}\n\n---\n\nAHORA, TENIENDO EN CUENTA LAS RESTRICCIONES DE CONSISTENCIA ANTERIORES, diseña las escenas:\n\n${prompt}`;
+      console.log(`[ChapterArchitect] Injected consistency constraints (${input.consistencyConstraints.length} chars) - Preventing inconsistent scene planning`);
+    }
 
     const response = await this.generateContent(prompt);
     
