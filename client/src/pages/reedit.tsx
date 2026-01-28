@@ -1773,17 +1773,47 @@ export default function ReeditPage() {
                       </Button>
                     )}
                     {selectedProjectData.status === "awaiting_instructions" && (
+                      <>
+                        <Button
+                          onClick={() => resumeMutation.mutate({ projectId: selectedProjectData.id, instructions: userInstructions })}
+                          disabled={resumeMutation.isPending}
+                          data-testid="button-resume-with-instructions"
+                        >
+                          {resumeMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <Play className="h-4 w-4 mr-2" />
+                          )}
+                          Continuar con Instrucciones
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => cancelMutation.mutate(selectedProjectData.id)}
+                          disabled={cancelMutation.isPending}
+                          data-testid="button-cancel-awaiting"
+                        >
+                          {cancelMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <StopCircle className="h-4 w-4 mr-2" />
+                          )}
+                          Cancelar
+                        </Button>
+                      </>
+                    )}
+                    {selectedProjectData.status === "awaiting_issue_approval" && (
                       <Button
-                        onClick={() => resumeMutation.mutate({ projectId: selectedProjectData.id, instructions: userInstructions })}
-                        disabled={resumeMutation.isPending}
-                        data-testid="button-resume-with-instructions"
+                        variant="destructive"
+                        onClick={() => cancelMutation.mutate(selectedProjectData.id)}
+                        disabled={cancelMutation.isPending}
+                        data-testid="button-cancel-issues"
                       >
-                        {resumeMutation.isPending ? (
+                        {cancelMutation.isPending ? (
                           <Loader2 className="h-4 w-4 animate-spin mr-2" />
                         ) : (
-                          <Play className="h-4 w-4 mr-2" />
+                          <StopCircle className="h-4 w-4 mr-2" />
                         )}
-                        Continuar con Instrucciones
+                        Cancelar Proceso
                       </Button>
                     )}
                     {selectedProjectData.status === "completed" && (
@@ -1875,12 +1905,31 @@ export default function ReeditPage() {
                           <span>{Math.round(progress)}%</span>
                         </div>
                         <Progress value={progress} />
-                        {selectedProjectData.currentActivity && (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-md" data-testid="text-current-activity">
-                            <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
-                            <span className="line-clamp-2">{selectedProjectData.currentActivity}</span>
-                          </div>
-                        )}
+                        <Card className="border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20" data-testid="card-current-activity">
+                          <CardContent className="py-4">
+                            <div className="flex items-start gap-3">
+                              <div className="flex-shrink-0 p-2 bg-blue-100 dark:bg-blue-900/50 rounded-full">
+                                <Loader2 className="h-5 w-5 animate-spin text-blue-600 dark:text-blue-400" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                {selectedProjectData.currentChapter && selectedProjectData.currentChapter > 0 ? (
+                                  <Badge variant="secondary" className="mb-2 bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                                    <Wand2 className="h-3 w-3 mr-1" />
+                                    Reescribiendo Capítulo {selectedProjectData.currentChapter}
+                                  </Badge>
+                                ) : selectedProjectData.currentStage === "reviewing" ? (
+                                  <Badge variant="secondary" className="mb-2 bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
+                                    <Star className="h-3 w-3 mr-1" />
+                                    Revisión Final en Curso
+                                  </Badge>
+                                ) : null}
+                                <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                                  {selectedProjectData.currentActivity || "Procesando..."}
+                                </p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
                       </div>
                     )}
 
