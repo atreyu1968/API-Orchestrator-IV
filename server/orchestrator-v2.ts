@@ -401,6 +401,109 @@ ${decisions.join('\n')}
     return states.length > 0 ? states : undefined;
   }
 
+  /**
+   * Merge new plot decisions with existing ones (avoid duplicates by decision text)
+   */
+  private mergeDecisions(existing: any[], newDecisions: any[]): any[] {
+    const seen = new Set(existing.map(d => `${d.decision}-${d.capitulo_establecido}`));
+    const merged = [...existing];
+    
+    for (const decision of newDecisions) {
+      const key = `${decision.decision}-${decision.capitulo_establecido}`;
+      if (!seen.has(key)) {
+        merged.push(decision);
+        seen.add(key);
+      }
+    }
+    
+    return merged;
+  }
+
+  /**
+   * Merge new injuries with existing ones (avoid duplicates by character + injury type + chapter)
+   */
+  private mergeInjuries(existing: any[], newInjuries: any[]): any[] {
+    const seen = new Set(existing.map(i => `${i.personaje}-${i.tipo_lesion}-${i.capitulo_ocurre}`));
+    const merged = [...existing];
+    
+    for (const injury of newInjuries) {
+      const key = `${injury.personaje}-${injury.tipo_lesion}-${injury.capitulo_ocurre}`;
+      if (!seen.has(key)) {
+        merged.push(injury);
+        seen.add(key);
+      }
+    }
+    
+    return merged;
+  }
+
+  /**
+   * Format plot decisions and injuries as constraints for agents
+   */
+  private formatDecisionsAndInjuriesAsConstraints(
+    plotDecisions: any[] | undefined,
+    persistentInjuries: any[] | undefined,
+    currentChapter: number
+  ): string {
+    const parts: string[] = [];
+    
+    // Format plot decisions that affect current or previous chapters
+    if (plotDecisions && plotDecisions.length > 0) {
+      const relevantDecisions = plotDecisions.filter(d => 
+        d.capitulo_establecido <= currentChapter || 
+        (d.capitulos_afectados || []).some((c: number) => c <= currentChapter)
+      );
+      
+      if (relevantDecisions.length > 0) {
+        parts.push("\n=== DECISIONES DE TRAMA ESTABLECIDAS ===");
+        parts.push("ESTAS DECISIONES SON CANÓNICAS Y NO PUEDEN CONTRADECIRSE:");
+        
+        for (const decision of relevantDecisions) {
+          const status = decision.consistencia_actual === "consistente" ? "✓" : "⚠️ INCONSISTENTE";
+          parts.push(`\n${status} "${decision.decision}" (Cap ${decision.capitulo_establecido})`);
+          if (decision.capitulos_afectados?.length > 0) {
+            parts.push(`   Afecta capítulos: ${decision.capitulos_afectados.join(", ")}`);
+          }
+          if (decision.consistencia_actual === "inconsistente" && decision.detalle_inconsistencia) {
+            parts.push(`   PROBLEMA: ${decision.detalle_inconsistencia}`);
+            parts.push(`   → CORREGIR en este capítulo si aplica`);
+          }
+        }
+      }
+    }
+    
+    // Format persistent injuries
+    if (persistentInjuries && persistentInjuries.length > 0) {
+      const activeInjuries = persistentInjuries.filter(i => 
+        i.capitulo_ocurre <= currentChapter &&
+        i.estado_actual !== "resuelta"
+      );
+      
+      if (activeInjuries.length > 0) {
+        parts.push("\n\n=== LESIONES PERSISTENTES ACTIVAS ===");
+        parts.push("ESTAS LESIONES DEBEN REFLEJARSE EN EL COMPORTAMIENTO DEL PERSONAJE:");
+        
+        for (const injury of activeInjuries) {
+          const isIgnored = injury.seguimiento === "ignorada" || injury.seguimiento === "olvidada";
+          const icon = isIgnored ? "🚨" : "🩹";
+          
+          parts.push(`\n${icon} ${injury.personaje}: ${injury.tipo_lesion} (desde Cap ${injury.capitulo_ocurre})`);
+          parts.push(`   Efecto esperado: ${injury.efecto_esperado}`);
+          
+          if (isIgnored) {
+            parts.push(`   ⚠️ ADVERTENCIA: Esta lesión fue IGNORADA en capítulos anteriores`);
+            parts.push(`   → OBLIGATORIO: Mostrar efectos de esta lesión en este capítulo`);
+            if (injury.opcion_correccion) {
+              parts.push(`   Sugerencia: ${injury.opcion_correccion}`);
+            }
+          }
+        }
+      }
+    }
+    
+    return parts.join("\n");
+  }
+
   private async validateAndUpdateConsistency(
     projectId: number,
     chapterNumber: number,
@@ -1070,6 +1173,20 @@ ${decisions.join('\n')}
               characterStates
             );
             console.log(`[OrchestratorV2] Generated consistency constraints (${consistencyConstraints.length} chars) with timeline and character states`);
+          }
+          
+          // Add plot decisions and persistent injuries from World Bible
+          const currentWorldBible = await storage.getWorldBibleByProject(project.id);
+          if (currentWorldBible) {
+            const decisionsConstraints = this.formatDecisionsAndInjuriesAsConstraints(
+              currentWorldBible.plotDecisions as any[],
+              currentWorldBible.persistentInjuries as any[],
+              chapterNumber
+            );
+            if (decisionsConstraints) {
+              consistencyConstraints += decisionsConstraints;
+              console.log(`[OrchestratorV2] Added plot decisions and injuries to constraints`);
+            }
           }
         } catch (err) {
           console.error(`[OrchestratorV2] Failed to generate constraints:`, err);
@@ -1885,9 +2002,29 @@ ${decisions.join('\n')}
         return;
       }
 
-      const { veredicto, puntuacion_global, resumen_general, justificacion_puntuacion, analisis_bestseller, issues, capitulos_para_reescribir } = finalResult;
+      const { veredicto, puntuacion_global, resumen_general, justificacion_puntuacion, analisis_bestseller, issues, capitulos_para_reescribir, plot_decisions, persistent_injuries } = finalResult;
       // Only consider approved if score >= 9 AND veredicto is positive
       const approved = puntuacion_global >= 9 && (veredicto === "APROBADO" || veredicto === "APROBADO_CON_RESERVAS");
+
+      // Save plot decisions and persistent injuries to World Bible for agent access
+      if (plot_decisions?.length || persistent_injuries?.length) {
+        const worldBible = await storage.getWorldBibleByProject(project.id);
+        if (worldBible) {
+          // Merge with existing decisions/injuries (avoid duplicates)
+          const existingDecisions = Array.isArray(worldBible.plotDecisions) ? worldBible.plotDecisions : [];
+          const existingInjuries = Array.isArray(worldBible.persistentInjuries) ? worldBible.persistentInjuries : [];
+          
+          const mergedDecisions = this.mergeDecisions(existingDecisions as any[], plot_decisions || []);
+          const mergedInjuries = this.mergeInjuries(existingInjuries as any[], persistent_injuries || []);
+          
+          await storage.updateWorldBible(worldBible.id, {
+            plotDecisions: mergedDecisions,
+            persistentInjuries: mergedInjuries,
+          });
+          
+          console.log(`[OrchestratorV2] Saved ${mergedDecisions.length} plot decisions and ${mergedInjuries.length} persistent injuries to World Bible`);
+        }
+      }
 
       await storage.updateProject(project.id, { 
         status: approved ? "completed" : "failed_final_review",
