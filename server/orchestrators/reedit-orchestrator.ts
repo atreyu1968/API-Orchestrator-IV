@@ -4560,6 +4560,27 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
                 
                 // Mark these issues as resolved with hash tracking
                 await this.markIssuesResolved(projectId, chapterIssues);
+              } else {
+                // Correction failed completely (both surgical and full rewrite returned null)
+                console.error(`[ReeditOrchestrator] CRITICAL: Chapter ${chapter.chapterNumber} correction FAILED - both surgical patches and full rewrite returned null`);
+                const failedCount = chapterCorrectionCounts.get(chapter.chapterNumber) || 0;
+                chapterCorrectionCounts.set(chapter.chapterNumber, failedCount + 1);
+                
+                this.emitProgress({
+                  projectId,
+                  stage: "fixing",
+                  currentChapter: chapter.chapterNumber,
+                  totalChapters: chaptersNeedingFix.length,
+                  message: `ERROR: Capitulo ${chapter.chapterNumber} no pudo corregirse - se reintentará en el siguiente ciclo`,
+                  chaptersBeingRewritten: chaptersNeedingFix.slice(i + 1).map(c => c.chapterNumber),
+                  revisionCycle: revisionCycle,
+                });
+                
+                // Persist the failed attempt count
+                const countsToSave = Object.fromEntries(chapterCorrectionCounts);
+                await storage.updateReeditProject(projectId, {
+                  chapterCorrectionCounts: countsToSave as any,
+                });
               }
             } catch (err) {
               console.error(`[ReeditOrchestrator] Error fixing chapter ${chapter.chapterNumber}:`, err);
@@ -5172,7 +5193,26 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
                 correctedIssueDescriptions.push(issue.descripcion);
               }
             } else {
-              console.log(`[ReeditOrchestrator] FRO: Chapter ${chapter.chapterNumber} rewrite SKIPPED - no capituloReescrito in result`);
+              // FRO Correction failed completely (both surgical and full rewrite returned null)
+              console.error(`[ReeditOrchestrator] FRO CRITICAL: Chapter ${chapter.chapterNumber} correction FAILED - both surgical patches and full rewrite returned null`);
+              const failedCountFRO = chapterCorrectionCountsFRO.get(chapter.chapterNumber) || 0;
+              chapterCorrectionCountsFRO.set(chapter.chapterNumber, failedCountFRO + 1);
+              
+              this.emitProgress({
+                projectId,
+                stage: "fixing",
+                currentChapter: chapter.chapterNumber,
+                totalChapters: chaptersNeedingFix.length,
+                message: `ERROR: Capitulo ${chapter.chapterNumber} no pudo corregirse - se reintentará en el siguiente ciclo`,
+                chaptersBeingRewritten: [],
+                revisionCycle: revisionCycle,
+              });
+              
+              // Persist the failed attempt count
+              const countsToSaveFailed = Object.fromEntries(chapterCorrectionCountsFRO);
+              await storage.updateReeditProject(projectId, {
+                chapterCorrectionCounts: countsToSaveFailed as any,
+              });
             }
           } catch (err) {
             console.error(`[ReeditOrchestrator] Error fixing chapter ${chapter.chapterNumber}:`, err);
