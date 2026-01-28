@@ -504,6 +504,107 @@ ${decisions.join('\n')}
     return parts.join("\n");
   }
 
+  /**
+   * Extract a brief summary from a written scene
+   * Uses heuristics to generate a quick summary without AI call
+   */
+  private extractSceneSummary(sceneContent: string, scenePlan: any): string {
+    // Strategy: Extract first sentence + key action verbs + character names mentioned
+    const sentences = sceneContent.split(/[.!?]+/).filter(s => s.trim().length > 10);
+    
+    // Get first meaningful sentence (often sets the scene)
+    const firstSentence = sentences[0]?.trim().substring(0, 150) || "";
+    
+    // Get characters from plan
+    const characters = scenePlan.characters?.join(", ") || "";
+    
+    // Create a brief summary combining plan info with actual content hint
+    const summary = `${scenePlan.plot_beat} [${characters}]. ${firstSentence}...`;
+    
+    return summary.substring(0, 300); // Limit to 300 chars
+  }
+
+  /**
+   * Save scene summaries to World Bible for future agent reference
+   */
+  private async saveSceneSummaries(projectId: number, chapterNumber: number, scenes: any[]): Promise<void> {
+    try {
+      const worldBible = await storage.getWorldBibleByProject(projectId);
+      if (!worldBible) return;
+
+      // Get existing scene registry or create new one
+      const sceneRegistry = (worldBible.plotOutline as any)?.scene_registry || {};
+      
+      // Add/update scenes for this chapter
+      sceneRegistry[`chapter_${chapterNumber}`] = {
+        updated_at: new Date().toISOString(),
+        scenes: scenes.map(s => ({
+          scene_num: s.scene_num,
+          characters: s.characters,
+          setting: s.setting,
+          plot_beat: s.plot_beat,
+          actual_summary: s.actual_summary || null,
+          word_count: s.word_count || 0,
+        }))
+      };
+
+      // Update World Bible with scene registry
+      await storage.updateWorldBible(worldBible.id, {
+        plotOutline: {
+          ...(worldBible.plotOutline as any || {}),
+          scene_registry: sceneRegistry,
+        }
+      });
+
+      console.log(`[OrchestratorV2] Saved ${scenes.length} scene summaries for Chapter ${chapterNumber}`);
+    } catch (err) {
+      console.error(`[OrchestratorV2] Failed to save scene summaries:`, err);
+    }
+  }
+
+  /**
+   * Get scene summaries for previous chapters to provide context
+   */
+  private async getSceneSummariesContext(projectId: number, currentChapter: number): Promise<string> {
+    try {
+      const worldBible = await storage.getWorldBibleByProject(projectId);
+      if (!worldBible) return "";
+
+      const plotOutline = worldBible.plotOutline as any;
+      const sceneRegistry = plotOutline?.scene_registry;
+      if (!sceneRegistry) return "";
+
+      const parts: string[] = [];
+      parts.push("\n=== ESCENAS ANTERIORES (lo que realmente ocurrió) ===");
+      parts.push("Mantén coherencia con estos eventos:\n");
+
+      // Get last 3 chapters of scene summaries
+      const relevantChapters = Object.keys(sceneRegistry)
+        .filter(key => {
+          const chNum = parseInt(key.replace("chapter_", ""));
+          return chNum < currentChapter && chNum >= currentChapter - 3;
+        })
+        .sort((a, b) => parseInt(a.replace("chapter_", "")) - parseInt(b.replace("chapter_", "")));
+
+      for (const chapterKey of relevantChapters) {
+        const chapterData = sceneRegistry[chapterKey];
+        const chNum = chapterKey.replace("chapter_", "");
+        
+        parts.push(`Cap ${chNum}:`);
+        for (const scene of chapterData.scenes || []) {
+          if (scene.actual_summary) {
+            parts.push(`  E${scene.scene_num}: ${scene.actual_summary}`);
+          }
+        }
+      }
+
+      return parts.length > 3 ? parts.join("\n") : "";
+    } catch (err) {
+      console.error(`[OrchestratorV2] Failed to get scene summaries:`, err);
+      return "";
+    }
+  }
+
   private async validateAndUpdateConsistency(
     projectId: number,
     chapterNumber: number,
@@ -1188,6 +1289,13 @@ ${decisions.join('\n')}
               console.log(`[OrchestratorV2] Added plot decisions and injuries to constraints`);
             }
           }
+          
+          // Add scene summaries from previous chapters
+          const sceneSummaries = await this.getSceneSummariesContext(project.id, chapterNumber);
+          if (sceneSummaries) {
+            consistencyConstraints += sceneSummaries;
+            console.log(`[OrchestratorV2] Added scene summaries from previous chapters`);
+          }
         } catch (err) {
           console.error(`[OrchestratorV2] Failed to generate constraints:`, err);
         }
@@ -1275,8 +1383,17 @@ ${decisions.join('\n')}
           lastContext = sceneResult.content.slice(-1500); // Keep last 1500 chars for context
 
           const sceneWordCount = sceneResult.content.split(/\s+/).length;
+          
+          // LitAgents 2.1: Generate brief scene summary for future context
+          const sceneSummary = this.extractSceneSummary(sceneResult.content, scene);
+          scene.actual_summary = sceneSummary;
+          scene.word_count = sceneWordCount;
+          
           this.callbacks.onSceneComplete(chapterNumber, scene.scene_num, sceneBreakdown.scenes.length, sceneWordCount);
         }
+
+        // LitAgents 2.1: Save scene summaries to World Bible for future reference
+        await this.saveSceneSummaries(project.id, chapterNumber, sceneBreakdown.scenes);
 
         this.callbacks.onAgentStatus("ghostwriter-v2", "completed", "All scenes written");
 

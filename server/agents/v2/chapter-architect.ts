@@ -31,6 +31,9 @@ export interface ScenePlan {
   dialogue_focus?: string;
   ending_hook: string;
   word_target?: number;
+  // LitAgents 2.1: Filled after scene is written
+  actual_summary?: string; // Brief summary of what actually happened in the scene
+  word_count?: number; // Actual word count after writing
 }
 
 export interface ChapterArchitectOutput {
