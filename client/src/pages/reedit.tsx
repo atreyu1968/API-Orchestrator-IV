@@ -2283,11 +2283,16 @@ export default function ReeditPage() {
                         /* Chapter list */
                         <ScrollArea className="h-[400px]">
                           <div className="space-y-2">
-                            {chapters.map((chapter) => (
+                            {chapters.map((chapter) => {
+                              const chaptersBeingRewritten = (selectedProjectData as any).chaptersBeingRewritten || [];
+                              const isBeingRewritten = chaptersBeingRewritten.includes(chapter.chapterNumber);
+                              const isCurrentChapter = selectedProjectData.currentChapter === chapter.chapterNumber;
+                              
+                              return (
                               <div
                                 key={chapter.id}
                                 data-testid={`card-reedit-chapter-${chapter.id}`}
-                                className="p-3 border rounded-md hover-elevate cursor-pointer"
+                                className={`p-3 border rounded-md hover-elevate cursor-pointer ${isBeingRewritten ? 'border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/20' : ''} ${isCurrentChapter ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/30' : ''}`}
                                 onClick={() => (chapter.editedContent || chapter.originalContent) && setViewingChapterId(chapter.id)}
                               >
                                 <div className="flex items-center justify-between gap-2">
@@ -2296,12 +2301,24 @@ export default function ReeditPage() {
                                     <span className="font-medium">{getChapterLabel(chapter.chapterNumber, chapter.title)}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
+                                    {isCurrentChapter && selectedProjectData.status === "processing" && (
+                                      <Badge className="bg-blue-500/20 text-blue-600 dark:text-blue-400 animate-pulse">
+                                        <Wand2 className="h-3 w-3 mr-1 animate-spin" />
+                                        Reescribiendo
+                                      </Badge>
+                                    )}
+                                    {isBeingRewritten && !isCurrentChapter && selectedProjectData.status === "processing" && (
+                                      <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400">
+                                        <Clock className="h-3 w-3 mr-1" />
+                                        Pendiente
+                                      </Badge>
+                                    )}
                                     {chapter.editorScore && (
                                       <Badge variant="secondary">
                                         Editor: {chapter.editorScore}/10
                                       </Badge>
                                     )}
-                                    {chapter.editedContent && (
+                                    {chapter.editedContent && !isBeingRewritten && !isCurrentChapter && (
                                       <Badge className="bg-green-500/20 text-green-600">
                                         <CheckCircle className="h-3 w-3 mr-1" />
                                         Reeditado
@@ -2322,7 +2339,8 @@ export default function ReeditPage() {
                                   </p>
                                 )}
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </ScrollArea>
                       )}

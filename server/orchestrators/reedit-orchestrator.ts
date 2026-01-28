@@ -72,6 +72,8 @@ interface ReeditProgress {
   currentChapter: number;
   totalChapters: number;
   message: string;
+  chaptersBeingRewritten?: number[];
+  revisionCycle?: number;
 }
 
 type ProgressCallback = (progress: ReeditProgress) => void;
@@ -2889,10 +2891,18 @@ export class ReeditOrchestrator {
     console.log(`[ReeditOrchestrator] ${progress.stage}: ${progress.message}`);
     
     // Persist activity message to database for real-time UI updates
-    storage.updateReeditProject(progress.projectId, {
+    const updateData: any = {
       currentActivity: progress.message,
       currentChapter: progress.currentChapter,
-    }).catch(err => console.error("[ReeditOrchestrator] Failed to update currentActivity:", err));
+    };
+    if (progress.chaptersBeingRewritten !== undefined) {
+      updateData.chaptersBeingRewritten = progress.chaptersBeingRewritten;
+    }
+    if (progress.revisionCycle !== undefined) {
+      updateData.revisionCycle = progress.revisionCycle;
+    }
+    storage.updateReeditProject(progress.projectId, updateData)
+      .catch(err => console.error("[ReeditOrchestrator] Failed to update currentActivity:", err));
   }
 
   async analyzeStructure(chapters: ReeditChapter[]): Promise<StructureAnalysis> {
@@ -4183,6 +4193,8 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
           currentChapter: validChapters.length,
           totalChapters: validChapters.length,
           message: `Ejecutando revisión final COMPLETA... (Ciclo ${revisionCycle + 1}/${this.maxFinalReviewCycles})${consecutiveInfo}`,
+          chaptersBeingRewritten: [],
+          revisionCycle: revisionCycle,
         });
 
         // Get all completed chapters with FULL content for proper review
@@ -4448,6 +4460,8 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
               currentChapter: chapter.chapterNumber,
               totalChapters: chaptersNeedingFix.length,
               message: `Corrigiendo capítulo ${chapter.chapterNumber} (${i + 1}/${chaptersNeedingFix.length}): ${chapterIssues.length} problema(s) a resolver...`,
+              chaptersBeingRewritten: chaptersNeedingFix.map(c => c.chapterNumber),
+              revisionCycle: revisionCycle,
             });
 
             try {
@@ -4512,6 +4526,8 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
                   currentChapter: chapter.chapterNumber,
                   totalChapters: chaptersNeedingFix.length,
                   message: `Capitulo ${chapter.chapterNumber} corregido (${i + 1}/${chaptersNeedingFix.length}) - ${chapterIssues.length} problema(s) resuelto(s)`,
+                  chaptersBeingRewritten: chaptersNeedingFix.slice(i + 1).map(c => c.chapterNumber),
+                  revisionCycle: revisionCycle,
                 });
                 
                 // SAVE CHANGE HISTORY for intelligent resolution validation (max 10 entries per chapter)
@@ -4553,13 +4569,15 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
 
         revisionCycle++;
         
-        // Save review cycle state for resume support
+        // Save review cycle state for resume support and clear chaptersBeingRewritten
         await storage.updateReeditProject(projectId, {
           revisionCycle,
           totalReviewCycles: totalCyclesExecuted,
           consecutiveHighScores,
           nonPerfectFinalReviews: nonPerfectCount,
           previousScores: previousScores as any,
+          finalReviewResult: finalResult,
+          chaptersBeingRewritten: [],
         });
       }
 
@@ -5052,6 +5070,8 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
             currentChapter: chapter.chapterNumber,
             totalChapters: chaptersNeedingFix.length,
             message: `Corrigiendo capítulo ${chapter.chapterNumber} (${i + 1}/${chaptersNeedingFix.length}): ${chapterIssuesFRO.length} problema(s) a resolver...`,
+            chaptersBeingRewritten: chaptersNeedingFix.map(c => c.chapterNumber),
+            revisionCycle: revisionCycle,
           });
 
           try {
@@ -5117,6 +5137,8 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
                 currentChapter: chapter.chapterNumber,
                 totalChapters: chaptersNeedingFix.length,
                 message: `Capitulo ${chapter.chapterNumber} corregido (${i + 1}/${chaptersNeedingFix.length}) - ${chapterIssuesFRO.length} problema(s) resuelto(s)`,
+                chaptersBeingRewritten: chaptersNeedingFix.slice(i + 1).map(c => c.chapterNumber),
+                revisionCycle: revisionCycle,
               });
               
               // SAVE CHANGE HISTORY for intelligent resolution validation (max 10 entries per chapter)
@@ -5163,6 +5185,15 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
       }
 
       revisionCycle++;
+      
+      // Save review cycle state for resume support and clear chaptersBeingRewritten after each cycle
+      await storage.updateReeditProject(projectId, {
+        revisionCycle,
+        consecutiveHighScores,
+        previousScores: previousScores as any,
+        finalReviewResult: finalResult,
+        chaptersBeingRewritten: [],
+      });
     }
 
     // CRITICAL: If we exited the loop without achieving 2x consecutive 10/10, pause for instructions
