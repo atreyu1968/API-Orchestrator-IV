@@ -2004,6 +2004,16 @@ export class ReeditOrchestrator {
     return { correctedCount };
   }
 
+  private getInsertionDescription(insertionPoint: string): string {
+    switch (insertionPoint) {
+      case "beginning": return "Integrar al INICIO del capitulo";
+      case "end": return "Integrar al FINAL del capitulo";
+      case "middle": return "Integrar en una transicion natural del capitulo";
+      case "replace": return "Reemplazar pasaje existente con";
+      default: return "Integrar organicamente";
+    }
+  }
+
   private async saveTokenUsage(projectId: number) {
     await storage.updateReeditProject(projectId, {
       totalInputTokens: this.totalInputTokens,
@@ -5392,57 +5402,91 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
 
       console.log(`[ReeditOrchestrator] SeriesThreadFixer found ${fixerResult.totalIssuesFound} issues, ${fixerResult.fixes?.length || 0} fixes`);
 
-      // Apply fixes automatically if safe
+      // Apply fixes using NarrativeRewriter for organic integration
       if (fixerResult.fixes && fixerResult.fixes.length > 0 && 
           (fixerResult.autoFixRecommendation === "safe_to_autofix" || fixerResult.autoFixRecommendation === "review_recommended")) {
         
-        let appliedFixes = 0;
+        // Group fixes by chapter
+        const fixesByChapter = new Map<number, typeof fixerResult.fixes>();
         for (const fix of fixerResult.fixes) {
           if (fix.priority === "optional") continue;
-          
-          const chapter = chaptersWithContent.find(ch => ch.id === fix.chapterId);
+          const existing = fixesByChapter.get(fix.chapterId) || [];
+          existing.push(fix);
+          fixesByChapter.set(fix.chapterId, existing);
+        }
+
+        let appliedFixes = 0;
+        const chapterIds = Array.from(fixesByChapter.keys());
+        
+        for (let i = 0; i < chapterIds.length; i++) {
+          const chapterId = chapterIds[i];
+          const chapterFixes = fixesByChapter.get(chapterId)!;
+          const chapter = chaptersWithContent.find(ch => ch.id === chapterId);
           if (!chapter) continue;
 
-          try {
-            let newContent = chapter.content;
-            
-            if (fix.insertionPoint === "replace" && fix.originalPassage) {
-              if (newContent.includes(fix.originalPassage)) {
-                newContent = newContent.replace(fix.originalPassage, fix.suggestedRevision);
-              }
-            } else if (fix.insertionPoint === "beginning") {
-              newContent = fix.suggestedRevision + "\n\n" + newContent;
-            } else if (fix.insertionPoint === "end") {
-              newContent = newContent + "\n\n" + fix.suggestedRevision;
-            } else if (fix.insertionPoint === "middle") {
-              const paragraphs = newContent.split(/\n\n+/);
-              const midPoint = Math.floor(paragraphs.length / 2);
-              paragraphs.splice(midPoint, 0, fix.suggestedRevision);
-              newContent = paragraphs.join("\n\n");
-            }
+          this.emitProgress({
+            projectId,
+            stage: "series_thread_fixer" as any,
+            currentChapter: i + 1,
+            totalChapters: chapterIds.length,
+            message: `Integrando ${chapterFixes.length} correcciones en Capitulo ${chapter.chapterNumber}...`,
+          });
 
-            if (newContent !== chapter.content) {
+          // Convert fixes to problems format for NarrativeRewriter
+          const problems = chapterFixes.map(fix => ({
+            id: `thread-fix-${fix.threadOrMilestoneId}`,
+            tipo: fix.fixType,
+            descripcion: `[${fix.threadOrMilestoneName}] ${fix.rationale}`,
+            severidad: fix.priority === "critical" ? "critica" : fix.priority === "important" ? "mayor" : "menor",
+            accionSugerida: `${this.getInsertionDescription(fix.insertionPoint)}: "${fix.suggestedRevision.substring(0, 500)}${fix.suggestedRevision.length > 500 ? '...' : ''}"`,
+            capitulosAfectados: [chapter.chapterNumber],
+          }));
+
+          try {
+            // Get adjacent context
+            const prevChapter = chaptersWithContent.find(c => c.chapterNumber === chapter.chapterNumber - 1);
+            const nextChapter = chaptersWithContent.find(c => c.chapterNumber === chapter.chapterNumber + 1);
+            const adjacentContext = {
+              previousChapter: prevChapter?.content?.substring(0, 2000),
+              nextChapter: nextChapter?.content?.substring(0, 2000),
+            };
+
+            // Use NarrativeRewriter to integrate fixes organically
+            const rewriteResult = await this.narrativeRewriter.rewriteChapter(
+              chapter.content,
+              chapter.chapterNumber,
+              problems,
+              worldBible,
+              adjacentContext,
+              "es",
+              `Integra los elementos de serie (hilos/hitos) de forma ORGANICA en la narrativa existente. No insertes texto de forma abrupta.`
+            );
+
+            this.trackTokens(rewriteResult);
+
+            if (rewriteResult.capituloReescrito && rewriteResult.capituloReescrito !== chapter.content) {
+              const newContent = rewriteResult.capituloReescrito;
               const wordCount = newContent.split(/\s+/).length;
-              await storage.updateReeditChapter(fix.chapterId, {
+              await storage.updateReeditChapter(chapterId, {
                 editedContent: newContent,
                 wordCount,
               });
-              appliedFixes++;
-              console.log(`[ReeditOrchestrator] Applied fix to Chapter ${fix.chapterNumber}: ${fix.fixType}`);
+              appliedFixes += chapterFixes.length;
+              console.log(`[ReeditOrchestrator] NarrativeRewriter integrated ${chapterFixes.length} fixes in Chapter ${chapter.chapterNumber}`);
             }
           } catch (fixError) {
-            console.error(`[ReeditOrchestrator] Error applying fix to Chapter ${fix.chapterNumber}:`, fixError);
+            console.error(`[ReeditOrchestrator] Error integrating fixes in Chapter ${chapter.chapterNumber}:`, fixError);
           }
         }
 
         this.emitProgress({
           projectId,
           stage: "series_thread_fixer" as any,
-          currentChapter: appliedFixes,
-          totalChapters: fixerResult.fixes.length,
-          message: `${appliedFixes} correcciones de hilos/hitos aplicadas`,
+          currentChapter: chapterIds.length,
+          totalChapters: chapterIds.length,
+          message: `${appliedFixes} correcciones de hilos/hitos integradas organicamente`,
         });
-        console.log(`[ReeditOrchestrator] SeriesThreadFixer applied ${appliedFixes} of ${fixerResult.fixes.length} fixes`);
+        console.log(`[ReeditOrchestrator] SeriesThreadFixer integrated ${appliedFixes} fixes via NarrativeRewriter`);
       } else {
         this.emitProgress({
           projectId,

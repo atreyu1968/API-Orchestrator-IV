@@ -59,6 +59,16 @@ export class OrchestratorV2 {
     this.callbacks = callbacks;
   }
 
+  private getInsertionDescription(insertionPoint: string): string {
+    switch (insertionPoint) {
+      case "beginning": return "Integrar al INICIO del capitulo";
+      case "end": return "Integrar al FINAL del capitulo";
+      case "middle": return "Integrar en una transicion natural del capitulo";
+      case "replace": return "Reemplazar pasaje existente con";
+      default: return "Integrar organicamente";
+    }
+  }
+
   private addTokenUsage(usage?: TokenUsage) {
     if (usage) {
       this.cumulativeTokens.inputTokens += usage.inputTokens || 0;
@@ -1766,54 +1776,77 @@ ${decisions.join('\n')}
       this.callbacks.onAgentStatus("series-thread-fixer", "active", 
         `Encontrados ${fixerResult.totalIssuesFound} problemas, ${fixerResult.fixes?.length || 0} correcciones`);
 
-      // Apply fixes automatically if safe
+      // Apply fixes using SmartEditor for organic integration
       if (fixerResult.fixes && fixerResult.fixes.length > 0 && 
           (fixerResult.autoFixRecommendation === "safe_to_autofix" || fixerResult.autoFixRecommendation === "review_recommended")) {
         
-        let appliedFixes = 0;
+        // Group fixes by chapter
+        const fixesByChapter = new Map<number, typeof fixerResult.fixes>();
         for (const fix of fixerResult.fixes) {
-          if (fix.priority === "optional") continue; // Skip optional fixes
-          
-          const chapter = chaptersWithContent.find(ch => ch.id === fix.chapterId);
+          if (fix.priority === "optional") continue;
+          const existing = fixesByChapter.get(fix.chapterId) || [];
+          existing.push(fix);
+          fixesByChapter.set(fix.chapterId, existing);
+        }
+
+        let appliedFixes = 0;
+        const chapterIds = Array.from(fixesByChapter.keys());
+        
+        for (const chapterId of chapterIds) {
+          const chapterFixes = fixesByChapter.get(chapterId)!;
+          const chapter = chaptersWithContent.find(ch => ch.id === chapterId);
           if (!chapter) continue;
 
-          try {
-            let newContent = chapter.content;
-            
-            if (fix.insertionPoint === "replace" && fix.originalPassage) {
-              // Replace specific passage
-              if (newContent.includes(fix.originalPassage)) {
-                newContent = newContent.replace(fix.originalPassage, fix.suggestedRevision);
-              }
-            } else if (fix.insertionPoint === "beginning") {
-              newContent = fix.suggestedRevision + "\n\n" + newContent;
-            } else if (fix.insertionPoint === "end") {
-              newContent = newContent + "\n\n" + fix.suggestedRevision;
-            } else if (fix.insertionPoint === "middle") {
-              // Insert at roughly the middle of the chapter
-              const paragraphs = newContent.split(/\n\n+/);
-              const midPoint = Math.floor(paragraphs.length / 2);
-              paragraphs.splice(midPoint, 0, fix.suggestedRevision);
-              newContent = paragraphs.join("\n\n");
-            }
+          this.callbacks.onAgentStatus("series-thread-fixer", "active", 
+            `Integrando ${chapterFixes.length} correcciones en Capitulo ${chapter.chapterNumber}...`);
 
-            if (newContent !== chapter.content) {
-              const wordCount = newContent.split(/\s+/).length;
-              await storage.updateChapter(fix.chapterId, {
-                content: newContent,
-                wordCount,
-              });
-              appliedFixes++;
-              console.log(`[OrchestratorV2] Applied fix to Chapter ${fix.chapterNumber}: ${fix.fixType}`);
+          // Build comprehensive error description with all fixes for this chapter
+          const errorDescription = chapterFixes.map(fix => {
+            const insertionDesc = this.getInsertionDescription(fix.insertionPoint);
+            return `[${fix.fixType.toUpperCase()}] ${fix.threadOrMilestoneName}:
+  - Problema: ${fix.rationale}
+  - Accion: ${insertionDesc}
+  - Texto sugerido: "${fix.suggestedRevision.substring(0, 800)}${fix.suggestedRevision.length > 800 ? '...' : ''}"
+  ${fix.originalPassage ? `- Pasaje original (ancla): "${fix.originalPassage.substring(0, 200)}"` : ''}`;
+          }).join('\n\n');
+
+          try {
+            // Use SmartEditor.surgicalFix to integrate corrections organically
+            const fixResult = await this.smartEditor.surgicalFix({
+              chapterContent: chapter.content,
+              errorDescription: `CORRECCIONES DE HILOS/HITOS DE SERIE:\n\n${errorDescription}`,
+              consistencyConstraints: `Integrar los elementos de serie de forma ORGANICA. No insertes texto abrupto. Mantener voz y estilo del autor.`,
+            });
+
+            this.addTokenUsage(fixResult.tokenUsage);
+
+            if (fixResult.patches && fixResult.patches.length > 0) {
+              // Apply patches
+              let newContent = chapter.content;
+              for (const patch of fixResult.patches) {
+                if (patch.original && patch.replacement && newContent.includes(patch.original)) {
+                  newContent = newContent.replace(patch.original, patch.replacement);
+                }
+              }
+
+              if (newContent !== chapter.content) {
+                const wordCount = newContent.split(/\s+/).length;
+                await storage.updateChapter(chapterId, {
+                  content: newContent,
+                  wordCount,
+                });
+                appliedFixes += chapterFixes.length;
+                console.log(`[OrchestratorV2] SmartEditor integrated ${chapterFixes.length} fixes in Chapter ${chapter.chapterNumber}`);
+              }
             }
           } catch (fixError) {
-            console.error(`[OrchestratorV2] Error applying fix to Chapter ${fix.chapterNumber}:`, fixError);
+            console.error(`[OrchestratorV2] Error integrating fixes in Chapter ${chapter.chapterNumber}:`, fixError);
           }
         }
 
         this.callbacks.onAgentStatus("series-thread-fixer", "completed", 
-          `${appliedFixes} correcciones aplicadas de ${fixerResult.fixes.length}`);
-        console.log(`[OrchestratorV2] SeriesThreadFixer applied ${appliedFixes} of ${fixerResult.fixes.length} fixes`);
+          `${appliedFixes} correcciones integradas organicamente`);
+        console.log(`[OrchestratorV2] SeriesThreadFixer integrated ${appliedFixes} fixes via SmartEditor`);
       } else {
         this.callbacks.onAgentStatus("series-thread-fixer", "completed", 
           fixerResult.autoFixRecommendation === "manual_intervention_required" 
