@@ -2093,13 +2093,21 @@ ${decisions.join('\n')}
 
         this.callbacks.onAgentStatus("final-reviewer", "active", `Analizando manuscrito completo (ciclo ${currentCycle})...`);
 
-        // Run FinalReviewer
+        // Run FinalReviewer with progress callback for tranche visibility
         const reviewResult = await this.finalReviewer.execute({
           projectTitle: project.title,
           chapters: chaptersForReview,
           worldBible: worldBibleData,
           guiaEstilo,
           pasadaNumero: currentCycle,
+          onTrancheProgress: (currentTranche, totalTranches, chaptersInTranche) => {
+            this.callbacks.onAgentStatus(
+              "final-reviewer", 
+              "active", 
+              `Revisando tramo ${currentTranche}/${totalTranches} (${chaptersInTranche})...`
+            );
+            console.log(`[OrchestratorV2] FinalReviewer progress: tranche ${currentTranche}/${totalTranches}`);
+          },
         });
 
         this.addTokenUsage(reviewResult.tokenUsage);
@@ -2180,6 +2188,7 @@ ${decisions.join('\n')}
 
           let correctedCount = 0;
           let failedCount = 0;
+          const failedChaptersDetails: Array<{ chapterNumber: number; title: string; error: string; issues: string[] }> = [];
 
           for (const chapNum of capitulos_para_reescribir) {
             if (await isProjectCancelledFromDb(project.id)) {
@@ -2288,8 +2297,15 @@ ${decisions.join('\n')}
                 }
               }
             } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
               console.error(`[OrchestratorV2] Error correcting Chapter ${chapNum}:`, error);
-              this.callbacks.onAgentStatus("smart-editor", "error", `Error en capítulo ${chapNum}: ${error instanceof Error ? error.message : 'desconocido'}`);
+              this.callbacks.onAgentStatus("smart-editor", "error", `Error en capítulo ${chapNum}: ${errorMsg}`);
+              failedChaptersDetails.push({
+                chapterNumber: chapNum,
+                title: chapter.title || `Capítulo ${chapNum}`,
+                error: errorMsg,
+                issues: chapterIssues.map(i => `[${i.severidad}] ${i.descripcion}`)
+              });
               failedCount++;
               continue;
             }
@@ -2365,6 +2381,12 @@ ${decisions.join('\n')}
               if (!retrySuccess) {
                 console.error(`[OrchestratorV2] FALLO: Capitulo ${chapNum} no pudo ser corregido tras ${maxRetries} intentos`);
                 this.callbacks.onAgentStatus("smart-editor", "error", `ERROR: Capitulo ${chapNum} no corregido tras ${maxRetries} intentos`);
+                failedChaptersDetails.push({
+                  chapterNumber: chapNum,
+                  title: chapter.title || `Capítulo ${chapNum}`,
+                  error: `No se pudo corregir tras ${maxRetries} reintentos - el texto no cambió`,
+                  issues: chapterIssues.map(i => `[${i.severidad}] ${i.descripcion}`)
+                });
                 failedCount++;
               }
             }
@@ -2379,14 +2401,40 @@ ${decisions.join('\n')}
           console.log(`[OrchestratorV2] Auto-correction complete: ${correctedCount} corrected, ${failedCount} failed of ${totalAttempted} total`);
           this.callbacks.onAgentStatus("smart-editor", "completed", summaryMessage);
           
-          // If any chapters failed to correct, pause for user intervention
+          // If any chapters failed to correct, pause for user intervention with detailed info
           if (failedCount > 0) {
-            console.error(`[OrchestratorV2] BLOCKING: ${failedCount} chapters could not be corrected after multiple retries`);
+            console.error(`[OrchestratorV2] ${failedCount} chapters could not be corrected after multiple retries`);
+            
+            // Build detailed error message with chapter list
+            const failedChaptersList = failedChaptersDetails.map(f => 
+              `  • Cap ${f.chapterNumber} (${f.title}): ${f.error}`
+            ).join('\n');
+            
+            const detailedPauseReason = `CORRECCIÓN INCOMPLETA: ${failedCount} de ${capitulos_para_reescribir.length} capítulos no pudieron corregirse automáticamente.
+
+CAPÍTULOS FALLIDOS:
+${failedChaptersList}
+
+OPCIONES:
+1. REINTENTAR: Vuelve a ejecutar el proceso (puede funcionar con diferente contexto)
+2. SALTAR: Marca estos capítulos como aceptables y continúa con la revisión final
+3. EDITAR MANUAL: Corrige los capítulos manualmente y luego reanuda
+
+Para continuar, usa el botón "Reanudar" o "Saltar capítulos fallidos" en el panel de control.`;
+
+            // Store failed chapters info in finalReviewResult for UI access
+            const existingResult = project.finalReviewResult as any || {};
             await storage.updateProject(project.id, { 
               status: "awaiting_instructions",
-              pauseReason: `${failedCount} capitulo(s) no pudieron corregirse automaticamente tras multiples intentos. Por favor revisa los logs y proporciona instrucciones adicionales.`
+              pauseReason: detailedPauseReason,
+              finalReviewResult: {
+                ...existingResult,
+                failedChapters: failedChaptersDetails,
+                correctionAttemptedAt: new Date().toISOString()
+              }
             });
-            this.callbacks.onError(`${failedCount} capitulo(s) no pudieron corregirse. Proceso pausado para revision.`);
+            
+            this.callbacks.onError(`${failedCount} capítulo(s) no pudieron corregirse. Proceso pausado.\n\nCapítulos fallidos: ${failedChaptersDetails.map(f => f.chapterNumber).join(', ')}`);
             return;
           }
         }

@@ -12,6 +12,7 @@ interface FinalReviewerInput {
   pasadaNumero?: number;
   issuesPreviosCorregidos?: string[];
   userInstructions?: string;
+  onTrancheProgress?: (currentTranche: number, totalTranches: number, chaptersInTranche: string) => void;
 }
 
 export interface FinalReviewIssue {
@@ -863,6 +864,12 @@ REGLAS:
       const startIdx = t * CHAPTERS_PER_TRANCHE;
       const endIdx = Math.min(startIdx + CHAPTERS_PER_TRANCHE, totalChapters);
       const trancheChapters = sortedChapters.slice(startIdx, endIdx);
+      
+      // Notify progress callback if provided
+      const chaptersRange = trancheChapters.map(c => this.getChapterLabel(c.numero)).join(", ");
+      if (input.onTrancheProgress) {
+        input.onTrancheProgress(t + 1, numTranches, chaptersRange);
+      }
       
       // Pass accumulated issues from previous tranches to ensure consistency
       const result = await this.reviewTranche(input, trancheChapters, t + 1, numTranches, pasadaInfo, accumulatedIssuesSummary);
