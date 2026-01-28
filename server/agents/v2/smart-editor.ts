@@ -134,14 +134,16 @@ INSTRUCCIONES:
 2. Genera parches QUIRÚRGICOS mínimos para corregir el error
 3. NO reescribas el capítulo completo - solo las partes afectadas
 4. Mantén el estilo y tono del autor original
+5. El campo "original_text_snippet" DEBE contener el texto EXACTO que aparece en el capítulo
 
 Responde en JSON:
 {
   "error_analysis": "Breve análisis del error y dónde está",
   "patches": [
     {
-      "original": "texto exacto a reemplazar (mín 20 chars)",
-      "replacement": "texto corregido"
+      "original_text_snippet": "texto EXACTO a reemplazar (mínimo 20 caracteres, debe existir en el capítulo)",
+      "replacement_text": "texto corregido",
+      "reason": "motivo del cambio"
     }
   ],
   "correction_summary": "Resumen de los cambios realizados"
@@ -162,12 +164,17 @@ Responde en JSON:
       const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
+        // Map to correct field names that patcher expects
         const patches: Patch[] = (parsed.patches || []).map((p: any) => ({
-          original: p.original,
-          replacement: p.replacement
+          original_text_snippet: p.original_text_snippet || p.original || "",
+          replacement_text: p.replacement_text || p.replacement || "",
+          reason: p.reason || "Corrección de continuidad"
         }));
         
         console.log(`[SmartEditor] Surgical fix: ${patches.length} patches generated`);
+        if (parsed.error_analysis) {
+          console.log(`[SmartEditor] Analysis: ${parsed.error_analysis}`);
+        }
         if (parsed.correction_summary) {
           console.log(`[SmartEditor] Summary: ${parsed.correction_summary}`);
         }

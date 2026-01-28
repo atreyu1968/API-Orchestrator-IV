@@ -1474,9 +1474,9 @@ ${decisions.join('\n')}
           // Apply patches if available, otherwise use full content as fallback
           if (surgicalFixResult.patches && surgicalFixResult.patches.length > 0) {
             const patchResult: PatchResult = applyPatches(finalText, surgicalFixResult.patches);
-            if (patchResult.success && patchResult.patchedContent) {
-              finalText = patchResult.patchedContent;
-              console.log(`[OrchestratorV2] Chapter ${chapterNumber}: Applied ${patchResult.appliedCount} surgical patches to fix consistency violation`);
+            if (patchResult.success && patchResult.patchedText) {
+              finalText = patchResult.patchedText;
+              console.log(`[OrchestratorV2] Chapter ${chapterNumber}: Applied ${patchResult.appliedPatches} surgical patches to fix consistency violation`);
             } else if (surgicalFixResult.fullContent) {
               finalText = surgicalFixResult.fullContent;
               console.log(`[OrchestratorV2] Chapter ${chapterNumber}: Used full content from editor (patches failed)`);
@@ -2378,9 +2378,9 @@ ${decisions.join('\n')}
                   // surgicalFix returns patches, not parsed.corrected_text
                   if (retryResult.patches && retryResult.patches.length > 0) {
                     const patchResult: PatchResult = applyPatches(chapter.content || "", retryResult.patches);
-                    if (patchResult.success && patchResult.patchedContent && patchResult.patchedContent !== chapter.content) {
-                      correctedText = patchResult.patchedContent;
-                      console.log(`[OrchestratorV2] Retry ${attempt}: Applied ${patchResult.appliedCount} patches to Chapter ${chapNum}`);
+                    if (patchResult.success && patchResult.patchedText && patchResult.patchedText !== chapter.content) {
+                      correctedText = patchResult.patchedText;
+                      console.log(`[OrchestratorV2] Retry ${attempt}: Applied ${patchResult.appliedPatches} patches to Chapter ${chapNum}`);
                     }
                   } else if (retryResult.fullContent && retryResult.fullContent !== chapter.content) {
                     // Fallback: if parsing failed, use full content
