@@ -45,7 +45,7 @@ CRITERIOS DE EVALUACIÓN:
 
 REGLAS DE PARCHEADO:
 - Mínimo 20 caracteres para el snippet original (garantizar unicidad)
-- Máximo 5 parches por capítulo
+- Genera TODOS los parches necesarios para corregir los problemas detectados
 - El reemplazo debe ser mejora puntual, no reescritura
 
 Genera respuestas en JSON válido.

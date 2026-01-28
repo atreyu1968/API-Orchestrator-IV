@@ -4370,8 +4370,7 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
                 return false;
               }
               return true;
-            })
-            .slice(0, 10); // Corrige hasta 10 capítulos por ciclo
+            });
           
           if (chaptersNeedingFix.length === 0 && chapterNumbersToFix.size > 0) {
             // PAUSE for user intervention instead of auto-resolving
@@ -4975,8 +4974,7 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
               return false;
             }
             return true;
-          })
-          .slice(0, 10); // Corrige hasta 10 capítulos por ciclo
+          });
         
         if (chaptersNeedingFix.length === 0 && chapterNumbersToFix.size > 0) {
           // PAUSE for user intervention instead of auto-resolving
@@ -5584,8 +5582,8 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
       chaptersToFix = editableChapters.filter(c => mentionedChapters.has(c.chapterNumber));
       console.log(`[ReeditOrchestrator] Fixing ${chaptersToFix.length} specifically mentioned chapters: ${Array.from(mentionedChapters).join(', ')}`);
     } else {
-      chaptersToFix = editableChapters.slice(0, Math.min(10, editableChapters.length));
-      console.log(`[ReeditOrchestrator] No specific chapters mentioned, fixing first ${chaptersToFix.length} chapters`);
+      chaptersToFix = editableChapters;
+      console.log(`[ReeditOrchestrator] No specific chapters mentioned, fixing all ${chaptersToFix.length} chapters`);
     }
 
     this.emitProgress({

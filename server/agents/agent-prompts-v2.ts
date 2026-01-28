@@ -525,7 +525,7 @@ export const PROMPTS_V2 = {
     SI GENERAS PARCHES:
     - Cada parche debe tener texto EXACTO a buscar (mínimo 20 caracteres para unicidad)
     - El reemplazo debe ser mejora puntual, NO reescritura completa
-    - Máximo 5 parches por capítulo
+    - Genera TODOS los parches necesarios para corregir los problemas detectados
 
     SALIDA JSON OBLIGATORIA:
     {
