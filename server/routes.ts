@@ -5,7 +5,7 @@ import { db } from "./db";
 import { OrchestratorV2 } from "./orchestrator-v2";
 import { queueManager } from "./queue-manager";
 import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema, consistencyViolations, worldEntities, worldRulesTable, worldBibles } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import multer from "multer";
 import mammoth from "mammoth";
 import { generateManuscriptDocx } from "./services/docx-exporter";
@@ -1787,7 +1787,7 @@ export async function registerRoutes(
       let errorsEncountered = 0;
 
       for (const chapter of chapters) {
-        const chapterText = chapter.editedContent || chapter.originalContent || "";
+        const chapterText = chapter.content || "";
         if (!chapterText) continue;
 
         try {
