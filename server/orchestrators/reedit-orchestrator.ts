@@ -1552,8 +1552,8 @@ export class ReeditOrchestrator {
   private totalThinkingTokens: number = 0;
   
   private maxFinalReviewCycles = 10;
-  private minAcceptableScore = 9; // Acepta 9+ como suficiente (antes era 10)
-  private requiredConsecutiveHighScores = 1; // Solo necesita 1 puntuación 9+ sin issues críticos (antes eran 2)
+  private minAcceptableScore = 9; // Acepta 9+ como suficiente
+  private requiredConsecutiveHighScores = 2; // Necesita 2 puntuaciones 9+ consecutivas para confirmar aprobación
 
   constructor() {
     this.editorAgent = new ReeditEditorAgent();
