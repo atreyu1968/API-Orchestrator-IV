@@ -1017,16 +1017,23 @@ export default function Dashboard() {
                   )}
 
                   {["paused", "cancelled", "error", "failed_final_review"].includes(currentProject.status) && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => setConfirmDialog("resume")}
-                      disabled={resumeProjectMutation.isPending}
-                      data-testid="button-resume-generation"
-                    >
-                      <Play className="h-4 w-4 mr-2" />
-                      Continuar
-                    </Button>
+                    <>
+                      {(currentProject as any).pauseReason && (
+                        <div className="w-full mb-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-md text-sm whitespace-pre-wrap" data-testid="pause-reason">
+                          {(currentProject as any).pauseReason}
+                        </div>
+                      )}
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => setConfirmDialog("resume")}
+                        disabled={resumeProjectMutation.isPending}
+                        data-testid="button-resume-generation"
+                      >
+                        <Play className="h-4 w-4 mr-2" />
+                        Continuar
+                      </Button>
+                    </>
                   )}
 
                   {currentProject.status === "final_review_in_progress" && (

@@ -2457,9 +2457,10 @@ OPCIONES:
 Para continuar, usa el botón "Reanudar" o "Saltar capítulos fallidos" en el panel de control.`;
 
             // Store failed chapters info in finalReviewResult for UI access
+            // Use "paused" status so UI shows resume button
             const existingResult = project.finalReviewResult as any || {};
             await storage.updateProject(project.id, { 
-              status: "awaiting_instructions",
+              status: "paused",
               pauseReason: detailedPauseReason,
               finalReviewResult: {
                 ...existingResult,
