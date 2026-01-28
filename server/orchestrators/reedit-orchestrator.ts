@@ -1582,6 +1582,26 @@ export class ReeditOrchestrator {
       this.totalThinkingTokens += response.tokenUsage.thinkingTokens || 0;
     }
   }
+  
+  /**
+   * Analyze issues to identify recurrent categories that keep appearing
+   * This helps diagnose WHY quality isn't improving
+   */
+  private analyzeRecurrentIssues(issues: any[]): string[] {
+    const categoryCount: Record<string, number> = {};
+    
+    for (const issue of issues) {
+      const category = issue.categoria || "sin_categoria";
+      categoryCount[category] = (categoryCount[category] || 0) + 1;
+    }
+    
+    // Return categories that appear more than once
+    return Object.entries(categoryCount)
+      .filter(([_, count]) => count > 1)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([cat, count]) => `${cat} (${count}x)`);
+  }
 
   /**
    * Smart chapter correction: uses surgical fix for minor issues, full rewrite for critical ones
@@ -4619,9 +4639,50 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
       // CRITICAL: If we exited the loop without achieving 2x consecutive 10/10, pause for instructions
       // This prevents projects from being marked "completed" with low scores
       if (consecutiveHighScores < this.requiredConsecutiveHighScores) {
-        const pauseReason = `El proceso alcanzó ${revisionCycle} ciclos sin lograr 2 puntuaciones 10/10 consecutivas. Última puntuación: ${Math.round(bestsellerScore)}/10. Por favor, revisa los problemas detectados y proporciona instrucciones para continuar.`;
+        // Build detailed diagnostic of WHY quality isn't improving
+        const issues = finalResult?.problemas_detectados || [];
+        const criticalIssues = issues.filter((i: any) => i.severidad === "critico" || i.severidad === "mayor");
+        const recurrentCategories = this.analyzeRecurrentIssues(issues);
         
-        console.log(`[ReeditOrchestrator] PAUSING: Did not achieve required consecutive 10/10 scores. Score: ${bestsellerScore}/10`);
+        let diagnosticDetails = "";
+        
+        // Analyze score progression
+        if (previousScores.length >= 3) {
+          const recentScores = previousScores.slice(-3);
+          const avgRecent = recentScores.reduce((a, b) => a + b, 0) / recentScores.length;
+          const isStagnant = recentScores.every(s => Math.abs(s - avgRecent) < 0.5);
+          
+          if (isStagnant) {
+            diagnosticDetails += `\n\n📊 DIAGNÓSTICO: La puntuación está estancada (${recentScores.map(s => s.toFixed(1)).join(" → ")}). Las correcciones automáticas no están resolviendo los problemas fundamentales.`;
+          }
+        }
+        
+        // List critical/major issues preventing improvement
+        if (criticalIssues.length > 0) {
+          diagnosticDetails += `\n\n🚨 PROBLEMAS BLOQUEANTES (${criticalIssues.length}):`;
+          criticalIssues.slice(0, 5).forEach((issue: any, idx: number) => {
+            const caps = Array.isArray(issue.capitulos_afectados) 
+              ? issue.capitulos_afectados.slice(0, 3).join(", ") + (issue.capitulos_afectados.length > 3 ? "..." : "")
+              : issue.capitulos_afectados || "varios";
+            diagnosticDetails += `\n  ${idx + 1}. [${issue.categoria}] ${issue.descripcion?.slice(0, 100)}... (Cap. ${caps})`;
+          });
+        }
+        
+        // Identify recurrent issue categories
+        if (recurrentCategories.length > 0) {
+          diagnosticDetails += `\n\n🔄 CATEGORÍAS RECURRENTES: ${recurrentCategories.join(", ")}`;
+          diagnosticDetails += `\n   Estas categorías aparecen repetidamente, sugiriendo un problema estructural que requiere intervención manual.`;
+        }
+        
+        // Provide actionable suggestions
+        diagnosticDetails += `\n\n💡 OPCIONES:`;
+        diagnosticDetails += `\n  1. "Forzar completado" - Aceptar el manuscrito con puntuación ${Math.round(bestsellerScore)}/10`;
+        diagnosticDetails += `\n  2. Editar manualmente los capítulos problemáticos y reiniciar`;
+        diagnosticDetails += `\n  3. Proporcionar instrucciones específicas sobre cómo abordar los problemas listados`;
+        
+        const pauseReason = `El proceso alcanzó ${revisionCycle} ciclos sin lograr 2 puntuaciones consecutivas de 9+/10. Última puntuación: ${Math.round(bestsellerScore)}/10.${diagnosticDetails}`;
+        
+        console.log(`[ReeditOrchestrator] PAUSING: Did not achieve required consecutive 9+ scores. Score: ${bestsellerScore}/10`);
         
         await storage.updateReeditProject(projectId, {
           status: "awaiting_instructions",
@@ -5261,9 +5322,50 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
 
     // CRITICAL: If we exited the loop without achieving 2x consecutive 10/10, pause for instructions
     if (consecutiveHighScores < this.requiredConsecutiveHighScores) {
-      const pauseReason = `El proceso alcanzó ${revisionCycle} ciclos sin lograr 2 puntuaciones 10/10 consecutivas. Última puntuación: ${Math.round(bestsellerScore)}/10. Por favor, revisa los problemas detectados y proporciona instrucciones para continuar.`;
+      // Build detailed diagnostic of WHY quality isn't improving
+      const issues = finalResult?.problemas_detectados || [];
+      const criticalIssues = issues.filter((i: any) => i.severidad === "critico" || i.severidad === "mayor");
+      const recurrentCategories = this.analyzeRecurrentIssues(issues);
       
-      console.log(`[ReeditOrchestrator] PAUSING (runFinalReviewOnly): Did not achieve required consecutive 10/10 scores. Score: ${bestsellerScore}/10`);
+      let diagnosticDetails = "";
+      
+      // Analyze score progression
+      if (previousScores.length >= 3) {
+        const recentScores = previousScores.slice(-3);
+        const avgRecent = recentScores.reduce((a, b) => a + b, 0) / recentScores.length;
+        const isStagnant = recentScores.every(s => Math.abs(s - avgRecent) < 0.5);
+        
+        if (isStagnant) {
+          diagnosticDetails += `\n\n📊 DIAGNÓSTICO: La puntuación está estancada (${recentScores.map(s => s.toFixed(1)).join(" → ")}). Las correcciones automáticas no están resolviendo los problemas fundamentales.`;
+        }
+      }
+      
+      // List critical/major issues preventing improvement
+      if (criticalIssues.length > 0) {
+        diagnosticDetails += `\n\n🚨 PROBLEMAS BLOQUEANTES (${criticalIssues.length}):`;
+        criticalIssues.slice(0, 5).forEach((issue: any, idx: number) => {
+          const caps = Array.isArray(issue.capitulos_afectados) 
+            ? issue.capitulos_afectados.slice(0, 3).join(", ") + (issue.capitulos_afectados.length > 3 ? "..." : "")
+            : issue.capitulos_afectados || "varios";
+          diagnosticDetails += `\n  ${idx + 1}. [${issue.categoria}] ${issue.descripcion?.slice(0, 100)}... (Cap. ${caps})`;
+        });
+      }
+      
+      // Identify recurrent issue categories
+      if (recurrentCategories.length > 0) {
+        diagnosticDetails += `\n\n🔄 CATEGORÍAS RECURRENTES: ${recurrentCategories.join(", ")}`;
+        diagnosticDetails += `\n   Estas categorías aparecen repetidamente, sugiriendo un problema estructural que requiere intervención manual.`;
+      }
+      
+      // Provide actionable suggestions
+      diagnosticDetails += `\n\n💡 OPCIONES:`;
+      diagnosticDetails += `\n  1. "Forzar completado" - Aceptar el manuscrito con puntuación ${Math.round(bestsellerScore)}/10`;
+      diagnosticDetails += `\n  2. Editar manualmente los capítulos problemáticos y reiniciar`;
+      diagnosticDetails += `\n  3. Proporcionar instrucciones específicas sobre cómo abordar los problemas listados`;
+      
+      const pauseReason = `El proceso alcanzó ${revisionCycle} ciclos sin lograr 2 puntuaciones consecutivas de 9+/10. Última puntuación: ${Math.round(bestsellerScore)}/10.${diagnosticDetails}`;
+      
+      console.log(`[ReeditOrchestrator] PAUSING (runFinalReviewOnly): Did not achieve required consecutive 9+ scores. Score: ${bestsellerScore}/10`);
       
       await storage.updateReeditProject(projectId, {
         status: "awaiting_instructions",
