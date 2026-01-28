@@ -4102,7 +4102,7 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
       let localResolvedHashes: string[] = (project.resolvedIssueHashes as string[]) || [];
       
       // Track chapters corrected - PERSISTED across restarts to prevent infinite loops
-      const MAX_CORRECTIONS_PER_CHAPTER = 2; // Max times a chapter can be corrected before pausing
+      const MAX_CORRECTIONS_PER_CHAPTER = 4; // Max times a chapter can be corrected before pausing
       const loadedCounts = (savedProject?.chapterCorrectionCounts as Record<string, number>) || {};
       const chapterCorrectionCounts: Map<number, number> = new Map(
         Object.entries(loadedCounts).map(([k, v]) => [parseInt(k), v])
@@ -4452,7 +4452,7 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
               }
               return true;
             })
-            .slice(0, 5);
+            .slice(0, 10); // Corrige hasta 10 capítulos por ciclo
           
           if (chaptersNeedingFix.length === 0 && chapterNumbersToFix.size > 0) {
             // PAUSE for user intervention instead of auto-resolving
@@ -4839,7 +4839,7 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
     let localResolvedHashesFRO: string[] = (project.resolvedIssueHashes as string[]) || [];
     
     // Track chapters corrected - PERSISTED across restarts to prevent infinite loops
-    const MAX_CORRECTIONS_PER_CHAPTER_FRO = 2; // Max times a chapter can be corrected before pausing
+    const MAX_CORRECTIONS_PER_CHAPTER_FRO = 4; // Max times a chapter can be corrected before pausing
     const loadedCountsFRO = (project?.chapterCorrectionCounts as Record<string, number>) || {};
     const chapterCorrectionCountsFRO: Map<number, number> = new Map(
       Object.entries(loadedCountsFRO).map(([k, v]) => [parseInt(k), v])
@@ -5138,7 +5138,7 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
             }
             return true;
           })
-          .slice(0, 5);
+          .slice(0, 10); // Corrige hasta 10 capítulos por ciclo
         
         if (chaptersNeedingFix.length === 0 && chapterNumbersToFix.size > 0) {
           // PAUSE for user intervention instead of auto-resolving
@@ -5490,7 +5490,7 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
       chaptersToFix = editableChapters.filter(c => mentionedChapters.has(c.chapterNumber));
       console.log(`[ReeditOrchestrator] Fixing ${chaptersToFix.length} specifically mentioned chapters: ${Array.from(mentionedChapters).join(', ')}`);
     } else {
-      chaptersToFix = editableChapters.slice(0, Math.min(5, editableChapters.length));
+      chaptersToFix = editableChapters.slice(0, Math.min(10, editableChapters.length));
       console.log(`[ReeditOrchestrator] No specific chapters mentioned, fixing first ${chaptersToFix.length} chapters`);
     }
 
