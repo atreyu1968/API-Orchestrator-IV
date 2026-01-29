@@ -489,6 +489,84 @@ ${decisions.join('\n')}
   }
 
   // ============================================
+  // ISSUE HASH TRACKING SYSTEM (synced with reedit-orchestrator)
+  // ============================================
+
+  /**
+   * Generate a hash for an issue to track if it has been resolved.
+   * Uses category + simplified description + affected chapters to create stable ID.
+   */
+  private generateIssueHash(issue: Pick<FinalReviewIssue, 'categoria' | 'descripcion' | 'capitulos_afectados'>): string {
+    // Normalize description: lowercase, remove extra spaces, keep first 100 chars
+    const normalizedDesc = (issue.descripcion || "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim()
+      .substring(0, 100);
+    
+    // Sort chapters for consistent hashing
+    const chapters = (issue.capitulos_afectados || []).sort((a, b) => a - b).join(",");
+    
+    // Create hash from category + description + chapters
+    const hashInput = `${issue.categoria || "unknown"}|${normalizedDesc}|${chapters}`;
+    
+    // Simple string hash (djb2 algorithm)
+    let hash = 5381;
+    for (let i = 0; i < hashInput.length; i++) {
+      hash = ((hash << 5) + hash) + hashInput.charCodeAt(i);
+    }
+    return `issue_${Math.abs(hash).toString(16)}`;
+  }
+  
+  /**
+   * Filter out issues that have already been resolved in previous cycles.
+   */
+  private filterNewIssues(
+    issues: FinalReviewIssue[],
+    resolvedHashes: string[]
+  ): { newIssues: FinalReviewIssue[]; filteredCount: number } {
+    const resolvedSet = new Set(resolvedHashes);
+    const newIssues: FinalReviewIssue[] = [];
+    let filteredCount = 0;
+    
+    for (const issue of issues) {
+      const hash = this.generateIssueHash(issue);
+      if (resolvedSet.has(hash)) {
+        console.log(`[OrchestratorV2] Filtering resolved issue: ${issue.categoria} - ${issue.descripcion?.substring(0, 50)}...`);
+        filteredCount++;
+      } else {
+        newIssues.push(issue);
+      }
+    }
+    
+    if (filteredCount > 0) {
+      console.log(`[OrchestratorV2] Filtered ${filteredCount} previously resolved issues, ${newIssues.length} new issues remain`);
+    }
+    
+    return { newIssues, filteredCount };
+  }
+  
+  /**
+   * Mark issues as resolved by adding their hashes to the project's resolved list.
+   */
+  private async markIssuesResolved(projectId: number, issues: FinalReviewIssue[]): Promise<void> {
+    if (issues.length === 0) return;
+    
+    const project = await storage.getProject(projectId);
+    const existingHashes = (project?.resolvedIssueHashes as string[]) || [];
+    
+    const newHashes = issues.map(issue => this.generateIssueHash(issue));
+    const combinedHashes = [...existingHashes, ...newHashes];
+    const allHashes = combinedHashes.filter((hash, index) => combinedHashes.indexOf(hash) === index);
+    
+    await storage.updateProject(projectId, {
+      resolvedIssueHashes: allHashes as any,
+    });
+    
+    console.log(`[OrchestratorV2] Marked ${newHashes.length} issues as resolved (total hashes: ${allHashes.length})`);
+  }
+
+  // ============================================
   // UNIVERSAL CONSISTENCY MODULE INTEGRATION
   // ============================================
 
@@ -3062,14 +3140,24 @@ Si NO hay lesiones significativas, responde: {"injuries": []}`;
       let correctedIssuesSummaries: string[] = [];
       // Track previous cycle score for consistency enforcement
       let previousCycleScore: number | undefined = undefined;
-      // CRITICAL: Track issues from previous FinalReviewer cycle to use for pre-corrections in next cycle
-      let previousCycleIssues: FinalReviewIssue[] = [];
+      
+      // HASH-BASED ISSUE TRACKING (synced with reedit-orchestrator system)
+      // Load resolved issue hashes from database to survive restarts
+      let localResolvedHashes: string[] = (project.resolvedIssueHashes as string[]) || [];
+      console.log(`[OrchestratorV2] Loaded ${localResolvedHashes.length} resolved issue hashes from database`);
+      
+      // Chapter correction limits to prevent infinite loops (same as reedit-orchestrator)
+      const MAX_CORRECTIONS_PER_CHAPTER = 4;
+      const loadedCounts = (project?.chapterCorrectionCounts as Record<string, number>) || {};
+      const chapterCorrectionCounts: Map<number, number> = new Map(
+        Object.entries(loadedCounts).map(([k, v]) => [parseInt(k), v])
+      );
       
       // ITERATIVE REVIEW CYCLE: Track consecutive high scores (≥9) for approval
       const REQUIRED_CONSECUTIVE_HIGH_SCORES = 2;
       const MIN_ACCEPTABLE_SCORE = 9;
       // CRITICAL: Restore consecutiveHighScores from database to survive auto-recovery/restarts
-      let consecutiveHighScores = project.consecutiveHighScores || 0;
+      let consecutiveHighScores = (project.consecutiveHighScores as number) || 0;
       console.log(`[OrchestratorV2] Starting final review at cycle ${currentCycle} with ${consecutiveHighScores} consecutive high score(s) from previous session`);
       const previousScores: number[] = [];
       
@@ -3322,14 +3410,33 @@ Si NO hay lesiones significativas, responde: {"injuries": []}`;
           }
           
           // === PRE-REVIEW CORRECTION: Fix QA + previous FinalReviewer issues BEFORE new FinalReviewer ===
-          // Combine QA issues with issues from previous FinalReviewer cycle
+          // CRITICAL: Reload resolved hashes from DB to include newly resolved issues (survives restarts)
+          const refreshedProject = await storage.getProject(project.id);
+          localResolvedHashes = (refreshedProject?.resolvedIssueHashes as string[]) || [];
+          
+          // Combine QA issues with issues from previous FinalReviewer cycle (loaded from DB)
           const combinedPreReviewIssues: QAIssue[] = [...qaIssues];
           
-          // Convert previous FinalReviewer issues to QAIssue format and add them
-          if (previousCycleIssues.length > 0) {
-            console.log(`[OrchestratorV2] Adding ${previousCycleIssues.length} issues from previous FinalReviewer cycle to pre-review corrections`);
-            for (const issue of previousCycleIssues) {
+          // Get previous FinalReviewer issues from database and filter with resolved hashes
+          const previousFinalResult = refreshedProject?.finalReviewResult as FinalReviewerResult | null;
+          const rawPreviousIssues: FinalReviewIssue[] = previousFinalResult?.issues || [];
+          const { newIssues: previousCycleIssuesFiltered, filteredCount: prevFilteredCount } = this.filterNewIssues(rawPreviousIssues, localResolvedHashes);
+          
+          if (prevFilteredCount > 0) {
+            console.log(`[OrchestratorV2] Filtered ${prevFilteredCount} already-resolved issues from previous cycle`);
+          }
+          
+          // Convert filtered FinalReviewer issues to QAIssue format and add them
+          if (previousCycleIssuesFiltered.length > 0) {
+            console.log(`[OrchestratorV2] Adding ${previousCycleIssuesFiltered.length} unresolved issues from previous FinalReviewer cycle`);
+            for (const issue of previousCycleIssuesFiltered) {
               for (const chapNum of (issue.capitulos_afectados || [])) {
+                // Check chapter correction limits to prevent infinite loops
+                const correctionCount = chapterCorrectionCounts.get(chapNum) || 0;
+                if (correctionCount >= MAX_CORRECTIONS_PER_CHAPTER) {
+                  console.log(`[OrchestratorV2] Skipping chapter ${chapNum}: already corrected ${correctionCount} times (max: ${MAX_CORRECTIONS_PER_CHAPTER})`);
+                  continue;
+                }
                 combinedPreReviewIssues.push({
                   source: 'final-reviewer',
                   capitulo: chapNum,
@@ -3343,7 +3450,7 @@ Si NO hay lesiones significativas, responde: {"injuries": []}`;
           }
           
           if (combinedPreReviewIssues.length > 0) {
-            console.log(`[OrchestratorV2] PRE-REVIEW CORRECTION: Fixing ${combinedPreReviewIssues.length} combined issues (${qaIssues.length} QA + ${previousCycleIssues.length} FinalReviewer) before new review`);
+            console.log(`[OrchestratorV2] PRE-REVIEW CORRECTION: Fixing ${combinedPreReviewIssues.length} combined issues (${qaIssues.length} QA + ${previousCycleIssuesFiltered.length} FinalReviewer) before new review`);
             
             // Aggregate combined issues by chapter
             const qaIssuesByChapter = new Map<number, typeof combinedPreReviewIssues>();
@@ -3576,22 +3683,30 @@ ${issuesDescription}`;
             console.log(`[OrchestratorV2] PRE-REVIEW CORRECTION complete: ${preReviewCorrected}/${chaptersToFix.length} chapters corrected`);
             this.callbacks.onAgentStatus("beta-reader", "active", `Pre-corrección: ${preReviewCorrected} capítulos arreglados. Iniciando revisión final...`);
             
-            // CRITICAL: Remove successfully corrected chapters from previousCycleIssues to avoid re-attempting
-            // For multi-chapter issues, only remove the fixed chapters from capitulos_afectados
+            // HASH-BASED RESOLUTION: Mark successfully corrected issues as resolved
             const successfullyFixedChapters = preReviewFixes.filter(f => f.success).map(f => f.chapter);
             if (successfullyFixedChapters.length > 0) {
-              const originalCount = previousCycleIssues.length;
-              previousCycleIssues = previousCycleIssues
-                .map(issue => {
-                  // Remove fixed chapters from the issue's affected chapters list
-                  const affectedChapters = issue.capitulos_afectados || [];
-                  const remainingChapters = affectedChapters.filter(ch => !successfullyFixedChapters.includes(ch));
-                  return { ...issue, capitulos_afectados: remainingChapters };
-                })
-                .filter(issue => (issue.capitulos_afectados || []).length > 0); // Remove issues with no remaining chapters
-              console.log(`[OrchestratorV2] Cleaned previousCycleIssues: ${originalCount} -> ${previousCycleIssues.length} issues (removed fixed chapters from multi-chapter issues)`);
+              // Update chapter correction counts to track how many times each chapter has been corrected
+              for (const chapNum of successfullyFixedChapters) {
+                const currentCount = chapterCorrectionCounts.get(chapNum) || 0;
+                chapterCorrectionCounts.set(chapNum, currentCount + 1);
+              }
+              // Persist correction counts to database
+              await storage.updateProject(project.id, {
+                chapterCorrectionCounts: Object.fromEntries(chapterCorrectionCounts) as any,
+              });
+              console.log(`[OrchestratorV2] Updated chapter correction counts for chapters: ${successfullyFixedChapters.join(', ')}`);
               
-              // Also remove fixed chapters from qaIssues to avoid re-attempting
+              // Mark the issues for these chapters as resolved using hash system
+              const issuesToResolve = previousCycleIssuesFiltered.filter(issue => {
+                const affectedChapters = issue.capitulos_afectados || [];
+                return affectedChapters.some(ch => successfullyFixedChapters.includes(ch));
+              });
+              if (issuesToResolve.length > 0) {
+                await this.markIssuesResolved(project.id, issuesToResolve);
+              }
+              
+              // Also remove fixed chapters from qaIssues to avoid re-attempting in this session
               const originalQaCount = qaIssues.length;
               qaIssues = qaIssues.filter(issue => {
                 const chapNum = issue.capitulo || (issue.capitulos ? issue.capitulos[0] : null);
@@ -3737,10 +3852,8 @@ ${issuesDescription}`;
         finalResult = reviewResult.result;
         let { veredicto, puntuacion_global, issues, capitulos_para_reescribir } = finalResult;
 
-        // CRITICAL: Save issues from this cycle to use for pre-corrections in next cycle
-        previousCycleIssues = issues || [];
-        console.log(`[OrchestratorV2] Saved ${previousCycleIssues.length} issues from cycle ${currentCycle} for next pre-review corrections`);
-
+        // NOTE: Issues are now tracked via hash system. The finalReviewResult is saved to DB
+        // and issues are filtered using resolvedIssueHashes on next cycle (see pre-review correction section)
         console.log(`[OrchestratorV2] Review result: ${veredicto}, score: ${puntuacion_global}, chapters to rewrite: ${capitulos_para_reescribir?.length || 0}, issues: ${issues?.length || 0}`);
         
         // Detect score regression - this should not happen normally
