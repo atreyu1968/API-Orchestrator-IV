@@ -2742,7 +2742,7 @@ ${decisions.join('\n')}
       this.callbacks.onAgentStatus("final-reviewer", "active", "Ejecutando revisión final completa...");
       
       const chapters = await storage.getChaptersByProject(project.id);
-      const completedChapters = chapters
+      let completedChapters = chapters
         .filter(c => c.status === "completed" || c.status === "approved")
         .sort((a, b) => a.chapterNumber - b.chapterNumber);
       
