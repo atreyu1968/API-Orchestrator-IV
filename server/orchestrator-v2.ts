@@ -2518,6 +2518,10 @@ ${decisions.join('\n')}
         if (currentCycle === 1 && qaIssues.length > 0) {
           console.log(`[OrchestratorV2] Consolidating ${qaIssues.length} QA issues with FinalReviewer results`);
           
+          // Ensure arrays are initialized (FinalReviewer may return undefined)
+          issues = issues ?? [];
+          capitulos_para_reescribir = capitulos_para_reescribir ?? [];
+          
           // Convert QA issues to FinalReviewIssue format and add to issues array
           for (const qaIssue of qaIssues) {
             const targetChapters = qaIssue.capitulo ? [qaIssue.capitulo] : (qaIssue.capitulos || []);
