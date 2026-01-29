@@ -5,7 +5,7 @@ import { db } from "./db";
 import { OrchestratorV2 } from "./orchestrator-v2";
 import { queueManager } from "./queue-manager";
 import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema, consistencyViolations, worldEntities, worldRulesTable, worldBibles } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import multer from "multer";
 import mammoth from "mammoth";
 import { generateManuscriptDocx } from "./services/docx-exporter";
@@ -1704,10 +1704,9 @@ export async function registerRoutes(
               eq(consistencyViolations.projectId, id)
             ));
         }
-        res.json({ message: `${violationIds.length} violation(s) marked as resolved` });
       } else if (chapterNumber !== undefined) {
         // Resolve all pending violations for a chapter
-        const result = await db.update(consistencyViolations)
+        await db.update(consistencyViolations)
           .set({ 
             status: "resolved",
             resolvedAt: new Date(),
@@ -1718,10 +1717,34 @@ export async function registerRoutes(
             eq(consistencyViolations.chapterNumber, chapterNumber),
             eq(consistencyViolations.status, "pending")
           ));
-        res.json({ message: `Violations for chapter ${chapterNumber} marked as resolved` });
       } else {
         res.status(400).json({ error: "Provide chapterNumber or violationIds" });
+        return;
       }
+      
+      // Check if there are remaining pending violations for this project
+      const remainingViolations = await db.select({ count: sql<number>`count(*)` })
+        .from(consistencyViolations)
+        .where(and(
+          eq(consistencyViolations.projectId, id),
+          eq(consistencyViolations.status, "pending")
+        ));
+      
+      const pendingCount = remainingViolations[0]?.count || 0;
+      
+      // Update Guardian agent status based on remaining violations
+      if (pendingCount === 0) {
+        await storage.updateAgentStatus(id, "universal-consistency", {
+          status: "completed",
+          currentTask: "Sin violaciones pendientes",
+        });
+      }
+      
+      res.json({ 
+        message: violationIds ? `${violationIds.length} violation(s) marked as resolved` : `Violations marked as resolved`,
+        remainingPending: pendingCount,
+        guardianStatus: pendingCount === 0 ? "completed" : "warning"
+      });
     } catch (error) {
       console.error("Error resolving consistency violations:", error);
       res.status(500).json({ error: "Failed to resolve consistency violations" });
