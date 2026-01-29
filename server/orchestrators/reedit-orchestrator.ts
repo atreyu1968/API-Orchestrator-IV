@@ -1351,9 +1351,32 @@ RESPONDE EN JSON:
     const sections: string[] = [];
     
     if (worldBible.personajes?.length > 0) {
-      const chars = worldBible.personajes.slice(0, 20).map((p: any) => 
-        `• ${p.nombre} (${p.rol || 'secundario'}): ${p.descripcion?.substring(0, 150) || 'Sin descripción'}${p.arcoNarrativo ? ` | Arco: ${p.arcoNarrativo.substring(0, 100)}` : ''}`
-      ).join("\n");
+      const chars = worldBible.personajes.slice(0, 20).map((p: any) => {
+        // LitAgents 2.1: Extract physical attributes from nested 'appearance' object
+        const physicalAttrs: string[] = [];
+        if (p.appearance) {
+          const app = p.appearance;
+          if (app.eyes) physicalAttrs.push(`ojos: ${app.eyes}`);
+          if (app.eye_color) physicalAttrs.push(`ojos: ${app.eye_color}`);
+          if (app.hair) physicalAttrs.push(`cabello: ${app.hair}`);
+          if (app.hair_color) physicalAttrs.push(`cabello: ${app.hair_color}`);
+          if (app.height) physicalAttrs.push(`altura: ${app.height}`);
+          if (app.build) physicalAttrs.push(`complexión: ${app.build}`);
+          if (app.skin) physicalAttrs.push(`piel: ${app.skin}`);
+          if (app.age) physicalAttrs.push(`edad: ${app.age}`);
+        }
+        // Also check top-level physical attributes
+        if (p.eyes) physicalAttrs.push(`ojos: ${p.eyes}`);
+        if (p.eye_color) physicalAttrs.push(`ojos: ${p.eye_color}`);
+        if (p.hair) physicalAttrs.push(`cabello: ${p.hair}`);
+        if (p.hair_color) physicalAttrs.push(`cabello: ${p.hair_color}`);
+        
+        const physicalStr = physicalAttrs.length > 0 
+          ? ` | ⚠️ FÍSICO INMUTABLE: ${physicalAttrs.join(', ')}`
+          : '';
+        
+        return `• ${p.nombre} (${p.rol || 'secundario'}): ${p.descripcion?.substring(0, 150) || 'Sin descripción'}${physicalStr}${p.arcoNarrativo ? ` | Arco: ${p.arcoNarrativo.substring(0, 100)}` : ''}`;
+      }).join("\n");
       sections.push(`PERSONAJES:\n${chars}`);
     }
     
