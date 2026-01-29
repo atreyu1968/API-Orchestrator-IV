@@ -820,6 +820,142 @@ ${decisions.join('\n')}
   }
 
   /**
+   * Build enriched writing context with detailed character info, world rules, and error patterns to avoid.
+   * This helps prevent consistency errors from the initial writing stage.
+   */
+  private async buildEnrichedWritingContext(
+    projectId: number,
+    chapterNumber: number,
+    worldBible: any
+  ): Promise<string> {
+    const parts: string[] = [];
+    
+    // 1. Detailed character profiles with relationships and arcs
+    const characters = worldBible?.characters || [];
+    if (characters.length > 0) {
+      parts.push("\n=== PERFILES DE PERSONAJES (OBLIGATORIO RESPETAR) ===");
+      
+      const mainCharacters = characters.slice(0, 8); // Top 8 characters
+      for (const char of mainCharacters) {
+        parts.push(`\n📌 ${char.name || char.nombre}:`);
+        if (char.description || char.descripcion) {
+          parts.push(`   Descripción: ${(char.description || char.descripcion).substring(0, 200)}`);
+        }
+        if (char.personality || char.personalidad) {
+          parts.push(`   Personalidad: ${char.personality || char.personalidad}`);
+        }
+        if (char.traits || char.rasgos) {
+          const traits = Array.isArray(char.traits || char.rasgos) 
+            ? (char.traits || char.rasgos).join(", ")
+            : char.traits || char.rasgos;
+          parts.push(`   Rasgos distintivos: ${traits}`);
+        }
+        if (char.relationships || char.relaciones) {
+          const rels = Array.isArray(char.relationships || char.relaciones)
+            ? (char.relationships || char.relaciones).map((r: any) => 
+                typeof r === 'string' ? r : `${r.character || r.personaje}: ${r.type || r.tipo}`
+              ).join("; ")
+            : char.relationships || char.relaciones;
+          parts.push(`   Relaciones: ${rels}`);
+        }
+        if (char.arc || char.arco) {
+          parts.push(`   Arco narrativo: ${char.arc || char.arco}`);
+        }
+        if (char.voice || char.voz) {
+          parts.push(`   Estilo de voz: ${char.voice || char.voz}`);
+        }
+      }
+    }
+    
+    // 2. Key world rules and settings
+    const rules = worldBible?.worldRules || worldBible?.rules || [];
+    if (rules.length > 0) {
+      parts.push("\n\n=== REGLAS DEL MUNDO (INVIOLABLES) ===");
+      const topRules = rules.slice(0, 10);
+      for (const rule of topRules) {
+        if (typeof rule === 'string') {
+          parts.push(`• ${rule}`);
+        } else if (rule.rule || rule.regla) {
+          parts.push(`• ${rule.rule || rule.regla}`);
+          if (rule.exception || rule.excepcion) {
+            parts.push(`  (Excepción: ${rule.exception || rule.excepcion})`);
+          }
+        }
+      }
+    }
+    
+    // 3. Key locations with details
+    const locations = worldBible?.locations || worldBible?.ubicaciones || [];
+    if (locations.length > 0) {
+      parts.push("\n\n=== UBICACIONES CLAVE ===");
+      const topLocations = locations.slice(0, 6);
+      for (const loc of topLocations) {
+        const name = loc.name || loc.nombre || loc;
+        const desc = loc.description || loc.descripcion || "";
+        parts.push(`• ${name}${desc ? `: ${desc.substring(0, 100)}` : ""}`);
+      }
+    }
+    
+    // 4. Common error patterns to AVOID (from consistency violations if any)
+    try {
+      const violations = await storage.getConsistencyViolationsByProject(projectId);
+      if (violations && violations.length > 0) {
+        // Get unique violation types
+        const recentViolations = violations.slice(0, 10);
+        const violationPatterns = new Set<string>();
+        
+        for (const v of recentViolations) {
+          if (v.description) {
+            // Extract the pattern from the violation
+            violationPatterns.add(`NO REPETIR: ${v.description.substring(0, 150)}`);
+          }
+        }
+        
+        if (violationPatterns.size > 0) {
+          parts.push("\n\n=== ⚠️ ERRORES ANTERIORES A EVITAR ===");
+          parts.push("Estos errores se detectaron anteriormente. NO los repitas:");
+          for (const pattern of Array.from(violationPatterns).slice(0, 5)) {
+            parts.push(`• ${pattern}`);
+          }
+        }
+      }
+    } catch (err) {
+      // Silently ignore if consistency violations table doesn't exist
+    }
+    
+    // 5. Timeline context (what has happened up to this chapter)
+    const timeline = worldBible?.timeline || [];
+    if (timeline.length > 0 && chapterNumber > 1) {
+      parts.push("\n\n=== EVENTOS PREVIOS RELEVANTES ===");
+      const priorEvents = timeline
+        .filter((e: any) => (e.chapter || e.capitulo || 0) < chapterNumber)
+        .slice(-5); // Last 5 events before this chapter
+      
+      for (const event of priorEvents) {
+        const chapter = event.chapter || event.capitulo || "?";
+        const desc = event.event || event.evento || event.summary || event.resumen || "";
+        if (desc) {
+          parts.push(`• [Cap ${chapter}] ${desc.substring(0, 150)}`);
+        }
+      }
+    }
+    
+    // 6. Writing anti-patterns specific to genre
+    const genre = worldBible?.genre || "";
+    if (genre) {
+      parts.push("\n\n=== ANTIPATRONES A EVITAR (${genre.toUpperCase()}) ===");
+      parts.push("• NO usar deus ex machina o coincidencias forzadas");
+      parts.push("• NO contradecir información establecida en capítulos anteriores");
+      parts.push("• NO ignorar lesiones, heridas o condiciones físicas de personajes");
+      parts.push("• NO cambiar la personalidad de un personaje sin justificación");
+      parts.push("• NO saltar el tiempo sin transición clara");
+      parts.push("• NO introducir personajes sin presentación adecuada");
+    }
+    
+    return parts.length > 0 ? parts.join("\n") : "";
+  }
+
+  /**
    * Extract a brief summary from a written scene
    * Uses heuristics to generate a quick summary without AI call
    */
@@ -1610,6 +1746,13 @@ ${decisions.join('\n')}
           if (sceneSummaries) {
             consistencyConstraints += sceneSummaries;
             console.log(`[OrchestratorV2] Added scene summaries from previous chapters`);
+          }
+          
+          // Add enriched writing context (characters, rules, locations, error patterns)
+          const enrichedContext = await this.buildEnrichedWritingContext(project.id, chapterNumber, worldBible);
+          if (enrichedContext) {
+            consistencyConstraints += enrichedContext;
+            console.log(`[OrchestratorV2] Added enriched writing context (${enrichedContext.length} chars)`);
           }
         } catch (err) {
           console.error(`[OrchestratorV2] Failed to generate constraints:`, err);
@@ -3738,6 +3881,13 @@ Para continuar, usa el botón "Reanudar" o "Saltar capítulos fallidos" en el pa
               chapterNum
             );
           }
+          
+          // Add enriched writing context for extend
+          const enrichedContext = await this.buildEnrichedWritingContext(project.id, chapterNum, worldBibleData);
+          if (enrichedContext) {
+            consistencyConstraints += enrichedContext;
+            console.log(`[OrchestratorV2] Added enriched writing context for extend (${enrichedContext.length} chars)`);
+          }
         } catch (err) {
           console.error(`[OrchestratorV2] Failed to generate constraints for extend:`, err);
         }
@@ -3969,6 +4119,13 @@ Para continuar, usa el botón "Reanudar" o "Saltar capítulos fallidos" en el pa
               context.relationships,
               chapter.chapterNumber
             );
+          }
+          
+          // Add enriched writing context for truncated regen
+          const enrichedContext = await this.buildEnrichedWritingContext(project.id, chapter.chapterNumber, worldBibleData);
+          if (enrichedContext) {
+            consistencyConstraints += enrichedContext;
+            console.log(`[OrchestratorV2] Added enriched writing context for truncated regen (${enrichedContext.length} chars)`);
           }
         } catch (err) {
           console.error(`[OrchestratorV2] Failed to generate constraints for truncated regen:`, err);
@@ -4342,6 +4499,13 @@ Para continuar, usa el botón "Reanudar" o "Saltar capítulos fallidos" en el pa
               context.relationships,
               chapterNumber
             );
+          }
+          
+          // Add enriched writing context for fill missing
+          const enrichedContext = await this.buildEnrichedWritingContext(project.id, chapterNumber, worldBible);
+          if (enrichedContext) {
+            consistencyConstraints += enrichedContext;
+            console.log(`[OrchestratorV2] Added enriched writing context for fill missing (${enrichedContext.length} chars)`);
           }
         } catch (err) {
           console.error(`[OrchestratorV2] Failed to generate constraints for fill missing:`, err);
