@@ -4432,6 +4432,15 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
           contenido: c.editedContent || c.originalContent,
         }));
 
+        // Extract 3-act structure from World Bible for narrative-coherent review
+        // Handle both camelCase (threeActStructure) and snake_case (three_act_structure) field names
+        const rawActStructure = worldBibleForReview?.threeActStructure || worldBibleForReview?.three_act_structure;
+        const threeActStructure = rawActStructure as { 
+          act1: { chapters: number[]; goal: string }; 
+          act2: { chapters: number[]; goal: string }; 
+          act3: { chapters: number[]; goal: string }; 
+        } | undefined;
+
         // Call the FULL final reviewer with complete manuscript content
         const fullReviewResult = await this.fullFinalReviewerAgent.execute({
           projectTitle: project.title,
@@ -4440,6 +4449,15 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
           guiaEstilo: guiaEstilo,
           pasadaNumero: revisionCycle + 1,
           issuesPreviosCorregidos: correctedIssueDescriptions,
+          threeActStructure,
+          onTrancheProgress: (currentTranche, totalTranches, chaptersInTranche) => {
+            this.emitProgress({
+              stage: "reviewing",
+              currentChapter: completedChapters.length,
+              totalChapters: completedChapters.length,
+              message: `Revisando ${chaptersInTranche}...`,
+            });
+          },
         });
         this.trackTokens(fullReviewResult);
         await this.updateHeartbeat(projectId);
@@ -5126,6 +5144,15 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
         contenido: c.editedContent || c.originalContent,
       }));
 
+      // Extract 3-act structure from World Bible for narrative-coherent review
+      // Handle both camelCase (threeActStructure) and snake_case (three_act_structure) field names
+      const rawActStructureFRO = worldBibleForReview?.threeActStructure || worldBibleForReview?.three_act_structure;
+      const threeActStructureFRO = rawActStructureFRO as { 
+        act1: { chapters: number[]; goal: string }; 
+        act2: { chapters: number[]; goal: string }; 
+        act3: { chapters: number[]; goal: string }; 
+      } | undefined;
+
       // Call the FULL final reviewer with complete manuscript content
       // Pass user instructions so they are considered during issue detection
       const fullReviewResult = await this.fullFinalReviewerAgent.execute({
@@ -5136,6 +5163,15 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
         pasadaNumero: revisionCycle + 1,
         issuesPreviosCorregidos: correctedIssueDescriptions,
         userInstructions: userInstructions || undefined,
+        threeActStructure: threeActStructureFRO,
+        onTrancheProgress: (currentTranche, totalTranches, chaptersInTranche) => {
+          this.emitProgress({
+            stage: "reviewing",
+            currentChapter: validChapters.length,
+            totalChapters: validChapters.length,
+            message: `Revisando ${chaptersInTranche}...`,
+          });
+        },
       });
       this.trackTokens(fullReviewResult);
       await this.updateHeartbeat(projectId);

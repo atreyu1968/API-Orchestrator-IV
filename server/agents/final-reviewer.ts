@@ -491,8 +491,12 @@ SALIDA OBLIGATORIA (JSON):
 }
 `;
 
-// Maximum chapters per tranche to stay within DeepSeek's 131k token limit
-const CHAPTERS_PER_TRANCHE = 8;
+// DeepSeek R1 has 131k token context limit; reserve ~20k for prompt and response
+const MAX_TOKENS_PER_TRANCHE = 100000;
+// Approximate tokens per character (conservative estimate for Spanish text)
+const TOKENS_PER_CHAR = 0.35;
+// Fallback chapter limit when no act structure is available
+const CHAPTERS_PER_TRANCHE_FALLBACK = 8;
 
 export class FinalReviewerAgent extends BaseAgent {
   constructor() {
@@ -898,13 +902,23 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
         
         if (actChapters.length === 0) continue;
         
-        // If act is too large, subdivide it to stay within token limits
-        if (actChapters.length > CHAPTERS_PER_TRANCHE) {
-          const numSubTranches = Math.ceil(actChapters.length / CHAPTERS_PER_TRANCHE);
+        // Estimate tokens for this act based on content length
+        const actTotalChars = actChapters.reduce((sum, c) => sum + (c.contenido?.length || 0), 0);
+        const estimatedTokens = actTotalChars * TOKENS_PER_CHAR;
+        
+        // Only subdivide if estimated tokens exceed limit - keep acts whole when possible
+        if (estimatedTokens > MAX_TOKENS_PER_TRANCHE) {
+          // Calculate how many sub-tranches we need
+          const numSubTranches = Math.ceil(estimatedTokens / MAX_TOKENS_PER_TRANCHE);
+          const chaptersPerSubTranche = Math.ceil(actChapters.length / numSubTranches);
+          
+          console.log(`[FinalReviewer] ${act.name} requires subdivision: ~${Math.round(estimatedTokens)} tokens exceeds ${MAX_TOKENS_PER_TRANCHE} limit`);
+          
           for (let s = 0; s < numSubTranches; s++) {
-            const startIdx = s * CHAPTERS_PER_TRANCHE;
-            const endIdx = Math.min(startIdx + CHAPTERS_PER_TRANCHE, actChapters.length);
+            const startIdx = s * chaptersPerSubTranche;
+            const endIdx = Math.min(startIdx + chaptersPerSubTranche, actChapters.length);
             const subChapters = actChapters.slice(startIdx, endIdx);
+            if (subChapters.length === 0) continue;
             actTranches.push({
               chapters: subChapters,
               label: numSubTranches > 1 ? `${act.name} (parte ${s + 1}/${numSubTranches})` : act.name,
@@ -913,6 +927,8 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
             });
           }
         } else {
+          // Keep entire act as single tranche - narratively coherent
+          console.log(`[FinalReviewer] ${act.name} fits in single tranche: ~${Math.round(estimatedTokens)} tokens`);
           actTranches.push({
             chapters: actChapters,
             label: act.name,
@@ -943,10 +959,10 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
     
     // Fallback to fixed-size tranches if no act structure available OR if act structure produced no valid tranches
     if (actTranches.length === 0) {
-      const numFixedTranches = Math.ceil(totalChapters / CHAPTERS_PER_TRANCHE);
+      const numFixedTranches = Math.ceil(totalChapters / CHAPTERS_PER_TRANCHE_FALLBACK);
       for (let t = 0; t < numFixedTranches; t++) {
-        const startIdx = t * CHAPTERS_PER_TRANCHE;
-        const endIdx = Math.min(startIdx + CHAPTERS_PER_TRANCHE, totalChapters);
+        const startIdx = t * CHAPTERS_PER_TRANCHE_FALLBACK;
+        const endIdx = Math.min(startIdx + CHAPTERS_PER_TRANCHE_FALLBACK, totalChapters);
         actTranches.push({
           chapters: sortedChapters.slice(startIdx, endIdx),
           label: `Tramo ${t + 1}`,
@@ -954,7 +970,7 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
           goal: '',
         });
       }
-      console.log(`[FinalReviewer] Dividiendo ${totalChapters} capítulos en ${numFixedTranches} tramos de ~${CHAPTERS_PER_TRANCHE} capítulos (sin estructura de actos válida)`);
+      console.log(`[FinalReviewer] Dividiendo ${totalChapters} capítulos en ${numFixedTranches} tramos de ~${CHAPTERS_PER_TRANCHE_FALLBACK} capítulos (sin estructura de actos válida)`);
     }
 
     // Pre-analyze entire manuscript for global patterns (Deus Ex Machina, repetitions, etc.)
