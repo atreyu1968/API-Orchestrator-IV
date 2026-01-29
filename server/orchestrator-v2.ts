@@ -2723,7 +2723,9 @@ ${decisions.join('\n')}
     
     // Plan scenes (note: this helper doesn't have full consistency constraints context)
     // Extract outline from worldBible if available for plot context
-    const fullOutline = worldBible?.plotOutline?.chapters || [];
+    // Note: World Bible stores as chapterOutlines, not chapters
+    const plotOutlineData = worldBible?.plotOutline as any;
+    const fullOutline = plotOutlineData?.chapterOutlines || plotOutlineData?.chapters || [];
     
     const chapterPlan = await this.chapterArchitect.execute({
       chapterOutline,
@@ -4236,8 +4238,9 @@ Para continuar, usa el botón "Reanudar" o "Saltar capítulos fallidos" en el pa
         // Plan scenes for this chapter (WITH constraints)
         this.callbacks.onAgentStatus("chapter-architect", "active", `Planificando escenas para Capítulo ${chapterNum}...`);
         
-        // Get full outline for plot context
-        const fullOutline = worldBibleData?.plotOutline?.chapters || [];
+        // Get full outline for plot context (World Bible stores as chapterOutlines, not chapters)
+        const plotData = worldBibleData?.plotOutline as any;
+        const fullOutline = plotData?.chapterOutlines || plotData?.chapters || [];
         
         const chapterPlan = await this.chapterArchitect.execute({
           chapterOutline: tempOutline,
@@ -4474,8 +4477,9 @@ Para continuar, usa el botón "Reanudar" o "Saltar capítulos fallidos" en el pa
         }
 
         // Plan new scenes (WITH constraints)
-        // Get full outline for plot context
-        const fullOutline = worldBibleData?.plotOutline?.chapters || [];
+        // Get full outline for plot context (World Bible stores as chapterOutlines, not chapters)
+        const plotData2 = worldBibleData?.plotOutline as any;
+        const fullOutline = plotData2?.chapterOutlines || plotData2?.chapters || [];
         
         const chapterPlan = await this.chapterArchitect.execute({
           chapterOutline,
@@ -4857,8 +4861,9 @@ Para continuar, usa el botón "Reanudar" o "Saltar capítulos fallidos" en el pa
         // Chapter Architect (WITH constraints)
         this.callbacks.onAgentStatus("chapter-architect", "active", `Planning scenes for Chapter ${chapterNumber}...`);
         
-        // Get full outline for plot context
-        const fullOutline = (worldBible as any)?.plotOutline?.chapters || outline;
+        // Get full outline for plot context (World Bible stores as chapterOutlines, not chapters)
+        const plotData3 = (worldBible as any)?.plotOutline;
+        const fullOutline = plotData3?.chapterOutlines || plotData3?.chapters || outline;
         
         const chapterPlan = await this.chapterArchitect.execute({
           chapterOutline,
