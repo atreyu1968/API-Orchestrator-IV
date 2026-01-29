@@ -77,12 +77,32 @@ export class UniversalConsistencyAgent {
   ): string {
     const config = getGenreConfig(genre);
 
+    // LitAgents 2.1: Separate immutable and mutable attributes for clarity
     const entityBlock = entities.length > 0
       ? entities.map(e => {
-          const attrs = Object.entries(e.attributes || {})
-            .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
-            .join(', ');
-          return `- [${e.type}] ${e.name} (${e.status}): ${attrs || 'sin atributos'}`;
+          const allAttrs = Object.entries(e.attributes || {});
+          // Separate immutable (physical) attributes from other attributes
+          const immutableAttrs = allAttrs.filter(([k]) => k.endsWith('_INMUTABLE'));
+          const otherAttrs = allAttrs.filter(([k]) => !k.endsWith('_INMUTABLE'));
+          
+          let result = `- [${e.type}] ${e.name} (${e.status}):`;
+          
+          // Show immutable attributes prominently with warning
+          if (immutableAttrs.length > 0) {
+            result += `\n    ⚠️ ATRIBUTOS FÍSICOS INMUTABLES (NUNCA CAMBIAR):`;
+            immutableAttrs.forEach(([k, v]) => {
+              const cleanKey = k.replace('_INMUTABLE', '');
+              result += `\n      • ${cleanKey}: ${JSON.stringify(v)}`;
+            });
+          }
+          
+          // Show other attributes
+          if (otherAttrs.length > 0) {
+            const attrs = otherAttrs.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ');
+            result += `\n    Otros: ${attrs}`;
+          }
+          
+          return result;
         }).join('\n')
       : '(Sin entidades registradas aún)';
 
@@ -286,18 +306,61 @@ RESPONDE EN JSON:
     const entities: Array<Omit<WorldEntity, 'id' | 'createdAt' | 'updatedAt'>> = [];
     const rules: Array<Omit<WorldRuleRecord, 'id' | 'createdAt'>> = [];
 
+    // LitAgents 2.1: Universal immutable physical attributes to extract
+    const PHYSICAL_ATTR_KEYS = ['eyes', 'eye_color', 'ojos', 'hair', 'hair_color', 'cabello', 'height', 'altura', 'skin', 'piel', 'build', 'complexion', 'age', 'edad'];
+
     for (const char of worldBibleCharacters) {
       const attributes: Record<string, any> = {};
+      const charName = char.name || char.nombre || 'Personaje desconocido';
 
       if (char.role) attributes.role = char.role;
-      if (char.aparienciaInmutable) {
-        attributes.appearance = char.aparienciaInmutable;
-      }
-      if (char.appearance) {
-        attributes.appearance = char.appearance;
-      }
       if (char.profile) attributes.profile = char.profile;
 
+      // LitAgents 2.1: Extract physical attributes from appearance object (not just string)
+      const appearance = char.appearance || char.aparienciaInmutable || char.apariencia;
+      if (appearance) {
+        if (typeof appearance === 'object' && appearance !== null) {
+          // Appearance is an object - extract individual attributes with IMMUTABLE markers
+          for (const [key, value] of Object.entries(appearance)) {
+            if (value && typeof value === 'string') {
+              const normalizedKey = key.toLowerCase();
+              // Mark physical attributes as IMMUTABLE
+              if (PHYSICAL_ATTR_KEYS.includes(normalizedKey)) {
+                attributes[`${key}_INMUTABLE`] = value;
+                // Generate rule for this immutable attribute
+                rules.push({
+                  projectId,
+                  ruleDescription: `${charName} tiene ${key} = "${value}" (INMUTABLE - NUNCA CAMBIAR)`,
+                  category: 'PHYSICAL_ATTRIBUTE',
+                  isActive: true,
+                  sourceChapter: 0
+                });
+              } else {
+                attributes[key] = value;
+              }
+            }
+          }
+        } else if (typeof appearance === 'string') {
+          // Appearance is a string - store as-is
+          attributes.appearance = appearance;
+        }
+      }
+
+      // Also check for top-level physical attributes
+      for (const attrKey of PHYSICAL_ATTR_KEYS) {
+        if (char[attrKey] && !attributes[`${attrKey}_INMUTABLE`]) {
+          attributes[`${attrKey}_INMUTABLE`] = char[attrKey];
+          rules.push({
+            projectId,
+            ruleDescription: `${charName} tiene ${attrKey} = "${char[attrKey]}" (INMUTABLE - NUNCA CAMBIAR)`,
+            category: 'PHYSICAL_ATTRIBUTE',
+            isActive: true,
+            sourceChapter: 0
+          });
+        }
+      }
+
+      // Genre-specific tracked attributes
       for (const attrKey of config.tracked_attributes) {
         if (char[attrKey] !== undefined) {
           attributes[attrKey] = char[attrKey];
@@ -306,7 +369,7 @@ RESPONDE EN JSON:
 
       entities.push({
         projectId,
-        name: char.name,
+        name: charName,
         type: 'CHARACTER',
         attributes,
         status: char.isAlive === false ? 'dead' : 'active',

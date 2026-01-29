@@ -3255,7 +3255,8 @@ ${chapterContext.styleGuide ? `GUÍA DE ESTILO:\n${chapterContext.styleGuide}\n`
 PROBLEMAS A CORREGIR (OBLIGATORIO):
 ${issuesDescription}`;
 
-                  const fixResult = await this.smartEditor.surgicalFix({
+                  // LitAgents 2.1: Use fullRewrite for critical/major issues (surgicalFix returns patches, not corrected_text)
+                  const fixResult = await this.smartEditor.fullRewrite({
                     chapterContent: chapter.content,
                     errorDescription: fullContextPrompt,
                     consistencyConstraints: JSON.stringify(chapterContext.mainCharacters),
@@ -3264,9 +3265,14 @@ ${issuesDescription}`;
                   this.addTokenUsage(fixResult.tokenUsage);
                   await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, chapNum);
                   
-                  if (fixResult.parsed?.corrected_text && fixResult.parsed.corrected_text.length > 100) {
-                    correctedContent = fixResult.parsed.corrected_text;
+                  // fullRewrite returns rewrittenContent, not parsed.corrected_text
+                  if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
+                    correctedContent = fixResult.rewrittenContent;
                     console.log(`[OrchestratorV2] Full rewrite successful for Chapter ${chapNum}: ${correctedContent.length} chars`);
+                  } else if (fixResult.content && fixResult.content.length > 100) {
+                    // Fallback to raw content if rewrittenContent not parsed
+                    correctedContent = fixResult.content;
+                    console.log(`[OrchestratorV2] Full rewrite fallback for Chapter ${chapNum}: ${correctedContent.length} chars`);
                   }
                 } else {
                   // MINOR ISSUES ONLY: Try patches first, then fallbacks
@@ -3293,7 +3299,7 @@ ${issuesDescription}`;
                     correctedContent = editResult.fullContent;
                   }
                   
-                  // Attempt 2: surgicalFix if patches failed
+                  // Attempt 2: surgicalFix if patches failed - apply returned patches
                   if (!correctedContent) {
                     console.log(`[OrchestratorV2] Patches failed, trying surgicalFix for Chapter ${chapNum}`);
                     const fixResult = await this.smartEditor.surgicalFix({
@@ -3302,22 +3308,36 @@ ${issuesDescription}`;
                       consistencyConstraints: JSON.stringify(chapterContext.mainCharacters),
                     });
                     this.addTokenUsage(fixResult.tokenUsage);
-                    if (fixResult.parsed?.corrected_text && fixResult.parsed.corrected_text.length > 100) {
-                      correctedContent = fixResult.parsed.corrected_text;
+                    
+                    // LitAgents 2.1: surgicalFix returns patches array, apply them
+                    if (fixResult.patches && fixResult.patches.length > 0) {
+                      const patchResult = applyPatches(chapter.content, fixResult.patches);
+                      if (patchResult.modifiedContent && patchResult.modifiedContent.length > 100) {
+                        correctedContent = patchResult.modifiedContent;
+                        console.log(`[OrchestratorV2] Surgical patches applied for Chapter ${chapNum}`);
+                      }
+                    } else if (fixResult.fullContent && fixResult.fullContent.length > 100) {
+                      correctedContent = fixResult.fullContent;
                     }
                   }
                   
-                  // Attempt 3: Last resort full rewrite
+                  // Attempt 3: Last resort full rewrite using fullRewrite method
                   if (!correctedContent) {
                     console.log(`[OrchestratorV2] All methods failed, forcing full rewrite for Chapter ${chapNum}`);
-                    const fixResult = await this.smartEditor.surgicalFix({
+                    const fixResult = await this.smartEditor.fullRewrite({
                       chapterContent: chapter.content,
                       errorDescription: `REESCRITURA FORZADA - Corregir estos problemas:\n${issuesDescription}`,
                       consistencyConstraints: JSON.stringify(chapterContext.mainCharacters),
                     });
                     this.addTokenUsage(fixResult.tokenUsage);
-                    if (fixResult.parsed?.corrected_text && fixResult.parsed.corrected_text.length > 100) {
-                      correctedContent = fixResult.parsed.corrected_text;
+                    
+                    // fullRewrite returns rewrittenContent
+                    if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
+                      correctedContent = fixResult.rewrittenContent;
+                      console.log(`[OrchestratorV2] Full rewrite successful for Chapter ${chapNum}`);
+                    } else if (fixResult.content && fixResult.content.length > 100) {
+                      correctedContent = fixResult.content;
+                      console.log(`[OrchestratorV2] Full rewrite fallback for Chapter ${chapNum}`);
                     }
                   }
                 }
@@ -3820,7 +3840,8 @@ ${chapterContext.styleGuide ? `GUÍA DE ESTILO:\n${chapterContext.styleGuide}\n`
 PROBLEMAS A CORREGIR (OBLIGATORIO):
 ${issuesDescription}`;
 
-                const fixResult = await this.smartEditor.surgicalFix({
+                // LitAgents 2.1: Use fullRewrite for critical/major issues
+                const fixResult = await this.smartEditor.fullRewrite({
                   chapterContent: chapter.content || "",
                   errorDescription: fullContextPrompt,
                   consistencyConstraints: JSON.stringify(chapterContext.mainCharacters),
@@ -3829,9 +3850,13 @@ ${issuesDescription}`;
                 this.addTokenUsage(fixResult.tokenUsage);
                 await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, chapNum);
 
-                if (fixResult.parsed?.corrected_text && fixResult.parsed.corrected_text.length > 100) {
-                  correctedContent = fixResult.parsed.corrected_text;
+                // fullRewrite returns rewrittenContent
+                if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
+                  correctedContent = fixResult.rewrittenContent;
                   console.log(`[OrchestratorV2] Full rewrite successful: ${correctedContent.length} chars`);
+                } else if (fixResult.content && fixResult.content.length > 100) {
+                  correctedContent = fixResult.content;
+                  console.log(`[OrchestratorV2] Full rewrite fallback: ${correctedContent.length} chars`);
                 }
               } else {
                 // MINOR ISSUES ONLY: Try patches first
@@ -3867,22 +3892,32 @@ ${issuesDescription}`;
                       errorDescription: issuesDescription,
                     });
                     this.addTokenUsage(fixResult.tokenUsage);
-                    if (fixResult.parsed?.corrected_text && fixResult.parsed.corrected_text.length > 100) {
-                      correctedContent = fixResult.parsed.corrected_text;
+                    // surgicalFix returns patches, apply them
+                    if (fixResult.patches && fixResult.patches.length > 0) {
+                      const patchResult = applyPatches(chapter.content || "", fixResult.patches);
+                      if (patchResult.modifiedContent && patchResult.modifiedContent.length > 100) {
+                        correctedContent = patchResult.modifiedContent;
+                        console.log(`[OrchestratorV2] Fallback surgicalFix applied ${fixResult.patches.length} patches`);
+                      }
+                    } else if (fixResult.fullContent && fixResult.fullContent.length > 100) {
+                      correctedContent = fixResult.fullContent;
                       console.log(`[OrchestratorV2] Fallback surgicalFix returned ${correctedContent.length} chars`);
                     }
                   }
 
-                  // FALLBACK: If still no content and we have issues, force surgicalFix
+                  // FALLBACK: If still no content, use fullRewrite as last resort
                   if (!correctedContent) {
-                    console.log(`[OrchestratorV2] Forcing surgicalFix as last resort for Chapter ${chapNum}`);
-                    const fixResult = await this.smartEditor.surgicalFix({
+                    console.log(`[OrchestratorV2] Forcing fullRewrite as last resort for Chapter ${chapNum}`);
+                    const fixResult = await this.smartEditor.fullRewrite({
                       chapterContent: chapter.content || "",
                       errorDescription: issuesDescription,
                     });
                     this.addTokenUsage(fixResult.tokenUsage);
-                    if (fixResult.parsed?.corrected_text && fixResult.parsed.corrected_text.length > 100) {
-                      correctedContent = fixResult.parsed.corrected_text;
+                    if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
+                      correctedContent = fixResult.rewrittenContent;
+                      console.log(`[OrchestratorV2] Last resort fullRewrite successful`);
+                    } else if (fixResult.content && fixResult.content.length > 100) {
+                      correctedContent = fixResult.content;
                     }
                   }
                 }
