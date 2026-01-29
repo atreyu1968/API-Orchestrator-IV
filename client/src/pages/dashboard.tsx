@@ -138,6 +138,7 @@ export default function Dashboard() {
   const [targetChapters, setTargetChapters] = useState("");
   const [useV2Pipeline, setUseV2Pipeline] = useState(true);
   const [sceneProgress, setSceneProgress] = useState<{chapterNumber: number; sceneNumber: number; totalScenes: number; wordCount: number} | null>(null);
+  const [chaptersBeingCorrected, setChaptersBeingCorrected] = useState<{chapterNumbers: number[]; revisionCycle: number} | null>(null);
   const { projects, currentProject, setSelectedProjectId } = useProject();
 
   const handleExportData = async () => {
@@ -549,8 +550,19 @@ export default function Dashboard() {
             });
             queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
             setCurrentStage(null);
+            setChaptersBeingCorrected(null);
+            setSceneProgress(null);
           } else if (data.type === "error") {
             addLog("error", data.message || "Error durante la generación");
+          } else if (data.type === "chapters_being_corrected") {
+            if (data.chapterNumbers && data.chapterNumbers.length > 0) {
+              setChaptersBeingCorrected({
+                chapterNumbers: data.chapterNumbers,
+                revisionCycle: data.revisionCycle || 1
+              });
+            } else {
+              setChaptersBeingCorrected(null);
+            }
           }
         } catch (e) {
           console.error("Error parsing SSE:", e);
@@ -706,6 +718,11 @@ export default function Dashboard() {
                       Escena {sceneProgress.sceneNumber}/{sceneProgress.totalScenes} - Cap. {sceneProgress.chapterNumber}
                     </Badge>
                   )}
+                  {chaptersBeingCorrected && chaptersBeingCorrected.chapterNumbers.length > 0 && (
+                    <Badge variant="outline" className="animate-pulse border-orange-500 text-orange-600 dark:text-orange-400" data-testid="badge-chapters-correcting">
+                      Corrigiendo Cap. {chaptersBeingCorrected.chapterNumbers.join(', ')} (Ciclo {chaptersBeingCorrected.revisionCycle})
+                    </Badge>
+                  )}
                   {(currentProject.status === "completed" || currentProject.status === "awaiting_final_review") && (
                     <>
                       <Button
@@ -777,6 +794,11 @@ export default function Dashboard() {
                         {sceneProgress && sceneProgress.chapterNumber === chapter.chapterNumber && currentProject.status === "generating" && (
                           <Badge variant="outline" className="text-xs animate-pulse bg-primary/10">
                             Escena {sceneProgress.sceneNumber}/{sceneProgress.totalScenes}
+                          </Badge>
+                        )}
+                        {chaptersBeingCorrected && chaptersBeingCorrected.chapterNumbers.includes(chapter.chapterNumber) && (
+                          <Badge variant="outline" className="text-xs animate-pulse border-orange-500 text-orange-600 dark:text-orange-400">
+                            Corrigiendo
                           </Badge>
                         )}
                         {chapter.wordCount && chapter.wordCount > 0 && (

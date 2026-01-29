@@ -692,6 +692,9 @@ export async function registerRoutes(
           sendToStreams({ type: "error", message: error });
           await persistActivityLog(id, "error", error, "orchestrator");
         },
+        onChaptersBeingCorrected: (chapterNumbers, revisionCycle) => {
+          sendToStreams({ type: "chapters_being_corrected", chapterNumbers, revisionCycle });
+        },
       });
 
       orchestrator.generateNovel(project).catch(console.error);
@@ -756,6 +759,9 @@ export async function registerRoutes(
         onError: async (error) => {
           sendToStreams({ type: "error", message: error });
           await persistActivityLog(id, "error", error, "orchestrator-v2");
+        },
+        onChaptersBeingCorrected: (chapterNumbers, revisionCycle) => {
+          sendToStreams({ type: "chapters_being_corrected", chapterNumbers, revisionCycle });
         },
       });
 
@@ -938,6 +944,9 @@ export async function registerRoutes(
           sendToStreams({ type: "error", message: error });
           await persistActivityLog(id, "error", error, "orchestrator-v2");
         },
+        onChaptersBeingCorrected: (chapterNumbers, revisionCycle) => {
+          sendToStreams({ type: "chapters_being_corrected", chapterNumbers, revisionCycle });
+        },
       });
 
       console.log(`[generate-missing] About to call orchestrator.generateMissingChapters for project ${id}`);
@@ -1041,6 +1050,9 @@ export async function registerRoutes(
           sendToStreams({ type: "error", message: error });
           await persistActivityLog(id, "error", error, "orchestrator");
         },
+        onChaptersBeingCorrected: (chapterNumbers, revisionCycle) => {
+          sendToStreams({ type: "chapters_being_corrected", chapterNumbers, revisionCycle });
+        },
       });
 
       orchestrator.generateNovel(project).catch(console.error);
@@ -1137,6 +1149,9 @@ export async function registerRoutes(
           console.error(`[Restart] Generation error for project ${id}:`, error);
           sendToStreams({ type: "error", error: String(error) });
         },
+        onChaptersBeingCorrected: (chapterNumbers, revisionCycle) => {
+          sendToStreams({ type: "chapters_being_corrected", chapterNumbers, revisionCycle });
+        },
       });
 
       orchestrator.generateNovel(project).catch(console.error);
@@ -1205,6 +1220,9 @@ export async function registerRoutes(
         onError: (error) => {
           sendToStreams({ type: "error", error });
           persistActivityLog(id, "error", error, "smart-editor");
+        },
+        onChaptersBeingCorrected: (chapterNumbers, revisionCycle) => {
+          sendToStreams({ type: "chapters_being_corrected", chapterNumbers, revisionCycle });
         },
       });
 
@@ -1300,6 +1318,9 @@ export async function registerRoutes(
           sendToStreams({ type: "error", error });
           persistActivityLog(id, "error", error, "orchestrator-v2");
         },
+        onChaptersBeingCorrected: (chapterNumbers, revisionCycle) => {
+          sendToStreams({ type: "chapters_being_corrected", chapterNumbers, revisionCycle });
+        },
       });
 
       orchestratorV2.extendNovel(project, maxExistingChapter, targetChapters);
@@ -1359,6 +1380,9 @@ export async function registerRoutes(
         onError: (error) => {
           sendToStreams({ type: "error", error });
           persistActivityLog(id, "error", error, "orchestrator-v2");
+        },
+        onChaptersBeingCorrected: (chapterNumbers, revisionCycle) => {
+          sendToStreams({ type: "chapters_being_corrected", chapterNumbers, revisionCycle });
         },
       });
 
@@ -1422,6 +1446,9 @@ export async function registerRoutes(
         onError: (error) => {
           sendToStreams({ type: "error", error });
           persistActivityLog(id, "error", error, "orchestrator-v2");
+        },
+        onChaptersBeingCorrected: (chapterNumbers, revisionCycle) => {
+          sendToStreams({ type: "chapters_being_corrected", chapterNumbers, revisionCycle });
         },
       });
 

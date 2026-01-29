@@ -36,6 +36,7 @@ interface OrchestratorV2Callbacks {
   onSceneComplete: (chapterNumber: number, sceneNumber: number, totalScenes: number, wordCount: number) => void;
   onProjectComplete: () => void;
   onError: (error: string) => void;
+  onChaptersBeingCorrected?: (chapterNumbers: number[], revisionCycle: number) => void;
 }
 
 export class OrchestratorV2 {
@@ -2233,6 +2234,11 @@ ${decisions.join('\n')}
         if (capitulos_para_reescribir && capitulos_para_reescribir.length > 0) {
           console.log(`[OrchestratorV2] Starting auto-correction for ${capitulos_para_reescribir.length} chapters`);
           this.callbacks.onAgentStatus("smart-editor", "active", `Auto-corrigiendo ${capitulos_para_reescribir.length} capítulo(s)...`);
+          
+          // Notify frontend about chapters being corrected (like reedit-orchestrator does)
+          if (this.callbacks.onChaptersBeingCorrected) {
+            this.callbacks.onChaptersBeingCorrected(capitulos_para_reescribir, currentCycle);
+          }
 
           let correctedCount = 0;
           let failedCount = 0;
@@ -2497,6 +2503,11 @@ ${decisions.join('\n')}
           }
           console.log(`[OrchestratorV2] Auto-correction complete: ${correctedCount} corrected, ${failedCount} failed of ${totalAttempted} total`);
           this.callbacks.onAgentStatus("smart-editor", "completed", summaryMessage);
+          
+          // Clear the chapters being corrected indicator
+          if (this.callbacks.onChaptersBeingCorrected) {
+            this.callbacks.onChaptersBeingCorrected([], currentCycle);
+          }
           
           // CRITICAL: After successful corrections, continue to next cycle for re-review
           // This ensures the iterative loop: review → fix → review → fix → until 2x consecutive 9+
