@@ -22,6 +22,7 @@ import { universalConsistencyAgent } from "./agents/v2/universal-consistency";
 import { FinalReviewerAgent, type FinalReviewerResult, type FinalReviewIssue } from "./agents/final-reviewer";
 import { SeriesThreadFixerAgent, type ThreadFixerResult, type ThreadFix } from "./agents/series-thread-fixer";
 import { BetaReaderAgent, type BetaReaderReport, type FlaggedChapter } from "./agents/beta-reader";
+import { ForensicConsistencyAuditor, type ForensicAuditResult } from "./agents/forensic-consistency-auditor";
 import { applyPatches, type PatchResult } from "./utils/patcher";
 import type { TokenUsage } from "./agents/base-agent";
 import type { Project, Chapter, InsertPlotThread, WorldEntity, WorldRuleRecord, EntityRelationship } from "@shared/schema";
@@ -262,6 +263,7 @@ export class OrchestratorV2 {
   private continuitySentinel = new ContinuitySentinelAgent();
   private voiceRhythmAuditor = new VoiceRhythmAuditorAgent();
   private semanticRepetitionDetector = new SemanticRepetitionDetectorAgent();
+  private forensicAuditor = new ForensicConsistencyAuditor();
   
   // Beta Reader for commercial viability analysis
   private betaReader = new BetaReaderAgent();
@@ -3220,6 +3222,22 @@ Si NO hay lesiones significativas, responde: {"injuries": []}`;
               .catch(e => ({ type: 'semantic', error: e.message }))
           );
           
+          // Forensic Consistency Auditor - detect continuity violations, contradictions
+          const chaptersForForensic = completedChapters.map(c => ({
+            chapterNumber: c.chapterNumber,
+            title: c.title || `Capítulo ${c.chapterNumber}`,
+            content: c.content || ""
+          }));
+          qaPromises.push(
+            this.forensicAuditor.auditManuscript(
+              chaptersForForensic,
+              project.genre || "general",
+              project.language || "es"
+            )
+              .then(result => ({ type: 'forensic', result }))
+              .catch(e => ({ type: 'forensic', error: e.message }))
+          );
+          
           this.callbacks.onAgentStatus("beta-reader", "active", `Ejecutando ${qaPromises.length} auditorías QA en paralelo...`);
           
           const qaResults = await Promise.all(qaPromises);
@@ -3277,6 +3295,25 @@ Si NO hay lesiones significativas, responde: {"injuries": []}`;
                 }
               }
               if (qaResult.result.tokenUsage) this.addTokenUsage(qaResult.result.tokenUsage);
+            }
+            
+            // Process forensic audit violations
+            if (qaResult.type === 'forensic' && qaResult.result?.violations) {
+              for (const violation of qaResult.result.violations) {
+                // Only process critical and major violations
+                if (violation.severity === 'critical' || violation.severity === 'major') {
+                  qaIssues.push({
+                    source: 'forensic_auditor',
+                    tipo: violation.violationType,
+                    severidad: violation.severity === 'critical' ? 'critica' : 'mayor',
+                    capitulo: violation.chapterNumber,
+                    descripcion: `${violation.description}. Fragmento: ${violation.fragment || 'N/A'}`,
+                    correccion: violation.suggestedFix || 'Corregir la inconsistencia detectada',
+                  });
+                }
+              }
+              if (qaResult.result.tokenUsage) this.addTokenUsage(qaResult.result.tokenUsage);
+              console.log(`[OrchestratorV2] Forensic audit: ${qaResult.result.violations?.length || 0} violations, score: ${qaResult.result.consistencyScore}/10`);
             }
           }
           
