@@ -1,5 +1,11 @@
 import { BaseAgent, AgentResponse } from "./base-agent";
 
+interface ThreeActStructure {
+  act1: { chapters: number[]; goal: string };
+  act2: { chapters: number[]; goal: string };
+  act3: { chapters: number[]; goal: string };
+}
+
 interface FinalReviewerInput {
   projectTitle: string;
   chapters: Array<{
@@ -13,6 +19,7 @@ interface FinalReviewerInput {
   issuesPreviosCorregidos?: string[];
   puntuacionPasadaAnterior?: number;
   userInstructions?: string;
+  threeActStructure?: ThreeActStructure;
   onTrancheProgress?: (currentTranche: number, totalTranches: number, chaptersInTranche: string) => void;
 }
 
@@ -865,11 +872,90 @@ REGLAS DE PUNTUACIÓN:
 Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${prevScore}/10.`;
     }
 
-    // Calculate tranches
+    // Build tranches based on 3-act structure if available, otherwise use fixed size
     const totalChapters = sortedChapters.length;
-    const numTranches = Math.ceil(totalChapters / CHAPTERS_PER_TRANCHE);
     
-    console.log(`[FinalReviewer] Dividiendo ${totalChapters} capítulos en ${numTranches} tramos de ~${CHAPTERS_PER_TRANCHE} capítulos`);
+    interface ActTranche {
+      chapters: typeof sortedChapters;
+      label: string;
+      actName: string;
+      goal: string;
+    }
+    
+    const actTranches: ActTranche[] = [];
+    
+    if (input.threeActStructure) {
+      // Use 3-act structure for more coherent narrative review
+      const acts = [
+        { key: 'act1', name: 'Acto 1 (Planteamiento)', data: input.threeActStructure.act1 },
+        { key: 'act2', name: 'Acto 2 (Conflicto)', data: input.threeActStructure.act2 },
+        { key: 'act3', name: 'Acto 3 (Desenlace)', data: input.threeActStructure.act3 },
+      ];
+      
+      for (const act of acts) {
+        const actChapterNumbers = new Set(act.data.chapters);
+        const actChapters = sortedChapters.filter(c => actChapterNumbers.has(c.numero));
+        
+        if (actChapters.length === 0) continue;
+        
+        // If act is too large, subdivide it to stay within token limits
+        if (actChapters.length > CHAPTERS_PER_TRANCHE) {
+          const numSubTranches = Math.ceil(actChapters.length / CHAPTERS_PER_TRANCHE);
+          for (let s = 0; s < numSubTranches; s++) {
+            const startIdx = s * CHAPTERS_PER_TRANCHE;
+            const endIdx = Math.min(startIdx + CHAPTERS_PER_TRANCHE, actChapters.length);
+            const subChapters = actChapters.slice(startIdx, endIdx);
+            actTranches.push({
+              chapters: subChapters,
+              label: numSubTranches > 1 ? `${act.name} (parte ${s + 1}/${numSubTranches})` : act.name,
+              actName: act.name,
+              goal: act.data.goal,
+            });
+          }
+        } else {
+          actTranches.push({
+            chapters: actChapters,
+            label: act.name,
+            actName: act.name,
+            goal: act.data.goal,
+          });
+        }
+      }
+      
+      // Add any chapters not in acts (prologue, epilogue, etc.) as separate tranche
+      const allActChapters = new Set([
+        ...input.threeActStructure.act1.chapters,
+        ...input.threeActStructure.act2.chapters,
+        ...input.threeActStructure.act3.chapters,
+      ]);
+      const extraChapters = sortedChapters.filter(c => !allActChapters.has(c.numero));
+      if (extraChapters.length > 0) {
+        actTranches.push({
+          chapters: extraChapters,
+          label: 'Prólogo/Epílogo',
+          actName: 'Extras',
+          goal: 'Elementos de apertura y cierre',
+        });
+      }
+      
+      console.log(`[FinalReviewer] Dividiendo ${totalChapters} capítulos por ACTOS: ${actTranches.map(t => `${t.label}(${t.chapters.length})`).join(', ')}`);
+    }
+    
+    // Fallback to fixed-size tranches if no act structure available OR if act structure produced no valid tranches
+    if (actTranches.length === 0) {
+      const numFixedTranches = Math.ceil(totalChapters / CHAPTERS_PER_TRANCHE);
+      for (let t = 0; t < numFixedTranches; t++) {
+        const startIdx = t * CHAPTERS_PER_TRANCHE;
+        const endIdx = Math.min(startIdx + CHAPTERS_PER_TRANCHE, totalChapters);
+        actTranches.push({
+          chapters: sortedChapters.slice(startIdx, endIdx),
+          label: `Tramo ${t + 1}`,
+          actName: `Tramo ${t + 1}`,
+          goal: '',
+        });
+      }
+      console.log(`[FinalReviewer] Dividiendo ${totalChapters} capítulos en ${numFixedTranches} tramos de ~${CHAPTERS_PER_TRANCHE} capítulos (sin estructura de actos válida)`);
+    }
 
     // Pre-analyze entire manuscript for global patterns (Deus Ex Machina, repetitions, etc.)
     const globalPatternsReport = this.preAnalyzeGlobalPatterns(sortedChapters);
@@ -877,29 +963,32 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
       console.log(`[FinalReviewer] Pre-análisis global completado. Patrones detectados.`);
     }
 
-    // Process each tranche with accumulated context from previous tranches
+    // Process each act tranche with accumulated context from previous tranches
     const trancheResults: Partial<FinalReviewerResult>[] = [];
     let totalTokenUsage = { inputTokens: 0, outputTokens: 0, thinkingTokens: 0 };
     // Include global patterns in the accumulated summary so all tranches see it
     let accumulatedIssuesSummary = globalPatternsReport;
+    const numTranches = actTranches.length;
     
-    for (let t = 0; t < numTranches; t++) {
-      const startIdx = t * CHAPTERS_PER_TRANCHE;
-      const endIdx = Math.min(startIdx + CHAPTERS_PER_TRANCHE, totalChapters);
-      const trancheChapters = sortedChapters.slice(startIdx, endIdx);
+    for (let t = 0; t < actTranches.length; t++) {
+      const tranche = actTranches[t];
+      const trancheChapters = tranche.chapters;
       
-      // Notify progress callback if provided - format as range for cleaner UI
+      // Notify progress callback if provided - use act label for clearer UI
       if (input.onTrancheProgress) {
         const firstChapter = this.getChapterLabel(trancheChapters[0].numero);
         const lastChapter = this.getChapterLabel(trancheChapters[trancheChapters.length - 1].numero);
         const chaptersRange = trancheChapters.length > 1 
           ? `${firstChapter} - ${lastChapter}` 
           : firstChapter;
-        input.onTrancheProgress(t + 1, numTranches, chaptersRange);
+        // Use act label instead of just tranche number
+        input.onTrancheProgress(t + 1, numTranches, `${tranche.label}: ${chaptersRange}`);
       }
       
       // Pass accumulated issues from previous tranches to ensure consistency
-      const result = await this.reviewTranche(input, trancheChapters, t + 1, numTranches, pasadaInfo, accumulatedIssuesSummary);
+      // Include act goal in the context for more focused review
+      const actContext = tranche.goal ? `\n[OBJETIVO DEL ACTO: ${tranche.goal}]` : '';
+      const result = await this.reviewTranche(input, trancheChapters, t + 1, numTranches, pasadaInfo + actContext, accumulatedIssuesSummary);
       trancheResults.push(result);
       
       // Build context summary for next tranche
@@ -907,13 +996,13 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
         const issuesSummary = result.issues.map(i => 
           `- [${i.severidad}] Cap ${i.capitulos_afectados.join(",")}: ${i.descripcion.substring(0, 100)}`
         ).join("\n");
-        accumulatedIssuesSummary += `\nTRAMO ${t + 1}:\n${issuesSummary}`;
+        accumulatedIssuesSummary += `\n${tranche.label}:\n${issuesSummary}`;
       }
       if (result.plot_decisions && result.plot_decisions.length > 0) {
         const plotSummary = result.plot_decisions.map(d => 
           `- Decisión en cap ${d.capitulo_establecido}: ${d.decision}`
         ).join("\n");
-        accumulatedIssuesSummary += `\nDECISIONES DE TRAMA (Tramo ${t + 1}):\n${plotSummary}`;
+        accumulatedIssuesSummary += `\nDECISIONES DE TRAMA (${tranche.label}):\n${plotSummary}`;
       }
     }
 

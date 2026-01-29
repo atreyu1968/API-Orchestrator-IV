@@ -3415,6 +3415,21 @@ ${issuesDescription}`;
 
         // Run FinalReviewer with progress callback for tranche visibility
         // Pass previously corrected issues and score so FinalReviewer maintains consistency
+        // Extract 3-act structure from World Bible for narrative-coherent review
+        // Handle both camelCase (threeActStructure) and snake_case (three_act_structure) field names
+        const rawActStructure = worldBibleData?.threeActStructure || worldBibleData?.three_act_structure;
+        const threeActStructure = rawActStructure as { 
+          act1: { chapters: number[]; goal: string }; 
+          act2: { chapters: number[]; goal: string }; 
+          act3: { chapters: number[]; goal: string }; 
+        } | undefined;
+        
+        if (threeActStructure) {
+          console.log(`[OrchestratorV2] Using 3-act structure for review: Act1=${threeActStructure.act1?.chapters?.length || 0} caps, Act2=${threeActStructure.act2?.chapters?.length || 0} caps, Act3=${threeActStructure.act3?.chapters?.length || 0} caps`);
+        } else {
+          console.log(`[OrchestratorV2] No 3-act structure found in World Bible, using fixed-size tranches`);
+        }
+        
         const reviewResult = await this.finalReviewer.execute({
           projectTitle: project.title,
           chapters: chaptersForReview,
@@ -3423,13 +3438,14 @@ ${issuesDescription}`;
           pasadaNumero: currentCycle,
           issuesPreviosCorregidos: correctedIssuesSummaries.length > 0 ? correctedIssuesSummaries : undefined,
           puntuacionPasadaAnterior: previousCycleScore,
+          threeActStructure,
           onTrancheProgress: (currentTranche, totalTranches, chaptersInTranche) => {
             this.callbacks.onAgentStatus(
               "final-reviewer", 
               "active", 
-              `Revisando tramo ${currentTranche}/${totalTranches} (${chaptersInTranche})...`
+              `Revisando ${chaptersInTranche}...`
             );
-            console.log(`[OrchestratorV2] FinalReviewer progress: tranche ${currentTranche}/${totalTranches}`);
+            console.log(`[OrchestratorV2] FinalReviewer progress: ${currentTranche}/${totalTranches} - ${chaptersInTranche}`);
           },
         });
 
