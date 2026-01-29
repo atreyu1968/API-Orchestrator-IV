@@ -3148,8 +3148,9 @@ Si NO hay lesiones significativas, responde: {"injuries": []}`;
       let localResolvedHashes: string[] = (project.resolvedIssueHashes as string[]) || [];
       console.log(`[OrchestratorV2] Loaded ${localResolvedHashes.length} resolved issue hashes from database`);
       
-      // Chapter correction limits to prevent infinite loops (same as reedit-orchestrator)
-      const MAX_CORRECTIONS_PER_CHAPTER = 4;
+      // Chapter correction limits and strategy escalation thresholds
+      const MAX_CORRECTIONS_PER_CHAPTER = 6; // Increased to allow strategy escalation
+      const STRATEGY_ESCALATION_THRESHOLD = 2; // After 2 normal attempts (count>=2), escalate to alternative strategy
       const loadedCounts = (project?.chapterCorrectionCounts as Record<string, number>) || {};
       const chapterCorrectionCounts: Map<number, number> = new Map(
         Object.entries(loadedCounts).map(([k, v]) => [parseInt(k), v])
@@ -3589,13 +3590,80 @@ Si NO hay lesiones significativas, responde: {"injuries": []}`;
                 styleGuide: project.architectInstructions?.substring(0, 1000) || '',
               };
               
-              console.log(`[OrchestratorV2] Pre-review fixing Chapter ${chapNum}: ${chapterQaIssues.length} issues (critical/major: ${hasCriticalOrMajor})`);
-              this.callbacks.onAgentStatus("smart-editor", "active", `Corrigiendo capítulo ${chapNum} (reescritura, ${chapterQaIssues.length} problemas)...`);
+              // Determine correction strategy based on previous attempts
+              const currentCorrectionCount = chapterCorrectionCounts.get(chapNum) || 0;
+              const useEscalatedStrategy = currentCorrectionCount >= STRATEGY_ESCALATION_THRESHOLD;
+              const strategyLabel = useEscalatedStrategy ? 'ESTRATEGIA ALTERNATIVA' : 'reescritura';
+              
+              console.log(`[OrchestratorV2] Pre-review fixing Chapter ${chapNum}: ${chapterQaIssues.length} issues (critical/major: ${hasCriticalOrMajor}, attempt: ${currentCorrectionCount + 1}, escalated: ${useEscalatedStrategy})`);
+              this.callbacks.onAgentStatus("smart-editor", "active", `Corrigiendo capítulo ${chapNum} (${strategyLabel}, ${chapterQaIssues.length} problemas, intento ${currentCorrectionCount + 1})...`);
               
               try {
                 let correctedContent: string | null = null;
                 
-                if (hasCriticalOrMajor) {
+                if (useEscalatedStrategy) {
+                  // ESCALATED STRATEGY: Complete reconstruction with full narrative context
+                  console.log(`[OrchestratorV2] ESCALATED STRATEGY for Chapter ${chapNum} (attempt ${currentCorrectionCount + 1}): using extended context and alternative approach`);
+                  
+                  // Get adjacent chapters for maximum context
+                  const prevChapter = completedChapters.find(c => c.chapterNumber === chapNum - 1);
+                  const nextChapter = completedChapters.find(c => c.chapterNumber === chapNum + 1);
+                  
+                  // Build ultra-detailed prompt with narrative flow
+                  const escalatedPrompt = `⚠️ ESTRATEGIA ALTERNATIVA - INTENTO ${currentCorrectionCount + 1}
+
+Este capítulo ha sido corregido ${currentCorrectionCount} veces sin éxito. DEBES usar un enfoque COMPLETAMENTE DIFERENTE.
+
+INSTRUCCIONES CRÍTICAS:
+1. NO repitas las mismas correcciones que fallaron antes
+2. REESCRIBE las secciones problemáticas desde un ángulo narrativo diferente
+3. Si el problema es de continuidad, CAMBIA cómo se presenta la información
+4. Si el problema es de caracterización, MUESTRA el rasgo de otra manera
+5. PRIORIZA resolver el problema aunque requiera cambios creativos significativos
+
+CONTEXTO NARRATIVO COMPLETO:
+${prevChapter ? `--- CAPÍTULO ANTERIOR (${prevChapter.chapterNumber}) ---
+${prevChapter.content?.substring(0, 2000)}...
+--- FIN CAPÍTULO ANTERIOR ---` : 'No hay capítulo anterior.'}
+
+${nextChapter ? `--- CAPÍTULO SIGUIENTE (${nextChapter.chapterNumber}) ---
+${nextChapter.content?.substring(0, 1500)}...
+--- FIN CAPÍTULO SIGUIENTE ---` : 'No hay capítulo siguiente.'}
+
+PROBLEMAS PERSISTENTES QUE DEBES RESOLVER CON ENFOQUE ALTERNATIVO:
+${issuesDescription}
+
+NOTA: Si el problema parece irresoluble con la narrativa actual, puedes:
+- Cambiar el orden de los eventos
+- Agregar escenas de transición
+- Modificar diálogos para aclarar información
+- Eliminar elementos contradictorios si son menores`;
+
+                  const fixResult = await this.smartEditor.fullRewrite({
+                    chapterContent: chapter.content,
+                    errorDescription: escalatedPrompt,
+                    consistencyConstraints: JSON.stringify({
+                      characters: chapterContext.mainCharacters,
+                      injuries: chapterContext.persistentInjuries,
+                      rules: chapterContext.worldRules,
+                      attemptNumber: currentCorrectionCount + 1,
+                      previousAttemptsFailed: true,
+                    }),
+                  });
+                  
+                  this.addTokenUsage(fixResult.tokenUsage);
+                  await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, chapNum);
+                  
+                  if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
+                    correctedContent = fixResult.rewrittenContent;
+                    console.log(`[OrchestratorV2] Escalated strategy successful for Chapter ${chapNum}: ${correctedContent.length} chars`);
+                  } else if (fixResult.content && fixResult.content.length > 100) {
+                    correctedContent = fixResult.content;
+                    console.log(`[OrchestratorV2] Escalated strategy fallback for Chapter ${chapNum}: ${correctedContent.length} chars`);
+                  } else {
+                    console.warn(`[OrchestratorV2] Escalated strategy FAILED for Chapter ${chapNum}`);
+                  }
+                } else if (hasCriticalOrMajor) {
                   // DIRECT FULL REWRITE for critical/major issues - no time wasting with patches
                   console.log(`[OrchestratorV2] FULL REWRITE for Chapter ${chapNum} (critical/major issues detected)`);
                   
@@ -4143,8 +4211,13 @@ ${issuesDescription}`;
             const hasMajorIssue = chapterIssues.some(i => i.severidad === 'mayor');
             const hasCriticalOrMajor = hasCriticalIssue || hasMajorIssue;
 
-            console.log(`[OrchestratorV2] Correcting Chapter ${chapNum}: ${chapterIssues.length} issues (critical/major: ${hasCriticalOrMajor})`);
-            this.callbacks.onAgentStatus("smart-editor", "active", `Corrigiendo capítulo ${chapNum} (${hasCriticalOrMajor ? 'reescritura' : 'parches'}, ${chapterIssues.length} problemas)...`);
+            // Determine correction strategy based on previous attempts (same as pre-review)
+            const postReviewCorrectionCount = chapterCorrectionCounts.get(chapNum) || 0;
+            const usePostReviewEscalatedStrategy = postReviewCorrectionCount >= STRATEGY_ESCALATION_THRESHOLD;
+            const postReviewStrategyLabel = usePostReviewEscalatedStrategy ? 'ESTRATEGIA ALTERNATIVA' : (hasCriticalOrMajor ? 'reescritura' : 'parches');
+            
+            console.log(`[OrchestratorV2] Correcting Chapter ${chapNum}: ${chapterIssues.length} issues (critical/major: ${hasCriticalOrMajor}, attempt: ${postReviewCorrectionCount + 1}, escalated: ${usePostReviewEscalatedStrategy})`);
+            this.callbacks.onAgentStatus("smart-editor", "active", `Corrigiendo capítulo ${chapNum} (${postReviewStrategyLabel}, ${chapterIssues.length} problemas, intento ${postReviewCorrectionCount + 1})...`);
 
             // Build UNIFIED correction prompt from ALL aggregated issues
             const issuesDescription = chapterIssues.map(i => 
@@ -4188,7 +4261,68 @@ ${issuesDescription}`;
             let correctedContent: string | null = null;
 
             try {
-              if (hasCriticalOrMajor) {
+              if (usePostReviewEscalatedStrategy) {
+                // ESCALATED STRATEGY: Complete reconstruction with full narrative context (post-review)
+                console.log(`[OrchestratorV2] POST-REVIEW ESCALATED STRATEGY for Chapter ${chapNum} (attempt ${postReviewCorrectionCount + 1})`);
+                
+                // Get adjacent chapters for maximum context
+                const prevChapter = currentChapters.find(c => c.chapterNumber === chapNum - 1);
+                const nextChapter = currentChapters.find(c => c.chapterNumber === chapNum + 1);
+                
+                const escalatedPrompt = `⚠️ ESTRATEGIA ALTERNATIVA - INTENTO ${postReviewCorrectionCount + 1}
+
+Este capítulo ha sido corregido ${postReviewCorrectionCount} veces sin éxito. DEBES usar un enfoque COMPLETAMENTE DIFERENTE.
+
+INSTRUCCIONES CRÍTICAS:
+1. NO repitas las mismas correcciones que fallaron antes
+2. REESCRIBE las secciones problemáticas desde un ángulo narrativo diferente
+3. Si el problema es de continuidad, CAMBIA cómo se presenta la información
+4. Si el problema es de caracterización, MUESTRA el rasgo de otra manera
+5. PRIORIZA resolver el problema aunque requiera cambios creativos significativos
+
+CONTEXTO NARRATIVO COMPLETO:
+${prevChapter ? `--- CAPÍTULO ANTERIOR (${prevChapter.chapterNumber}) ---
+${prevChapter.content?.substring(0, 2000)}...
+--- FIN CAPÍTULO ANTERIOR ---` : 'No hay capítulo anterior.'}
+
+${nextChapter ? `--- CAPÍTULO SIGUIENTE (${nextChapter.chapterNumber}) ---
+${nextChapter.content?.substring(0, 1500)}...
+--- FIN CAPÍTULO SIGUIENTE ---` : 'No hay capítulo siguiente.'}
+
+PROBLEMAS PERSISTENTES QUE DEBES RESOLVER CON ENFOQUE ALTERNATIVO:
+${issuesDescription}
+
+NOTA: Si el problema parece irresoluble con la narrativa actual, puedes:
+- Cambiar el orden de los eventos
+- Agregar escenas de transición
+- Modificar diálogos para aclarar información
+- Eliminar elementos contradictorios si son menores`;
+
+                const fixResult = await this.smartEditor.fullRewrite({
+                  chapterContent: chapter.content || "",
+                  errorDescription: escalatedPrompt,
+                  consistencyConstraints: JSON.stringify({
+                    characters: chapterContext.mainCharacters,
+                    injuries: chapterContext.persistentInjuries,
+                    rules: chapterContext.worldRules,
+                    attemptNumber: postReviewCorrectionCount + 1,
+                    previousAttemptsFailed: true,
+                  }),
+                });
+                
+                this.addTokenUsage(fixResult.tokenUsage);
+                await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, chapNum);
+                
+                if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
+                  correctedContent = fixResult.rewrittenContent;
+                  console.log(`[OrchestratorV2] Post-review escalated strategy successful for Chapter ${chapNum}: ${correctedContent.length} chars`);
+                } else if (fixResult.content && fixResult.content.length > 100) {
+                  correctedContent = fixResult.content;
+                  console.log(`[OrchestratorV2] Post-review escalated strategy fallback for Chapter ${chapNum}: ${correctedContent.length} chars`);
+                } else {
+                  console.warn(`[OrchestratorV2] Post-review escalated strategy FAILED for Chapter ${chapNum}`);
+                }
+              } else if (hasCriticalOrMajor) {
                 // DIRECT FULL REWRITE for critical/major issues
                 console.log(`[OrchestratorV2] FULL REWRITE for Chapter ${chapNum} (critical/major issues)`);
                 
