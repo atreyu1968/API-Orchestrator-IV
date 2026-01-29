@@ -500,7 +500,7 @@ ${decisions.join('\n')}
       const existingEntities = await storage.getWorldEntitiesByProject(projectId);
       if (existingEntities.length > 0) {
         console.log(`[OrchestratorV2] Consistency DB already initialized (${existingEntities.length} entities)`);
-        this.callbacks.onAgentStatus("consistency", "completed", `Using ${existingEntities.length} existing entities`);
+        this.callbacks.onAgentStatus("universal-consistency", "completed", `Using ${existingEntities.length} existing entities`);
         return;
       }
 
@@ -529,11 +529,11 @@ ${decisions.join('\n')}
       }
 
       console.log(`[OrchestratorV2] Initialized: ${entities.length} entities, ${extractedRules.length} rules`);
-      this.callbacks.onAgentStatus("consistency", "completed", `Initialized ${entities.length} entities, ${extractedRules.length} rules`);
+      this.callbacks.onAgentStatus("universal-consistency", "completed", `Initialized ${entities.length} entities, ${extractedRules.length} rules`);
     } catch (error) {
       console.error(`[OrchestratorV2] Error initializing consistency database:`, error);
       // Don't fail the entire pipeline for consistency errors - continue without
-      this.callbacks.onAgentStatus("consistency", "error", `Error: ${error instanceof Error ? error.message : 'Unknown'}`);
+      this.callbacks.onAgentStatus("universal-consistency", "error", `Error: ${error instanceof Error ? error.message : 'Unknown'}`);
     }
   }
 
@@ -1375,7 +1375,7 @@ ${decisions.join('\n')}
       return { isValid: true };
     }
 
-    this.callbacks.onAgentStatus("consistency", "active", "Validating continuity...");
+    this.callbacks.onAgentStatus("universal-consistency", "active", "Validating continuity...");
     
     const result = await universalConsistencyAgent.validateChapter(
       chapterText,
@@ -1397,7 +1397,7 @@ ${decisions.join('\n')}
         wasAutoFixed: false,
       });
 
-      this.callbacks.onAgentStatus("consistency", "warning", `Violation: ${result.criticalError}`);
+      this.callbacks.onAgentStatus("universal-consistency", "warning", `Violation: ${result.criticalError}`);
       return { isValid: false, error: result.criticalError };
     }
 
@@ -1476,11 +1476,11 @@ ${decisions.join('\n')}
         });
       }
       
-      this.callbacks.onAgentStatus("consistency", "warning", `${result.warnings.length} issues detected - forcing rewrite`);
+      this.callbacks.onAgentStatus("universal-consistency", "warning", `${result.warnings.length} issues detected - forcing rewrite`);
       return { isValid: false, error: warningText };
     }
     
-    this.callbacks.onAgentStatus("consistency", "completed", "Continuity validated");
+    this.callbacks.onAgentStatus("universal-consistency", "completed", "Continuity validated");
     return { isValid: true };
   }
 
@@ -1828,7 +1828,7 @@ ${decisions.join('\n')}
         
         // LitAgents 2.1: Ensure consistency database is initialized even when resuming
         // (in case project was reset but World Bible preserved)
-        this.callbacks.onAgentStatus("consistency", "active", "Checking consistency database...");
+        this.callbacks.onAgentStatus("universal-consistency", "active", "Checking consistency database...");
         await this.initializeConsistencyDatabase(project.id, worldBible, project.genre);
       } else {
         // Phase 1: Global Architecture - create new World Bible
@@ -1953,7 +1953,7 @@ ${decisions.join('\n')}
         }
 
         // LitAgents 2.1: Initialize Universal Consistency Database
-        this.callbacks.onAgentStatus("consistency", "active", "Initializing consistency database...");
+        this.callbacks.onAgentStatus("universal-consistency", "active", "Initializing consistency database...");
         await this.initializeConsistencyDatabase(project.id, worldBible, project.genre);
       }
 
@@ -2219,7 +2219,7 @@ ${decisions.join('\n')}
 
         if (!consistencyResult.isValid && consistencyResult.error) {
           console.warn(`[OrchestratorV2] CRITICAL consistency violation in Chapter ${chapterNumber}: ${consistencyResult.error}`);
-          this.callbacks.onAgentStatus("consistency", "warning", "Applying surgical fix to affected scenes...");
+          this.callbacks.onAgentStatus("universal-consistency", "warning", "Applying surgical fix to affected scenes...");
           
           // Use SmartEditor's surgicalFix method for targeted correction
           // This is much more token-efficient than rewriting the entire chapter
@@ -2853,7 +2853,7 @@ ${decisions.join('\n')}
         // === RUN QA AUDIT ONCE BEFORE FIRST REVIEW CYCLE ===
         if (!qaAuditCompleted) {
           qaAuditCompleted = true;
-          this.callbacks.onAgentStatus("final-reviewer", "active", "Ejecutando auditoría QA del manuscrito...");
+          this.callbacks.onAgentStatus("beta-reader", "active", "Ejecutando auditoría QA del manuscrito...");
           
           console.log(`[OrchestratorV2] Running QA audit before final review...`);
           
@@ -2897,7 +2897,7 @@ ${decisions.join('\n')}
               .catch(e => ({ type: 'semantic', error: e.message }))
           );
           
-          this.callbacks.onAgentStatus("final-reviewer", "active", `Ejecutando ${qaPromises.length} auditorías QA en paralelo...`);
+          this.callbacks.onAgentStatus("beta-reader", "active", `Ejecutando ${qaPromises.length} auditorías QA en paralelo...`);
           
           const qaResults = await Promise.all(qaPromises);
           
@@ -2960,7 +2960,7 @@ ${decisions.join('\n')}
           console.log(`[OrchestratorV2] QA audit complete: ${qaIssues.length} issues found from ${qaResults.length} audits`);
           
           // === BETA READER EVALUATION FOR COMMERCIAL VIABILITY ===
-          this.callbacks.onAgentStatus("final-reviewer", "active", "Ejecutando análisis de viabilidad comercial (Beta Reader)...");
+          this.callbacks.onAgentStatus("beta-reader", "active", "Ejecutando análisis de viabilidad comercial...");
           
           try {
             // Get chapter summaries for beta reader
@@ -3010,7 +3010,7 @@ ${decisions.join('\n')}
               betaReaderScore: betaReport.score,
             });
             
-            this.callbacks.onAgentStatus("final-reviewer", "active", 
+            this.callbacks.onAgentStatus("beta-reader", "active", 
               `Beta Reader: ${betaReport.score}/10 (${betaReport.viability}). ${betaReport.flagged_chapters?.length || 0} capítulos marcados.`
             );
             
@@ -3075,7 +3075,7 @@ ${decisions.join('\n')}
             });
             
             console.log(`[OrchestratorV2] QA audit findings logged:\n${qaAuditReportText}`);
-            this.callbacks.onAgentStatus("final-reviewer", "active", `Auditoría completa: ${qaIssues.length} problemas detectados. Corrigiendo antes de revisión...`);
+            this.callbacks.onAgentStatus("beta-reader", "active", `Auditoría completa: ${qaIssues.length} problemas detectados. Corrigiendo antes de revisión...`);
           } else {
             // Save empty audit report to show "no issues found"
             await storage.updateProject(project.id, { qaAuditReport: qaAuditData as any });
@@ -3086,7 +3086,7 @@ ${decisions.join('\n')}
               agentRole: "qa-audit",
               message: `[INFORME AUDITORÍA QA]\nNo se detectaron problemas críticos ni mayores. El manuscrito está listo para revisión final.`,
             });
-            this.callbacks.onAgentStatus("final-reviewer", "active", "Auditoría completa. Sin problemas críticos. Iniciando revisión final...");
+            this.callbacks.onAgentStatus("beta-reader", "active", "Auditoría completa. Sin problemas críticos. Iniciando revisión final...");
           }
           
           // === PRE-REVIEW CORRECTION: Fix QA/BetaReader issues BEFORE FinalReviewer ===
@@ -3329,7 +3329,7 @@ ${issuesDescription}`;
             }
             
             console.log(`[OrchestratorV2] PRE-REVIEW CORRECTION complete: ${preReviewCorrected}/${chaptersToFix.length} chapters corrected`);
-            this.callbacks.onAgentStatus("final-reviewer", "active", `Pre-corrección: ${preReviewCorrected} capítulos arreglados. Iniciando revisión final...`);
+            this.callbacks.onAgentStatus("beta-reader", "active", `Pre-corrección: ${preReviewCorrected} capítulos arreglados. Iniciando revisión final...`);
             
             // === LOG PRE-REVIEW FIXES REPORT ===
             const successfulFixes = preReviewFixes.filter(f => f.success);
@@ -4019,7 +4019,7 @@ ${issuesDescription}`;
           // This ensures the iterative loop: review → fix → review → fix → until 2x consecutive 9+
           if (correctedCount > 0 && failedCount === 0) {
             console.log(`[OrchestratorV2] Corrections applied successfully. Continuing to next review cycle (${currentCycle}/${maxCycles})...`);
-            this.callbacks.onAgentStatus("final-reviewer", "active", `Correcciones aplicadas. Iniciando nueva revisión...`);
+            this.callbacks.onAgentStatus("beta-reader", "active", `Correcciones aplicadas. Iniciando nueva revisión...`);
             continue; // Go back to start of while loop for new review
           }
           
