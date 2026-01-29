@@ -2580,7 +2580,7 @@ ${decisions.join('\n')}
                 `- [${i.severidad?.toUpperCase() || 'MAYOR'}] ${i.source}: ${i.descripcion}\n  Corrección: ${i.correccion || 'Corregir según descripción'}`
               ).join("\n");
               
-              // Build comprehensive context for rewrites
+              // Build comprehensive context for rewrites FROM WORLD BIBLE
               const chapterContext = {
                 projectTitle: project.title,
                 genre: project.genre,
@@ -2588,8 +2588,29 @@ ${decisions.join('\n')}
                 chapterTitle: chapter.title,
                 previousChapterSummary: completedChapters.find(c => c.chapterNumber === chapNum - 1)?.summary || '',
                 nextChapterSummary: completedChapters.find(c => c.chapterNumber === chapNum + 1)?.summary || '',
-                mainCharacters: worldBibleData.characters?.slice?.(0, 8) || [],
-                worldRules: worldBibleData.rules || [],
+                // Characters with relationships
+                mainCharacters: (worldBibleData.characters || []).slice(0, 10).map((c: any) => ({
+                  name: c.name,
+                  description: c.description || c.role || '',
+                  relationships: c.relationships || [],
+                  physicalTraits: c.physicalTraits || c.physical_traits || '',
+                  personality: c.personality || '',
+                })),
+                // World rules and lore
+                worldRules: (worldBibleData.worldRules || worldBibleData.rules || []).slice(0, 10),
+                // Locations
+                locations: (worldBibleData.locations || []).slice(0, 8).map((l: any) => ({
+                  name: l.name,
+                  description: l.description || '',
+                })),
+                // Timeline events relevant to this chapter
+                timelineEvents: ((worldBibleData.timeline || []) as any[])
+                  .filter((e: any) => e.chapter === chapNum || e.chapter === chapNum - 1 || e.chapter === chapNum + 1)
+                  .slice(0, 5),
+                // Plot decisions made so far
+                plotDecisions: (worldBibleData.plotDecisions || []).slice(-10),
+                // Persistent injuries/conditions
+                persistentInjuries: (worldBibleData.persistentInjuries || []).slice(0, 8),
                 styleGuide: project.architectInstructions?.substring(0, 1000) || '',
               };
               
@@ -2603,14 +2624,52 @@ ${decisions.join('\n')}
                   // DIRECT FULL REWRITE for critical/major issues - no time wasting with patches
                   console.log(`[OrchestratorV2] FULL REWRITE for Chapter ${chapNum} (critical/major issues detected)`);
                   
-                  const fullContextPrompt = `CONTEXTO COMPLETO PARA REESCRITURA:
+                  // Build rich context from World Bible
+                  let charactersSection = 'PERSONAJES PRINCIPALES:\n';
+                  for (const c of chapterContext.mainCharacters) {
+                    charactersSection += `- ${c.name}: ${c.description}`;
+                    if (c.physicalTraits) charactersSection += ` | Físico: ${c.physicalTraits}`;
+                    if (c.relationships?.length) charactersSection += ` | Relaciones: ${c.relationships.join(', ')}`;
+                    charactersSection += '\n';
+                  }
+                  
+                  let locationsSection = '';
+                  if (chapterContext.locations.length > 0) {
+                    locationsSection = '\nUBICACIONES:\n' + chapterContext.locations.map((l: any) => `- ${l.name}: ${l.description}`).join('\n');
+                  }
+                  
+                  let rulesSection = '';
+                  if (chapterContext.worldRules.length > 0) {
+                    rulesSection = '\nREGLAS DEL MUNDO:\n' + chapterContext.worldRules.map((r: any) => `- ${typeof r === 'string' ? r : r.rule || r.description || JSON.stringify(r)}`).join('\n');
+                  }
+                  
+                  let injuriesSection = '';
+                  if (chapterContext.persistentInjuries.length > 0) {
+                    injuriesSection = '\nLESIONES/CONDICIONES PERSISTENTES:\n' + chapterContext.persistentInjuries.map((i: any) => `- ${i.character || i.personaje}: ${i.injury || i.lesion || i.description}`).join('\n');
+                  }
+                  
+                  let decisionsSection = '';
+                  if (chapterContext.plotDecisions.length > 0) {
+                    decisionsSection = '\nDECISIONES DE TRAMA ANTERIORES:\n' + chapterContext.plotDecisions.map((d: any) => `- Cap ${d.chapter || d.capitulo}: ${d.decision || d.descripcion}`).join('\n');
+                  }
+                  
+                  let timelineSection = '';
+                  if (chapterContext.timelineEvents.length > 0) {
+                    timelineSection = '\nEVENTOS CRONOLÓGICOS RELEVANTES:\n' + chapterContext.timelineEvents.map((e: any) => `- ${e.event || e.evento}: ${e.timeMarker || e.when || ''}`).join('\n');
+                  }
+                  
+                  const fullContextPrompt = `CONTEXTO COMPLETO PARA REESCRITURA (WORLD BIBLE):
 - Proyecto: "${chapterContext.projectTitle}" (${chapterContext.genre})
 - Capítulo ${chapterContext.chapterNumber}: "${chapterContext.chapterTitle}"
 ${chapterContext.previousChapterSummary ? `- Capítulo anterior: ${chapterContext.previousChapterSummary}` : ''}
 ${chapterContext.nextChapterSummary ? `- Capítulo siguiente: ${chapterContext.nextChapterSummary}` : ''}
 
-PERSONAJES PRINCIPALES:
-${chapterContext.mainCharacters.map((c: any) => `- ${c.name}: ${c.description || c.role || ''}`).join('\n')}
+${charactersSection}
+${locationsSection}
+${rulesSection}
+${injuriesSection}
+${decisionsSection}
+${timelineSection}
 
 ${chapterContext.styleGuide ? `GUÍA DE ESTILO:\n${chapterContext.styleGuide}\n` : ''}
 
@@ -3065,7 +3124,7 @@ ${issuesDescription}`;
               `- [${i.severidad?.toUpperCase() || 'MAYOR'}] ${i.categoria}: ${i.descripcion}\n  Corrección: ${i.instruccion_correccion || i.instrucciones_correccion || 'Corregir según descripción'}`
             ).join("\n");
             
-            // Build comprehensive context for rewrites
+            // Build comprehensive context for rewrites FROM WORLD BIBLE
             const chapterContext = {
               projectTitle: project.title,
               genre: project.genre,
@@ -3073,7 +3132,29 @@ ${issuesDescription}`;
               chapterTitle: chapter.title,
               previousChapterSummary: currentChapters.find(c => c.chapterNumber === chapNum - 1)?.summary || '',
               nextChapterSummary: currentChapters.find(c => c.chapterNumber === chapNum + 1)?.summary || '',
-              mainCharacters: worldBibleData.characters?.slice?.(0, 8) || [],
+              // Characters with relationships
+              mainCharacters: (worldBibleData.characters || []).slice(0, 10).map((c: any) => ({
+                name: c.name,
+                description: c.description || c.role || '',
+                relationships: c.relationships || [],
+                physicalTraits: c.physicalTraits || c.physical_traits || '',
+                personality: c.personality || '',
+              })),
+              // World rules and lore
+              worldRules: (worldBibleData.worldRules || worldBibleData.rules || []).slice(0, 10),
+              // Locations
+              locations: (worldBibleData.locations || []).slice(0, 8).map((l: any) => ({
+                name: l.name,
+                description: l.description || '',
+              })),
+              // Timeline events relevant to this chapter
+              timelineEvents: ((worldBibleData.timeline || []) as any[])
+                .filter((e: any) => e.chapter === chapNum || e.chapter === chapNum - 1 || e.chapter === chapNum + 1)
+                .slice(0, 5),
+              // Plot decisions made so far
+              plotDecisions: (worldBibleData.plotDecisions || []).slice(-10),
+              // Persistent injuries/conditions
+              persistentInjuries: (worldBibleData.persistentInjuries || []).slice(0, 8),
               styleGuide: project.architectInstructions?.substring(0, 1000) || '',
             };
 
@@ -3084,14 +3165,52 @@ ${issuesDescription}`;
                 // DIRECT FULL REWRITE for critical/major issues
                 console.log(`[OrchestratorV2] FULL REWRITE for Chapter ${chapNum} (critical/major issues)`);
                 
-                const fullContextPrompt = `CONTEXTO COMPLETO PARA REESCRITURA:
+                // Build rich context from World Bible
+                let charactersSection = 'PERSONAJES PRINCIPALES:\n';
+                for (const c of chapterContext.mainCharacters) {
+                  charactersSection += `- ${c.name}: ${c.description}`;
+                  if (c.physicalTraits) charactersSection += ` | Físico: ${c.physicalTraits}`;
+                  if (c.relationships?.length) charactersSection += ` | Relaciones: ${c.relationships.join(', ')}`;
+                  charactersSection += '\n';
+                }
+                
+                let locationsSection = '';
+                if (chapterContext.locations.length > 0) {
+                  locationsSection = '\nUBICACIONES:\n' + chapterContext.locations.map((l: any) => `- ${l.name}: ${l.description}`).join('\n');
+                }
+                
+                let rulesSection = '';
+                if (chapterContext.worldRules.length > 0) {
+                  rulesSection = '\nREGLAS DEL MUNDO:\n' + chapterContext.worldRules.map((r: any) => `- ${typeof r === 'string' ? r : r.rule || r.description || JSON.stringify(r)}`).join('\n');
+                }
+                
+                let injuriesSection = '';
+                if (chapterContext.persistentInjuries.length > 0) {
+                  injuriesSection = '\nLESIONES/CONDICIONES PERSISTENTES:\n' + chapterContext.persistentInjuries.map((i: any) => `- ${i.character || i.personaje}: ${i.injury || i.lesion || i.description}`).join('\n');
+                }
+                
+                let decisionsSection = '';
+                if (chapterContext.plotDecisions.length > 0) {
+                  decisionsSection = '\nDECISIONES DE TRAMA ANTERIORES:\n' + chapterContext.plotDecisions.map((d: any) => `- Cap ${d.chapter || d.capitulo}: ${d.decision || d.descripcion}`).join('\n');
+                }
+                
+                let timelineSection = '';
+                if (chapterContext.timelineEvents.length > 0) {
+                  timelineSection = '\nEVENTOS CRONOLÓGICOS RELEVANTES:\n' + chapterContext.timelineEvents.map((e: any) => `- ${e.event || e.evento}: ${e.timeMarker || e.when || ''}`).join('\n');
+                }
+                
+                const fullContextPrompt = `CONTEXTO COMPLETO PARA REESCRITURA (WORLD BIBLE):
 - Proyecto: "${chapterContext.projectTitle}" (${chapterContext.genre})
 - Capítulo ${chapterContext.chapterNumber}: "${chapterContext.chapterTitle}"
 ${chapterContext.previousChapterSummary ? `- Capítulo anterior: ${chapterContext.previousChapterSummary}` : ''}
 ${chapterContext.nextChapterSummary ? `- Capítulo siguiente: ${chapterContext.nextChapterSummary}` : ''}
 
-PERSONAJES PRINCIPALES:
-${chapterContext.mainCharacters.map((c: any) => `- ${c.name}: ${c.description || c.role || ''}`).join('\n')}
+${charactersSection}
+${locationsSection}
+${rulesSection}
+${injuriesSection}
+${decisionsSection}
+${timelineSection}
 
 ${chapterContext.styleGuide ? `GUÍA DE ESTILO:\n${chapterContext.styleGuide}\n` : ''}
 
