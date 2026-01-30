@@ -469,6 +469,40 @@ export class OrchestratorV2 {
     }
   }
 
+  /**
+   * Get the accumulated Series World Bible for injection into Ghostwriter
+   * Returns null if project is not part of a series or no series bible exists
+   */
+  private async getSeriesWorldBibleForInjection(projectId: number): Promise<any | null> {
+    try {
+      const project = await storage.getProject(projectId);
+      if (!project || !project.seriesId) {
+        return null;
+      }
+
+      const seriesWorldBible = await storage.getSeriesWorldBible(project.seriesId);
+      if (!seriesWorldBible) {
+        console.log(`[OrchestratorV2] No series world bible found for series ${project.seriesId}`);
+        return null;
+      }
+
+      console.log(`[OrchestratorV2] Loaded series world bible for project ${projectId}: ${seriesWorldBible.characters?.length || 0} characters, ${seriesWorldBible.locations?.length || 0} locations`);
+      
+      return {
+        characters: seriesWorldBible.characters || [],
+        locations: seriesWorldBible.locations || [],
+        lessons: seriesWorldBible.lessons || [],
+        worldRules: seriesWorldBible.worldRules || [],
+        timelineEvents: seriesWorldBible.timelineEvents || [],
+        objects: seriesWorldBible.objects || [],
+        secrets: seriesWorldBible.secrets || [],
+      };
+    } catch (error) {
+      console.error("[OrchestratorV2] Error getting series world bible:", error);
+      return null;
+    }
+  }
+
   private async logAiUsage(
     projectId: number,
     agentName: string,
@@ -2503,6 +2537,12 @@ ${decisions.join('\n')}
         }
       }
 
+      // Load Series World Bible for injection into Ghostwriter (for series volumes)
+      const seriesWorldBible = await this.getSeriesWorldBibleForInjection(project.id);
+      if (seriesWorldBible) {
+        console.log(`[OrchestratorV2] Series World Bible loaded - will inject into Ghostwriter for series continuity`);
+      }
+
       for (let i = 0; i < outline.length; i++) {
         if (await this.shouldStopProcessing(project.id)) {
           console.log(`[OrchestratorV2] Project ${project.id} stopped (cancelled or superseded)`);
@@ -2642,6 +2682,7 @@ ${decisions.join('\n')}
             consistencyConstraints: enrichedConstraints,
             previousChaptersText, // LitAgents 2.2: For vocabulary anti-repetition
             currentChapterText: fullChapterText, // LitAgents 2.2: Current chapter so far
+            seriesWorldBible, // Series World Bible: Accumulated knowledge from previous volumes
           });
 
           if (sceneResult.error) {
@@ -2963,6 +3004,7 @@ ${decisions.join('\n')}
                 guiaEstilo: "",
                 previousChaptersText: epiloguePrevText,
                 currentChapterText: "",
+                seriesWorldBible, // Series World Bible: Accumulated knowledge from previous volumes
               });
               
               this.addTokenUsage(rewriteResult.tokenUsage);
@@ -3332,6 +3374,7 @@ ${decisions.join('\n')}
         worldBible,
         guiaEstilo,
         currentChapterText: fullChapterText,
+        seriesWorldBible: await this.getSeriesWorldBibleForInjection(project.id),
       });
 
       if (!sceneResult.error) {
@@ -5179,6 +5222,7 @@ ${issuesDescription}`;
           
           this.callbacks.onAgentStatus("ghostwriter-v2", "active", `Escribiendo escena ${scene.scene_num}...`);
 
+          const extensionSeriesWB = await this.getSeriesWorldBibleForInjection(project.id);
           const sceneResult = await this.ghostwriter.execute({
             scenePlan: scene,
             prevSceneContext: lastContext,
@@ -5188,6 +5232,7 @@ ${issuesDescription}`;
             consistencyConstraints,
             previousChaptersText: extensionPrevText,
             currentChapterText: fullChapterText,
+            seriesWorldBible: extensionSeriesWB,
           });
 
           if (!sceneResult.error) {
@@ -5415,6 +5460,7 @@ ${issuesDescription}`;
           
           this.callbacks.onAgentStatus("ghostwriter-v2", "active", `Escribiendo escena ${scene.scene_num}...`);
           
+          const truncRegenSeriesWB = await this.getSeriesWorldBibleForInjection(project.id);
           const sceneResult = await this.ghostwriter.execute({
             scenePlan: scene,
             prevSceneContext: lastContext,
@@ -5424,6 +5470,7 @@ ${issuesDescription}`;
             consistencyConstraints,
             previousChaptersText,
             currentChapterText: fullChapterText,
+            seriesWorldBible: truncRegenSeriesWB,
           });
 
           if (!sceneResult.error) {
@@ -5803,6 +5850,7 @@ ${issuesDescription}`;
         // LitAgents 2.2: Get recent text for vocabulary tracking
         const regenPrevText = await this.getRecentChaptersText(project.id, chapterNumber, 2);
         
+        const missingGenSeriesWB = await this.getSeriesWorldBibleForInjection(project.id);
         for (const scene of sceneBreakdown.scenes) {
           this.callbacks.onAgentStatus("ghostwriter-v2", "active", 
             `Writing scene ${scene.scene_num}/${sceneBreakdown.scenes.length}...`);
@@ -5816,6 +5864,7 @@ ${issuesDescription}`;
             consistencyConstraints,
             previousChaptersText: regenPrevText,
             currentChapterText: fullChapterText,
+            seriesWorldBible: missingGenSeriesWB,
           });
 
           this.addTokenUsage(sceneResult.tokenUsage);
