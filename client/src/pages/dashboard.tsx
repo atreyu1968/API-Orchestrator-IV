@@ -344,6 +344,12 @@ export default function Dashboard() {
       return response.json();
     },
     onSuccess: (project) => {
+      // Clear all UI state before switching to the new duplicated project
+      setLogs([]);
+      setCurrentStage(null);
+      setCompletedStages([]);
+      setSceneProgress(null);
+      setChaptersBeingCorrected(null);
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       setSelectedProjectId(project.id);
       toast({ title: "Proyecto duplicado", description: `"${project.title}" ha sido creado` });
