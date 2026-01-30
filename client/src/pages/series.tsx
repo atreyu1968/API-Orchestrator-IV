@@ -15,8 +15,42 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Library, Plus, Trash2, User, BookOpen, Check, FileText, Loader2, Pencil, X, Upload, Target, Sparkles, ChevronDown, Link2, Download } from "lucide-react";
 import { SERIES_WRITING_GUIDE_TEMPLATE, downloadTemplate } from "@/lib/writing-templates";
 import { ArcVerificationPanel } from "@/components/arc-verification-panel";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { AlertTriangle, Users, Milestone, GitBranch, Anchor } from "lucide-react";
 import type { Pseudonym, Project, Series, ImportedManuscript } from "@shared/schema";
+
+interface ContinuitySnapshot {
+  synopsis?: string;
+  characterStates?: Array<{
+    name: string;
+    role: string;
+    status: string;
+    lastKnownLocation?: string;
+    relationships?: Record<string, string>;
+    characterArc?: string;
+    unresolvedConflicts?: string[];
+  }>;
+  unresolvedThreads?: Array<{
+    description: string;
+    severity: "minor" | "major" | "critical";
+    involvedCharacters?: string[];
+    chapter?: number;
+  }>;
+  worldStateChanges?: Array<{
+    description: string;
+    chapter?: number;
+  }>;
+  keyEvents?: Array<{
+    description: string;
+    chapter: number;
+    impact: string;
+  }>;
+  seriesHooks?: Array<{
+    description: string;
+    potentialResolution?: string;
+  }>;
+}
 
 interface SeriesVolume {
   type: "project" | "imported";
@@ -27,6 +61,7 @@ interface SeriesVolume {
   wordCount: number;
   continuityAnalysisStatus?: string | null;
   hasContinuitySnapshot?: boolean;
+  continuitySnapshot?: ContinuitySnapshot | null;
 }
 
 interface SeriesWithDetails extends Series {
@@ -62,6 +97,8 @@ export default function SeriesPage() {
   const [uploadingVolumeSeriesId, setUploadingVolumeSeriesId] = useState<number | null>(null);
   const uploadingVolumeSeriesIdRef = useRef<number | null>(null);
   const volumeInputRef = useRef<HTMLInputElement>(null);
+  
+  const [viewingSnapshotVolume, setViewingSnapshotVolume] = useState<SeriesVolume | null>(null);
 
   const { data: registry = [], isLoading } = useQuery<SeriesWithDetails[]>({
     queryKey: ["/api/series/registry"],
@@ -857,9 +894,14 @@ export default function SeriesPage() {
                                   Completado
                                 </Badge>
                                 {vol.hasContinuitySnapshot ? (
-                                  <Badge variant="secondary" className="text-blue-600 dark:text-blue-400">
+                                  <Badge 
+                                    variant="secondary" 
+                                    className="text-blue-600 dark:text-blue-400 cursor-pointer hover-elevate"
+                                    onClick={() => setViewingSnapshotVolume(vol)}
+                                    data-testid={`badge-view-snapshot-${vol.id}`}
+                                  >
                                     <Check className="h-3 w-3 mr-1" />
-                                    Continuidad
+                                    Ver Hilos
                                   </Badge>
                                 ) : vol.continuityAnalysisStatus === "analyzing" || analyzingManuscriptId === vol.id ? (
                                   <Button
@@ -990,6 +1032,164 @@ export default function SeriesPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Continuity Snapshot Modal */}
+      <Dialog open={viewingSnapshotVolume !== null} onOpenChange={(open) => !open && setViewingSnapshotVolume(null)}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitBranch className="h-5 w-5" />
+              Hilos Narrativos: {viewingSnapshotVolume?.title}
+            </DialogTitle>
+            <DialogDescription>
+              Informacion de continuidad extraida del Vol. {viewingSnapshotVolume?.seriesOrder}
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 pr-4">
+            {viewingSnapshotVolume?.continuitySnapshot ? (
+              <div className="space-y-6">
+                {/* Synopsis */}
+                {viewingSnapshotVolume.continuitySnapshot.synopsis && (
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <BookOpen className="h-4 w-4" />
+                      Sinopsis
+                    </h4>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {viewingSnapshotVolume.continuitySnapshot.synopsis}
+                    </p>
+                  </div>
+                )}
+
+                {/* Unresolved Threads */}
+                {viewingSnapshotVolume.continuitySnapshot.unresolvedThreads && 
+                 viewingSnapshotVolume.continuitySnapshot.unresolvedThreads.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      Hilos No Resueltos ({viewingSnapshotVolume.continuitySnapshot.unresolvedThreads.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {viewingSnapshotVolume.continuitySnapshot.unresolvedThreads.map((thread, idx) => (
+                        <div key={idx} className="p-3 rounded-md bg-muted/50 border-l-2 border-amber-500">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm">{thread.description}</p>
+                            <Badge 
+                              variant={thread.severity === "critical" ? "destructive" : 
+                                       thread.severity === "major" ? "secondary" : "outline"}
+                              className="shrink-0"
+                            >
+                              {thread.severity === "critical" ? "Critico" : 
+                               thread.severity === "major" ? "Mayor" : "Menor"}
+                            </Badge>
+                          </div>
+                          {thread.involvedCharacters && thread.involvedCharacters.length > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Personajes: {thread.involvedCharacters.join(", ")}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Key Events */}
+                {viewingSnapshotVolume.continuitySnapshot.keyEvents && 
+                 viewingSnapshotVolume.continuitySnapshot.keyEvents.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <Milestone className="h-4 w-4 text-blue-500" />
+                      Eventos Clave ({viewingSnapshotVolume.continuitySnapshot.keyEvents.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {viewingSnapshotVolume.continuitySnapshot.keyEvents.map((event, idx) => (
+                        <div key={idx} className="p-3 rounded-md bg-muted/50 border-l-2 border-blue-500">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm">{event.description}</p>
+                            <Badge variant="outline" className="shrink-0">Cap. {event.chapter}</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Impacto: {event.impact}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Series Hooks */}
+                {viewingSnapshotVolume.continuitySnapshot.seriesHooks && 
+                 viewingSnapshotVolume.continuitySnapshot.seriesHooks.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <Anchor className="h-4 w-4 text-purple-500" />
+                      Ganchos de Serie ({viewingSnapshotVolume.continuitySnapshot.seriesHooks.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {viewingSnapshotVolume.continuitySnapshot.seriesHooks.map((hook, idx) => (
+                        <div key={idx} className="p-3 rounded-md bg-muted/50 border-l-2 border-purple-500">
+                          <p className="text-sm">{hook.description}</p>
+                          {hook.potentialResolution && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Posible resolucion: {hook.potentialResolution}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Character States */}
+                {viewingSnapshotVolume.continuitySnapshot.characterStates && 
+                 viewingSnapshotVolume.continuitySnapshot.characterStates.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <Users className="h-4 w-4 text-green-500" />
+                      Estado de Personajes ({viewingSnapshotVolume.continuitySnapshot.characterStates.length})
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {viewingSnapshotVolume.continuitySnapshot.characterStates.map((char, idx) => (
+                        <div key={idx} className="p-3 rounded-md bg-muted/50">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-sm">{char.name}</span>
+                            <Badge variant="outline" className="text-xs">{char.role}</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{char.status}</p>
+                          {char.lastKnownLocation && (
+                            <p className="text-xs text-muted-foreground">Ubicacion: {char.lastKnownLocation}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* World State Changes */}
+                {viewingSnapshotVolume.continuitySnapshot.worldStateChanges && 
+                 viewingSnapshotVolume.continuitySnapshot.worldStateChanges.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">Cambios en el Mundo</h4>
+                    <div className="space-y-1">
+                      {viewingSnapshotVolume.continuitySnapshot.worldStateChanges.map((change, idx) => (
+                        <div key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
+                          <span className="text-xs mt-1">-</span>
+                          <span>{change.description}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-center py-8">
+                No hay informacion de continuidad disponible
+              </p>
+            )}
+          </ScrollArea>
         </DialogContent>
       </Dialog>
     </div>

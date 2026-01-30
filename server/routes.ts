@@ -2022,6 +2022,7 @@ export async function registerRoutes(
             wordCount: m.totalWordCount || 0,
             continuityAnalysisStatus: m.continuityAnalysisStatus || "pending",
             hasContinuitySnapshot: !!m.continuitySnapshot,
+            continuitySnapshot: m.continuitySnapshot || null,
           })),
         ].sort((a, b) => (a.seriesOrder || 0) - (b.seriesOrder || 0));
         
