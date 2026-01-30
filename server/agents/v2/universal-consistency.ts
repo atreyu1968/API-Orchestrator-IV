@@ -212,22 +212,21 @@ ANTES DE ESCRIBIR CUALQUIER ESCENA, VERIFICA:
   ): Promise<ValidationResult> {
     const config = getGenreConfig(genre);
 
-    const prompt = `Actúa como un Supervisor de Continuidad (Script Supervisor) experto en ${genre}.
-Tu trabajo es detectar CONTRADICCIONES LÓGICAS en el texto generado.
+    const prompt = `Actúa como un Supervisor de Continuidad PERMISIVO experto en ${genre}.
+Tu trabajo es detectar SOLO errores GRAVES Y EVIDENTES, NO interpretaciones ambiguas.
 
-BASE DE DATOS DE VERDAD (Estado ANTES de este capítulo):
+PRINCIPIO FUNDAMENTAL: EN CASO DE DUDA, APROBAR. Solo rechazar por errores INEQUÍVOCOS.
+
+BASE DE DATOS DE REFERENCIA:
 
 ENTIDADES:
 ${JSON.stringify(entities, null, 2)}
 
-REGLAS INMUTABLES:
+REGLAS:
 ${JSON.stringify(rules, null, 2)}
 
 RELACIONES:
 ${JSON.stringify(relationships, null, 2)}
-
-REGLAS CRÍTICAS DEL GÉNERO:
-${JSON.stringify(config.critical_rules, null, 2)}
 
 ═══════════════════════════════════════════════════════════════════
 
@@ -239,18 +238,25 @@ ${chapterText.length > 12000 ? '... (truncado)' : ''}
 
 ═══════════════════════════════════════════════════════════════════
 
-TAREA DE AUDITORÍA:
+CRITERIOS DE ERROR CRÍTICO (SOLO estos bloquean):
 
-1. CONTRADICCIONES DIRECTAS: ¿Hay personajes muertos que actúan? ¿Coartadas rotas? ¿Ubicaciones imposibles?
-2. INCONSISTENCIAS DE ROL: ¿Un personaje cambia de rol sin explicación (ej: de forense a sospechoso)?
-3. INCONSISTENCIAS DE IDENTIDAD: ¿Se confunden personajes? ¿Cambian atributos físicos?
-4. VIOLACIONES DE REGLAS: ¿Se rompen las reglas físicas/mágicas/históricas del mundo?
-5. ANACRONISMOS: ¿Hay tecnología, objetos o expresiones que no pertenecen a la época?
+1. MUERTO QUE ACTÚA: Un personaje explícitamente muerto aparece vivo y actuando
+2. BILOCACIÓN: El mismo personaje en DOS lugares FÍSICAMENTE al MISMO tiempo
+3. CAMBIO FÍSICO IMPOSIBLE: Ojos azules → verdes, pelo rubio → negro (sin explicación mágica/tinte)
+4. CONTRADICCIÓN DIRECTA DE TEXTO: El texto dice "A" y luego dice "no-A" sin justificación
 
-TAMBIÉN EXTRAE:
-- Nuevos hechos importantes que deben registrarse para futuros capítulos
-- Nuevas relaciones entre personajes reveladas
-- Cambios de estado de personajes (ubicación, heridas, muerte, etc.)
+IMPORTANTE - NO SON ERRORES CRÍTICOS:
+- Variaciones de voz/habla (susurros, ronquera, afonía temporal)
+- Cambios emocionales o de comportamiento
+- Detalles menores de vestimenta o apariencia
+- Interpretaciones ambiguas de reglas
+- Evolución natural de personajes
+- Diferencias estilísticas en descripciones
+
+TAMBIÉN EXTRAE (siempre, incluso si el capítulo es válido):
+- Nuevos hechos importantes para futuros capítulos
+- Nuevas relaciones reveladas
+- Cambios de estado (ubicación, heridas, muerte)
 
 RESPONDE EN JSON:
 {
