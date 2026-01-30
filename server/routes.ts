@@ -2676,6 +2676,114 @@ ${series.seriesGuide.substring(0, 50000)}`;
     }
   });
 
+  // ===== SERIES WORLD BIBLE ENDPOINTS =====
+  
+  // Get series world bible (accumulated data from all volumes)
+  app.get("/api/series/:id/world-bible", async (req: Request, res: Response) => {
+    try {
+      const seriesId = parseInt(req.params.id);
+      const { SeriesWorldBibleExtractor } = await import("./agents/v2/series-world-bible-extractor");
+      const extractor = new SeriesWorldBibleExtractor();
+      const worldBible = await extractor.getSeriesWorldBible(seriesId);
+      
+      if (!worldBible) {
+        return res.json({
+          characters: [],
+          locations: [],
+          lessons: [],
+          worldRules: [],
+          timeline: [],
+          objects: [],
+          secrets: [],
+        });
+      }
+      
+      res.json(worldBible);
+    } catch (error) {
+      console.error("Error fetching series world bible:", error);
+      res.status(500).json({ error: "Failed to fetch series world bible" });
+    }
+  });
+
+  // Extract world bible from a completed project and merge into series
+  app.post("/api/series/:id/world-bible/extract", async (req: Request, res: Response) => {
+    try {
+      const seriesId = parseInt(req.params.id);
+      const { projectId, volumeNumber } = req.body;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (project.seriesId !== seriesId) {
+        return res.status(400).json({ error: "Project does not belong to this series" });
+      }
+
+      const { SeriesWorldBibleExtractor } = await import("./agents/v2/series-world-bible-extractor");
+      const extractor = new SeriesWorldBibleExtractor();
+
+      console.log(`[SeriesWorldBible] Extracting from project ${projectId} (Volume ${volumeNumber || project.seriesOrder || 1})`);
+      
+      const extracted = await extractor.extractFromProject(
+        projectId,
+        volumeNumber || project.seriesOrder || 1
+      );
+
+      if (!extracted) {
+        return res.status(500).json({ error: "Failed to extract world bible data" });
+      }
+
+      await extractor.mergeAndSaveToSeries(
+        seriesId,
+        volumeNumber || project.seriesOrder || 1,
+        extracted
+      );
+
+      res.json({
+        message: "World bible extracted and merged successfully",
+        extracted: {
+          characters: extracted.characters.length,
+          locations: extracted.locations.length,
+          lessons: extracted.lessons.length,
+          worldRules: extracted.worldRules.length,
+          timeline: extracted.timeline.length,
+          objects: extracted.objects.length,
+          secrets: extracted.secrets.length,
+        },
+      });
+    } catch (error) {
+      console.error("Error extracting series world bible:", error);
+      res.status(500).json({ error: "Failed to extract series world bible" });
+    }
+  });
+
+  // Get formatted world bible context for ghostwriter injection
+  app.get("/api/series/:id/world-bible/context", async (req: Request, res: Response) => {
+    try {
+      const seriesId = parseInt(req.params.id);
+      const targetVolume = parseInt(req.query.targetVolume as string) || 1;
+
+      const { SeriesWorldBibleExtractor } = await import("./agents/v2/series-world-bible-extractor");
+      const extractor = new SeriesWorldBibleExtractor();
+      const worldBible = await extractor.getSeriesWorldBible(seriesId);
+
+      if (!worldBible) {
+        return res.json({ context: "", hasData: false });
+      }
+
+      const context = extractor.formatForGhostwriter(worldBible, targetVolume);
+      res.json({ context, hasData: true });
+    } catch (error) {
+      console.error("Error getting series world bible context:", error);
+      res.status(500).json({ error: "Failed to get series world bible context" });
+    }
+  });
+
   app.get("/api/pseudonyms", async (req: Request, res: Response) => {
     try {
       const pseudonyms = await storage.getAllPseudonyms();
