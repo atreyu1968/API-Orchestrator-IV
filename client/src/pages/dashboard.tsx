@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -223,10 +223,9 @@ export default function Dashboard() {
     return acc;
   }, {} as Record<number, string>) || {};
 
-  const fetchLogs = () => {
-    if (!currentProject?.id) return;
-    
-    fetch(`/api/projects/${currentProject.id}/activity-logs?limit=200`)
+  // Use projectId parameter to avoid stale closures
+  const fetchLogsForProject = (projectId: number) => {
+    fetch(`/api/projects/${projectId}/activity-logs?limit=200`)
       .then(res => res.json())
       .then((historicalLogs: Array<{ id: number; level: string; message: string; agentRole?: string; createdAt: string }>) => {
         const levelToType: Record<string, LogEntry["type"]> = {
@@ -247,6 +246,9 @@ export default function Dashboard() {
       .catch(console.error);
   };
 
+  // Store currentProject.id in a ref to use in intervals without stale closures
+  const currentProjectIdRef = useRef<number | null>(null);
+  
   useEffect(() => {
     // CRITICAL: Clear ALL project-specific UI state when switching projects
     setLogs([]);
@@ -254,16 +256,26 @@ export default function Dashboard() {
     setCompletedStages([]);
     setSceneProgress(null);
     setChaptersBeingCorrected(null);
+    
+    // Update ref with current project ID
+    currentProjectIdRef.current = currentProject?.id ?? null;
+    
     // Only fetch logs if there's a selected project
     if (currentProject?.id) {
-      fetchLogs();
+      fetchLogsForProject(currentProject.id);
     }
   }, [currentProject?.id]);
 
   useEffect(() => {
     if (currentProject?.id) {
+      const projectId = currentProject.id;
       // Always auto-refresh logs every 3 seconds when a project is selected
-      const interval = setInterval(fetchLogs, 3000);
+      const interval = setInterval(() => {
+        // Double-check the ref matches to prevent stale fetches
+        if (currentProjectIdRef.current === projectId) {
+          fetchLogsForProject(projectId);
+        }
+      }, 3000);
       return () => clearInterval(interval);
     }
   }, [currentProject?.id]);
