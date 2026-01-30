@@ -11,12 +11,14 @@ import {
   SmartEditorAgent,
   SummarizerAgent,
   NarrativeDirectorAgent,
+  SeriesWorldBibleExtractor,
   type GlobalArchitectOutput,
   type ChapterArchitectOutput,
   type SmartEditorOutput,
   type NarrativeDirectorOutput,
   type PlotThread as AgentPlotThread,
-  type ScenePlan
+  type ScenePlan,
+  type ExtractedWorldBibleData
 } from "./agents/v2";
 import { universalConsistencyAgent } from "./agents/v2/universal-consistency";
 import { FinalReviewerAgent, type FinalReviewerResult, type FinalReviewIssue } from "./agents/final-reviewer";
@@ -331,6 +333,10 @@ export class OrchestratorV2 {
   
   // Beta Reader for commercial viability analysis
   private betaReader = new BetaReaderAgent();
+  
+  // Series World Bible Extractor for propagating data between volumes
+  private seriesWorldBibleExtractor = new SeriesWorldBibleExtractor();
+  
   private callbacks: OrchestratorV2Callbacks;
   private generationToken?: string;
   
@@ -416,6 +422,51 @@ export class OrchestratorV2 {
       totalOutputTokens: this.cumulativeTokens.outputTokens,
       totalThinkingTokens: this.cumulativeTokens.thinkingTokens,
     });
+  }
+
+  private async extractSeriesWorldBibleOnComplete(projectId: number): Promise<void> {
+    try {
+      const project = await storage.getProject(projectId);
+      if (!project || !project.seriesId) {
+        return;
+      }
+
+      const volumeNumber = project.seriesOrder || 1;
+      console.log(`[OrchestratorV2] Extracting series world bible from project ${projectId} (Volume ${volumeNumber})`);
+      
+      this.callbacks.onAgentStatus(
+        "series-world-bible-extractor",
+        "running",
+        `Extrayendo información de la Biblia del Mundo para el Volumen ${volumeNumber}...`
+      );
+
+      const extracted = await this.seriesWorldBibleExtractor.extractFromProject(projectId, volumeNumber);
+      
+      if (extracted) {
+        await this.seriesWorldBibleExtractor.mergeAndSaveToSeries(
+          project.seriesId,
+          volumeNumber,
+          extracted
+        );
+        
+        console.log(`[OrchestratorV2] Series world bible updated: ${extracted.characters.length} chars, ${extracted.locations.length} locs, ${extracted.lessons.length} lessons`);
+        
+        this.callbacks.onAgentStatus(
+          "series-world-bible-extractor",
+          "completed",
+          `Biblia del Mundo actualizada: ${extracted.characters.length} personajes, ${extracted.locations.length} lugares, ${extracted.lessons.length} lecciones`
+        );
+      } else {
+        console.warn(`[OrchestratorV2] Could not extract series world bible from project ${projectId}`);
+        this.callbacks.onAgentStatus(
+          "series-world-bible-extractor",
+          "completed",
+          "No se pudo extraer la Biblia del Mundo"
+        );
+      }
+    } catch (error) {
+      console.error("[OrchestratorV2] Error extracting series world bible:", error);
+    }
   }
 
   private async logAiUsage(
@@ -2949,6 +3000,7 @@ ${decisions.join('\n')}
       if (currentScore >= 9) {
         // Already has a passing score, mark as completed
         console.log(`[OrchestratorV2] Project already has score ${currentScore}/10, marking as completed`);
+        await this.extractSeriesWorldBibleOnComplete(project.id);
         await storage.updateProject(project.id, { status: "completed" });
         this.callbacks.onProjectComplete();
       } else {
@@ -5215,6 +5267,9 @@ ${issuesDescription}`;
         await this.updateProjectTokens(project.id);
       }
 
+      // Extract series world bible before completing
+      await this.extractSeriesWorldBibleOnComplete(project.id);
+
       await storage.updateProject(project.id, { status: "completed" });
       this.callbacks.onProjectComplete();
 
@@ -5240,6 +5295,7 @@ ${issuesDescription}`;
 
       if (truncatedChapters.length === 0) {
         this.callbacks.onAgentStatus("ghostwriter-v2", "completed", "No se encontraron capítulos truncados");
+        await this.extractSeriesWorldBibleOnComplete(project.id);
         await storage.updateProject(project.id, { status: "completed" });
         this.callbacks.onProjectComplete();
         return;
@@ -5413,6 +5469,9 @@ ${issuesDescription}`;
         await this.updateProjectTokens(project.id);
       }
 
+      // Extract series world bible before completing
+      await this.extractSeriesWorldBibleOnComplete(project.id);
+
       await storage.updateProject(project.id, { status: "completed" });
       this.callbacks.onProjectComplete();
 
@@ -5510,6 +5569,9 @@ ${issuesDescription}`;
         this.callbacks.onAgentStatus("smart-editor", "completed", 
           "No se encontraron issues de continuidad");
       }
+
+      // Extract series world bible before completing
+      await this.extractSeriesWorldBibleOnComplete(project.id);
 
       await storage.updateProject(project.id, { status: "completed" });
       this.callbacks.onProjectComplete();
@@ -5642,6 +5704,7 @@ ${issuesDescription}`;
       if (missingChapters.length === 0) {
         fs.writeFileSync("/tmp/debug_generate_missing.txt", `[${new Date().toISOString()}] No missing chapters found, setting status to completed\n`, { flag: "a" });
         this.callbacks.onAgentStatus("orchestrator-v2", "completed", "No hay capítulos faltantes");
+        await this.extractSeriesWorldBibleOnComplete(project.id);
         await storage.updateProject(project.id, { status: "completed" });
         this.callbacks.onProjectComplete();
         return;
@@ -5863,6 +5926,9 @@ ${issuesDescription}`;
       
       console.log(`[OrchestratorV2] Running final Narrative Director review after missing chapters`);
       await this.runNarrativeDirector(project.id, lastRegularChapter, project.chapterCount, allSummaries);
+
+      // Extract series world bible before completing
+      await this.extractSeriesWorldBibleOnComplete(project.id);
 
       // Complete
       await storage.updateProject(project.id, { status: "completed" });
