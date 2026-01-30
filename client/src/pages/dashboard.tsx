@@ -248,8 +248,16 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    setLogs([]); // Limpiar logs al cambiar de proyecto para evitar que se mezclen
-    fetchLogs();
+    // CRITICAL: Clear ALL project-specific UI state when switching projects
+    setLogs([]);
+    setCurrentStage(null);
+    setCompletedStages([]);
+    setSceneProgress(null);
+    setChaptersBeingCorrected(null);
+    // Only fetch logs if there's a selected project
+    if (currentProject?.id) {
+      fetchLogs();
+    }
   }, [currentProject?.id]);
 
   useEffect(() => {
@@ -350,6 +358,12 @@ export default function Dashboard() {
       await apiRequest("DELETE", `/api/projects/${id}`);
     },
     onSuccess: () => {
+      // Clear all UI state related to the deleted project
+      setLogs([]);
+      setCurrentStage(null);
+      setCompletedStages([]);
+      setSceneProgress(null);
+      setChaptersBeingCorrected(null);
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       setSelectedProjectId(null);
       toast({ title: "Proyecto eliminado" });
