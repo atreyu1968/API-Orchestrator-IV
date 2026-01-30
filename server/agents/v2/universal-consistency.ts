@@ -123,6 +123,51 @@ export class UniversalConsistencyAgent {
         }).join('\n')
       : '(Sin personajes registrados aún - las descripciones físicas serán extraídas automáticamente)';
 
+    // LitAgents 2.1+: Build location profiles with immutable characteristics
+    const locationBlock = entities.filter(e => e.type === 'LOCATION').length > 0
+      ? entities.filter(e => e.type === 'LOCATION').map(e => {
+          const allAttrs = Object.entries(e.attributes || {});
+          
+          let result = `\n🏛️ ${e.name.toUpperCase()}`;
+          result += `\n   Estado: ${e.status}`;
+          
+          // Location characteristics
+          const locAttrs = allAttrs.filter(([k]) => 
+            ['descripcion', 'description', 'atmosfera', 'atmosphere', 'tipo', 'type', 'caracteristicas', 'features', 'acceso', 'access', 'distancia', 'distance'].some(la => k.toLowerCase().includes(la))
+          );
+          
+          if (locAttrs.length > 0) {
+            locAttrs.forEach(([k, v]) => {
+              const cleanKey = k.replace('_INMUTABLE', '').replace(/_/g, ' ');
+              result += `\n   • ${cleanKey}: ${v}`;
+            });
+          }
+          
+          // Current occupants
+          const occupants = allAttrs.find(([k]) => k.toLowerCase().includes('ocupantes') || k.toLowerCase().includes('occupants'));
+          if (occupants) {
+            result += `\n   👥 Ocupantes actuales: ${occupants[1]}`;
+          }
+          
+          return result;
+        }).join('\n')
+      : '';
+
+    // LitAgents 2.1+: Character position tracking
+    const characterPositions = entities.filter(e => e.type === 'CHARACTER' && e.attributes).map(e => {
+      const attrs = e.attributes as Record<string, any>;
+      const location = attrs.ubicacion_actual || attrs.current_location || attrs.location;
+      const lastSeen = e.lastSeenChapter;
+      if (location) {
+        return `   • ${e.name}: ${location} (desde Cap ${lastSeen || '?'})`;
+      }
+      return null;
+    }).filter(Boolean);
+
+    const positionBlock = characterPositions.length > 0
+      ? `\n📍 POSICIÓN ACTUAL DE PERSONAJES:\n${characterPositions.join('\n')}\n   ⚠️ Los personajes NO pueden cambiar de ubicación sin mostrar el desplazamiento`
+      : '';
+
     const rulesBlock = rules.length > 0
       ? rules.map(r => `- [${r.category || 'GENERAL'}] ${r.ruleDescription}`).join('\n')
       : '(Sin reglas establecidas aún)';
@@ -192,9 +237,13 @@ El lector notará cualquier contradicción. Las violaciones causarán RECHAZO AU
 FOCO DEL GÉNERO: ${config.focus}
 ${temporalBlock}
 ${characterStateBlock}
-📊 ESTADO ACTUAL DE PERSONAJES Y OBJETOS:
+📊 FICHAS DE PERSONAJES:
 ${entityBlock}
-
+${positionBlock}
+${locationBlock ? `
+🏛️ LOCALIZACIONES CONOCIDAS:
+${locationBlock}
+` : ''}
 🔗 RELACIONES ENTRE PERSONAJES:
 ${relationshipsBlock}
 
@@ -205,15 +254,12 @@ ${rulesBlock}
 ${genreRules}
 
 ═══════════════════════════════════════════════════════════════════
-ANTES DE ESCRIBIR CUALQUIER ESCENA, VERIFICA:
-1. ¿Los personajes muertos siguen muertos?
-2. ¿Las coartadas/alibis establecidos se respetan?
-3. ¿Las ubicaciones son físicamente posibles dado el tiempo transcurrido?
-4. ¿Los roles de personajes (detective, víctima, sospechoso) son consistentes?
-5. ¿No hay anacronismos o tecnología imposible para la época?
-6. ¿Las lesiones activas limitan las acciones del personaje?
-7. ¿El tiempo de viaje entre ubicaciones es realista?
-8. ¿El personaje tiene los recursos/posesiones que usa?
+REGLAS DE MOVIMIENTO Y UBICACIÓN:
+• Un personaje NO puede estar en dos lugares al mismo tiempo
+• Para cambiar de ubicación, MOSTRAR el desplazamiento (caminando, en coche, etc.)
+• Respetar tiempos de viaje realistas entre ubicaciones
+• Las descripciones de lugares deben ser CONSISTENTES en toda la novela
+• Si un lugar tiene características establecidas (color paredes, distribución), mantenerlas
 ═══════════════════════════════════════════════════════════════════
 `;
   }
@@ -274,6 +320,8 @@ TAMBIÉN EXTRAE (siempre, incluso si el capítulo es válido):
 - Nuevas relaciones reveladas
 - Cambios de estado (ubicación, heridas, muerte)
 - DETALLES FÍSICOS NUEVOS: Si el capítulo menciona por primera vez el color de ojos, pelo, altura, edad, cicatrices, tatuajes, o cualquier rasgo físico de un personaje que NO estaba en la base de datos, EXTRÁELO como newFact con entityType="PHYSICAL_TRAIT"
+- LOCALIZACIONES NUEVAS: Si aparece un lugar nuevo con descripción (edificio, habitación, ciudad), extráelo como newFact con entityType="LOCATION" incluyendo: descripcion, atmosfera, caracteristicas
+- CAMBIOS DE UBICACIÓN: Si un personaje cambia de ubicación, extráelo como newFact con entityType="CHARACTER" y update: { "ubicacion_actual": "nuevo lugar" }
 
 RESPONDE EN JSON:
 {
