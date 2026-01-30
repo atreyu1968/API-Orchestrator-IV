@@ -79,34 +79,53 @@ export class UniversalConsistencyAgent {
     const config = getGenreConfig(genre);
 
     // LitAgents 2.1+: Build detailed character profiles with physical descriptions
+    // Distinguish between truly immutable attributes and mutable-with-explanation
+    const TRULY_IMMUTABLE = ['ojos', 'eyes', 'eye_color', 'altura', 'height']; // Cannot change (without magic/surgery)
+    const MUTABLE_WITH_EXPLANATION = ['pelo', 'hair', 'cabello', 'barba', 'beard', 'peso', 'weight', 'build', 'cicatriz', 'scar', 'tatuaje', 'tattoo', 'complexion', 'piel', 'skin'];
+    
     const entityBlock = entities.length > 0
       ? entities.filter(e => e.type === 'CHARACTER').map(e => {
           const allAttrs = Object.entries(e.attributes || {});
-          // Separate physical attributes (immutable and discovered)
-          const physicalAttrs = allAttrs.filter(([k]) => 
-            k.endsWith('_INMUTABLE') || 
-            ['ojos', 'eyes', 'pelo', 'hair', 'cabello', 'altura', 'height', 'edad', 'age', 'piel', 'skin', 'complexion', 'cicatriz', 'scar', 'tatuaje', 'tattoo', 'barba', 'beard', 'build', 'peso', 'weight'].some(phys => k.toLowerCase().includes(phys))
+          
+          // Categorize attributes
+          const trulyImmutable = allAttrs.filter(([k]) => 
+            TRULY_IMMUTABLE.some(ti => k.toLowerCase().includes(ti))
+          );
+          const mutableWithExplanation = allAttrs.filter(([k]) => 
+            MUTABLE_WITH_EXPLANATION.some(mwe => k.toLowerCase().includes(mwe)) &&
+            !TRULY_IMMUTABLE.some(ti => k.toLowerCase().includes(ti))
           );
           const otherAttrs = allAttrs.filter(([k]) => 
-            !k.endsWith('_INMUTABLE') && 
-            !['ojos', 'eyes', 'pelo', 'hair', 'cabello', 'altura', 'height', 'edad', 'age', 'piel', 'skin', 'complexion', 'cicatriz', 'scar', 'tatuaje', 'tattoo', 'barba', 'beard', 'build', 'peso', 'weight'].some(phys => k.toLowerCase().includes(phys))
+            !TRULY_IMMUTABLE.some(ti => k.toLowerCase().includes(ti)) &&
+            !MUTABLE_WITH_EXPLANATION.some(mwe => k.toLowerCase().includes(mwe)) &&
+            !k.endsWith('_INMUTABLE')
           );
           
           let result = `\n══════════════════════════════════════\n`;
           result += `📋 FICHA: ${e.name.toUpperCase()} (${e.status})`;
           result += `\n══════════════════════════════════════`;
           
-          // Physical profile section
-          if (physicalAttrs.length > 0) {
-            result += `\n📐 DESCRIPCIÓN FÍSICA (OBLIGATORIO RESPETAR):`;
-            physicalAttrs.forEach(([k, v]) => {
+          // Truly immutable attributes (cannot change)
+          if (trulyImmutable.length > 0) {
+            result += `\n🔒 INMUTABLE (no puede cambiar):`;
+            trulyImmutable.forEach(([k, v]) => {
               const cleanKey = k.replace('_INMUTABLE', '').replace(/_/g, ' ');
-              const isImmutable = k.endsWith('_INMUTABLE');
-              const icon = isImmutable ? '🔒' : '📝';
-              result += `\n   ${icon} ${cleanKey}: ${v}`;
+              result += `\n   • ${cleanKey}: ${v}`;
             });
-          } else {
-            result += `\n📐 DESCRIPCIÓN FÍSICA: (No establecida aún - puedes describirla, será registrada)`;
+          }
+          
+          // Mutable with explanation
+          if (mutableWithExplanation.length > 0) {
+            result += `\n📝 ACTUAL (puede cambiar SI SE EXPLICA):`;
+            mutableWithExplanation.forEach(([k, v]) => {
+              const cleanKey = k.replace('_INMUTABLE', '').replace(/_/g, ' ');
+              result += `\n   • ${cleanKey}: ${v}`;
+            });
+          }
+          
+          // No description yet
+          if (trulyImmutable.length === 0 && mutableWithExplanation.length === 0) {
+            result += `\n📐 DESCRIPCIÓN FÍSICA: (No establecida - puedes describirla, será registrada)`;
           }
           
           // Other attributes (role, personality, etc.)
