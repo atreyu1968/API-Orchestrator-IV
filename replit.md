@@ -81,6 +81,7 @@ Preferred communication style: Simple, everyday language.
 - **Database Schema**: New `series_world_bible` table with JSONB fields for characters, locations, lessons, worldRules, timelineEvents, objects, and secrets.
 - **SeriesWorldBibleExtractor Agent**: Uses DeepSeek to extract world-building elements from completed volumes, analyzing characters (traits, arcs, relationships), locations (significance, key events), narrative lessons, world rules, timeline events, and plot objects/secrets.
 - **Automatic Extraction**: Triggers on all project completion paths (6 scenarios) in orchestrator-v2, merging new volume data with existing series knowledge.
+- **Imported Manuscript Extraction**: Automatically extracts world bible data when manuscripts are linked (`/api/series/:id/link-manuscript`) or uploaded (`/api/series/:id/upload-volume`) to a series, ensuring consistency even for externally authored volumes.
 - **Ghostwriter Injection**: formatSeriesWorldBible method provides contextualized world knowledge to Ghostwriter during scene writing for enhanced continuity.
 - **Data Normalization**: Storage layer normalizes field names between extractor output and consumer expectations for consistent data contracts.
 - **UI Component**: SeriesWorldBiblePanel displays accumulated data with expandable sections for all entity types.
