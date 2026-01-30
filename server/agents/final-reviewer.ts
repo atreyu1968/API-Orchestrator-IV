@@ -38,7 +38,7 @@ export interface BestsellerAnalysis {
   escalada_tension: string;
   efectividad_cliffhangers: string;
   potencia_climax: string;
-  como_subir_a_9?: string;
+  como_subir_a_10?: string; // Changed from como_subir_a_9 - objective is 10/10
 }
 
 export interface ScoreJustification {
@@ -98,7 +98,7 @@ Eres un LECTOR CONSUMIDOR habitual del género que se te indica. NO eres un edit
 Eres alguien que ha pagado dinero por este libro y quiere disfrutar de una buena historia.
 
 Tu misión es evaluar si esta novela MERECE SER COMPRADA, LEÍDA DE UNA SENTADA y RECOMENDADA a amigos.
-TU OBJETIVO: Asegurar que la novela alcance puntuación 10/10 (nivel "no pude parar de leer").
+TU OBJETIVO: Asegurar que la novela alcance puntuación 10/10 (OBRA MAESTRA - nivel "no pude parar de leer").
 
 ═══════════════════════════════════════════════════════════════════
 📚 TU PERFIL COMO LECTOR CONSUMIDOR 📚
@@ -178,13 +178,13 @@ Has pagado 18€ por este libro y tienes tiempo limitado para leer. Evalúa como
 ESCALA DE PUNTUACIÓN ESTRICTA (OBJETIVO: 10/10)
 ═══════════════════════════════════════════════════════════════════
 
-10: OBRA MAESTRA - CERO issues. Perfección total. Hook irresistible, giros brillantes, 
-    personajes inolvidables, clímax perfecto. ÚNICO nivel que aprueba.
-9: EXCELENTE - Solo 1 issue menor. Muy cerca de la perfección pero falta algo.
-8: MUY BUENO - 2 issues menores o 1 mayor. Publicable pero requiere pulido.
-7: CORRECTO - 3+ issues menores o 2 mayores. Cumple pero no destaca.
-6: FLOJO - 1 issue crítico o 3+ mayores. Errores que sacan de la historia.
-5 o menos: NO PUBLICABLE - Múltiples issues críticos o problemas graves.
+10: OBRA MAESTRA - CERO issues de cualquier tipo. Perfección total. Hook irresistible, giros brillantes, 
+    personajes inolvidables, clímax perfecto. ÚNICO nivel que obtiene veredicto APROBADO automáticamente.
+9: EXCELENTE - Solo 1 issue menor. Muy cerca de la perfección pero falta algo. Veredicto: APROBADO_CON_RESERVAS.
+8: MUY BUENO - 2 issues menores o 1 mayor. Publicable pero requiere pulido. Veredicto: REQUIERE_REVISION.
+7: CORRECTO - 3+ issues menores o 2 mayores. Cumple pero no destaca. Veredicto: REQUIERE_REVISION.
+6: FLOJO - 1 issue crítico o 3+ mayores. Errores que sacan de la historia. Veredicto: REQUIERE_REVISION.
+5 o menos: NO PUBLICABLE - Múltiples issues críticos o problemas graves. Veredicto: REQUIERE_REVISION.
 
 REGLA ABSOLUTA: Solo das 10/10 si NO hay ningún issue de ningún tipo.
 Cualquier issue (incluso menor) reduce automáticamente la puntuación por debajo de 10.
@@ -415,10 +415,11 @@ PROTOCOLO DE PASADAS - OBJETIVO: PUNTUACIÓN 10/10
 PASADA 1: Lee como consumidor que ha pagado por el libro. ¿Lo recomendarías? ¿Qué te frustró?
 PASADA 2+: Verifica correcciones. ¿Mejoró tu experiencia como lector? ¿Ahora lo recomendarías?
 
-REGLA CRÍTICA ABSOLUTA: Solo emitir APROBADO cuando la puntuación sea 10/10.
-- Si puntuación < 10 → REQUIERE_REVISION con instrucciones específicas
-- Si puntuación = 10 Y CERO issues → APROBADO
-- El sistema continuará ciclos hasta alcanzar 10/10 (perfección)
+REGLA CRÍTICA ABSOLUTA - VEREDICTOS:
+- Puntuación 10/10 Y CERO issues → APROBADO (única forma de aprobar automáticamente)
+- Puntuación 9+ con solo 1 issue menor → APROBADO_CON_RESERVAS (publicable pero no perfecto)
+- Puntuación < 9 O issues críticos/mayores → REQUIERE_REVISION con instrucciones específicas
+- El sistema continuará ciclos hasta alcanzar 10/10 (perfección total)
 
 En cada pasada donde puntuación < 10, incluye en analisis_bestseller.como_subir_a_10
 instrucciones CONCRETAS para elevar la puntuación a la perfección.
@@ -448,7 +449,7 @@ SALIDA OBLIGATORIA (JSON):
     "escalada_tension": "¿Cada acto más intenso? - evaluación", 
     "efectividad_cliffhangers": "X% de capítulos con hooks efectivos",
     "potencia_climax": "fuerte/moderado/debil - descripción",
-    "como_subir_a_9": "Si puntuación < 9, instrucciones ESPECÍFICAS para elevarlo"
+    "como_subir_a_10": "Si puntuación < 10, instrucciones ESPECÍFICAS para alcanzar la perfección"
   },
   "issues": [
     {
@@ -795,6 +796,9 @@ INSTRUCCIÓN: Usa esta información para reportar issues con los CAPÍTULOS ESPE
     6. NO reportes issues que ya se mencionaron en tranches anteriores.
     7. Si detectas una contradicción con un tranche anterior, REPÓRTALA como issue de consistencia.
     
+    ⚠️ LÍMITE DE ISSUES POR TRAMO: Reporta MÁXIMO 3 issues por tramo (los más graves).
+    Si hay más de 3 problemas, prioriza los críticos sobre los mayores, y los mayores sobre los menores.
+    
     Sé PRECISO y OBJETIVO. Solo reporta errores con EVIDENCIA TEXTUAL verificable.
     
     Responde ÚNICAMENTE con el JSON estructurado según el formato especificado.
@@ -863,7 +867,7 @@ INSTRUCCIÓN: Usa esta información para reportar issues con los CAPÍTULOS ESPE
 
     let pasadaInfo = "";
     if (input.pasadaNumero === 1) {
-      pasadaInfo = "\n\nEsta es tu PASADA #1 - AUDITORÍA COMPLETA. Reporta TODOS los issues que detectes (sin límite). Es CRÍTICO que detectes todos los problemas ahora para que se corrijan en este ciclo. OBJETIVO: puntuación 9+.";
+      pasadaInfo = "\n\nEsta es tu PASADA #1 - AUDITORÍA COMPLETA. Reporta como máximo 5 issues (los más graves). Es CRÍTICO que detectes todos los problemas importantes ahora para que se corrijan en este ciclo. OBJETIVO: puntuación 10/10 (OBRA MAESTRA).";
     } else if (input.pasadaNumero && input.pasadaNumero >= 2) {
       const prevScore = input.puntuacionPasadaAnterior || 8;
       const numCorrected = input.issuesPreviosCorregidos?.length || 0;
@@ -1044,18 +1048,33 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
       }
     }
 
-    // Combine results from all tranches
+    // Combine results from all tranches with per-tranche issue limits
+    // NOTE: capitulos_para_reescribir is derived from capped issues, not from tranche outputs
     const allIssues: FinalReviewerResult["issues"] = [];
-    const allChaptersToRewrite: FinalReviewerResult["capitulos_para_reescribir"] = [];
     const allPlotDecisions: FinalReviewerResult["plot_decisions"] = [];
     const allPersistentInjuries: FinalReviewerResult["persistent_injuries"] = [];
     const allOrphanChapters: FinalReviewerResult["orphan_chapters"] = [];
     let totalScore = 0;
     let scoreCount = 0;
+    
+    // Per-tranche issue limit: max 3 issues per tranche (per spec)
+    const MAX_ISSUES_PER_TRANCHE = 3;
 
     for (const result of trancheResults) {
-      if (result.issues) allIssues.push(...result.issues);
-      if (result.capitulos_para_reescribir) allChaptersToRewrite.push(...result.capitulos_para_reescribir);
+      if (result.issues) {
+        // ENFORCE per-tranche limit: only take top 3 issues per tranche (sorted by severity)
+        const severityOrder: Record<string, number> = { critica: 0, mayor: 1, menor: 2 };
+        const sortedTrancheIssues = [...result.issues].sort((a, b) => 
+          (severityOrder[a.severidad] || 2) - (severityOrder[b.severidad] || 2)
+        );
+        const limitedTrancheIssues = sortedTrancheIssues.slice(0, MAX_ISSUES_PER_TRANCHE);
+        allIssues.push(...limitedTrancheIssues);
+        
+        if (result.issues.length > MAX_ISSUES_PER_TRANCHE) {
+          console.log(`[FinalReviewer] Tranche issue limit applied: ${result.issues.length} → ${limitedTrancheIssues.length}`);
+        }
+      }
+      // Note: result.capitulos_para_reescribir is ignored; derived from capped issues later
       if (result.plot_decisions) allPlotDecisions.push(...result.plot_decisions);
       if (result.persistent_injuries) allPersistentInjuries.push(...result.persistent_injuries);
       if (result.orphan_chapters) allOrphanChapters.push(...result.orphan_chapters);
@@ -1069,37 +1088,65 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
     let avgScore = scoreCount > 0 ? Math.round(totalScore / scoreCount) : 8;
     
     // Deduplicate similar issues (same category and overlapping chapters)
-    const deduplicatedIssues = this.deduplicateIssues(allIssues);
+    let deduplicatedIssues = this.deduplicateIssues(allIssues);
+    
+    // Apply global issue limits based on pass number: Pasada 1 = max 5, Pasada 2+ = max 3*numTranches
+    const globalIssueLimit = input.pasadaNumero === 1 ? 5 : Math.max(3, numTranches * 3);
+    if (deduplicatedIssues.length > globalIssueLimit) {
+      console.log(`[FinalReviewer] Global issue limit applied: ${deduplicatedIssues.length} → ${globalIssueLimit}`);
+      deduplicatedIssues = deduplicatedIssues.slice(0, globalIssueLimit);
+    }
     
     // ═══════════════════════════════════════════════════════════════════
-    // COHERENCE VALIDATION: Adjust score based on detected issues
-    // This prevents the AI from giving 10/10 while reporting problems
+    // SCORE NORMALIZATION BASED ON CAPPED ISSUES (not raw tranche scores)
+    // This ensures score/verdict consistency with the issue limits
     // ═══════════════════════════════════════════════════════════════════
     const criticalCount = deduplicatedIssues.filter(i => i.severidad === "critica").length;
     const majorCount = deduplicatedIssues.filter(i => i.severidad === "mayor").length;
     const minorCount = deduplicatedIssues.filter(i => i.severidad === "menor").length;
+    const totalIssueCount = deduplicatedIssues.length;
     
-    // Calculate maximum allowed score based on issues
-    // Rule: Each issue type caps the maximum score
-    let maxAllowedScore = 10;
-    if (criticalCount > 0) maxAllowedScore = Math.min(maxAllowedScore, 6); // Critical = max 6
-    else if (majorCount >= 3) maxAllowedScore = Math.min(maxAllowedScore, 7);
-    else if (majorCount >= 2) maxAllowedScore = Math.min(maxAllowedScore, 7.5);
-    else if (majorCount >= 1) maxAllowedScore = Math.min(maxAllowedScore, 8);
-    else if (minorCount >= 3) maxAllowedScore = Math.min(maxAllowedScore, 8);
-    else if (minorCount >= 2) maxAllowedScore = Math.min(maxAllowedScore, 8.5);
-    else if (minorCount >= 1) maxAllowedScore = Math.min(maxAllowedScore, 9);
-    
-    // If model gave higher score than allowed, adjust down
+    // NORMALIZE score based on capped issues (overrides raw tranche average)
+    // This prevents artificially low scores from truncated issues
     const originalScore = avgScore;
-    if (avgScore > maxAllowedScore) {
-      avgScore = Math.round(maxAllowedScore);
-      console.log(`[FinalReviewer] COHERENCE CHECK: Score adjusted from ${originalScore} to ${avgScore} (${criticalCount} critical, ${majorCount} major, ${minorCount} minor issues)`);
+    if (totalIssueCount === 0) {
+      // No issues after caps = 10/10
+      avgScore = 10;
+    } else if (criticalCount > 0) {
+      // Critical issues = max 6
+      avgScore = Math.min(avgScore, 6);
+    } else if (majorCount > 0) {
+      // Major issues = max 8
+      avgScore = Math.min(avgScore, 8);
+    } else if (minorCount === 1) {
+      // Exactly 1 minor issue = 9
+      avgScore = 9;
+    } else if (minorCount >= 2) {
+      // 2+ minor issues = max 8
+      avgScore = Math.min(avgScore, 8);
     }
     
-    // Determine verdict based on adjusted score and issues
-    const hasCriticalIssues = criticalCount > 0;
-    const veredicto = (avgScore >= 9 && !hasCriticalIssues && deduplicatedIssues.length === 0) ? "APROBADO" : "REQUIERE_REVISION";
+    if (avgScore !== originalScore) {
+      console.log(`[FinalReviewer] SCORE NORMALIZED: ${originalScore} → ${avgScore} based on capped issues (${criticalCount} critical, ${majorCount} major, ${minorCount} minor)`);
+    }
+    
+    // Determine verdict based on normalized score and capped issues
+    // Document rules:
+    // - 10/10 with ZERO issues = APROBADO (unique way to approve automatically)
+    // - 9+ with only 1 minor issue (no critical/major) = APROBADO_CON_RESERVAS
+    // - Everything else = REQUIERE_REVISION
+    let veredicto: "APROBADO" | "APROBADO_CON_RESERVAS" | "REQUIERE_REVISION";
+    
+    if (avgScore === 10 && totalIssueCount === 0) {
+      // 10/10 with ZERO issues = APROBADO (only way to get APROBADO)
+      veredicto = "APROBADO";
+    } else if (avgScore >= 9 && criticalCount === 0 && majorCount === 0 && minorCount <= 1) {
+      // 9+ with only 1 or fewer minor issues (no critical/major) = APROBADO_CON_RESERVAS
+      veredicto = "APROBADO_CON_RESERVAS";
+    } else {
+      // Everything else = REQUIERE_REVISION
+      veredicto = "REQUIERE_REVISION";
+    }
 
     console.log(`[FinalReviewer] Combinando ${numTranches} tramos: score promedio ${avgScore}/10, issues totales: ${allIssues.length} (${deduplicatedIssues.length} únicos), veredicto: ${veredicto}`);
 
@@ -1118,7 +1165,7 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
           cumplimiento_genero: avgScore
         },
         fortalezas_principales: [],
-        debilidades_principales: allIssues.slice(0, 3).map(i => i.descripcion),
+        debilidades_principales: deduplicatedIssues.slice(0, 3).map(i => i.descripcion),
         comparacion_mercado: "Evaluación combinada de múltiples tramos",
         recomendaciones_proceso: []
       },
@@ -1128,10 +1175,14 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
         escalada_tension: "Evaluado por tranches",
         efectividad_cliffhangers: "Evaluado por tranches",
         potencia_climax: "Evaluado por tranches",
-        como_subir_a_9: allIssues.length > 0 ? `Corregir ${allIssues.length} issues identificados` : "Mantener calidad actual"
+        como_subir_a_10: deduplicatedIssues.length > 0 ? `Corregir ${deduplicatedIssues.length} issues identificados para alcanzar 10/10` : "Mantener calidad actual - 10/10 alcanzado"
       },
-      issues: deduplicatedIssues.slice(0, 10), // Limit to top 10 unique issues
-      capitulos_para_reescribir: Array.from(new Set(allChaptersToRewrite)), // Deduplicate
+      // Issues already limited by globalIssueLimit before this point
+      issues: deduplicatedIssues,
+      // Derive chapters to rewrite from CAPPED issues only (not raw tranche output)
+      capitulos_para_reescribir: Array.from(new Set(
+        deduplicatedIssues.flatMap(issue => issue.capitulos_afectados || [])
+      )),
       plot_decisions: allPlotDecisions,
       persistent_injuries: allPersistentInjuries,
       orphan_chapters: allOrphanChapters,
