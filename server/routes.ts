@@ -2148,6 +2148,22 @@ export async function registerRoutes(
       });
       
       res.json(updated);
+      
+      // Extract world bible from manuscript asynchronously (don't block response)
+      (async () => {
+        try {
+          console.log(`[link-manuscript] Starting world bible extraction for manuscript ${manuscriptId} (Volume ${seriesOrder})`);
+          const { SeriesWorldBibleExtractor } = await import("./agents/v2/series-world-bible-extractor");
+          const extractor = new SeriesWorldBibleExtractor();
+          const extracted = await extractor.extractFromManuscript(manuscriptId, seriesOrder);
+          if (extracted) {
+            await extractor.mergeAndSaveToSeries(seriesId, seriesOrder, extracted);
+            console.log(`[link-manuscript] World bible extracted and merged for manuscript ${manuscriptId}`);
+          }
+        } catch (err) {
+          console.error(`[link-manuscript] Error extracting world bible:`, err);
+        }
+      })();
     } catch (error) {
       console.error("Error linking manuscript to series:", error);
       res.status(500).json({ error: "Failed to link manuscript to series" });
@@ -2262,6 +2278,22 @@ export async function registerRoutes(
           wordCount: fullContent.split(/\s+/).length,
         },
       });
+      
+      // Extract world bible from uploaded manuscript asynchronously (don't block response)
+      (async () => {
+        try {
+          console.log(`[upload-volume] Starting world bible extraction for manuscript ${manuscript.id} (Volume ${nextOrder})`);
+          const { SeriesWorldBibleExtractor } = await import("./agents/v2/series-world-bible-extractor");
+          const extractor = new SeriesWorldBibleExtractor();
+          const extracted = await extractor.extractFromManuscript(manuscript.id, nextOrder);
+          if (extracted) {
+            await extractor.mergeAndSaveToSeries(seriesId, nextOrder, extracted);
+            console.log(`[upload-volume] World bible extracted and merged for manuscript ${manuscript.id}`);
+          }
+        } catch (err) {
+          console.error(`[upload-volume] Error extracting world bible:`, err);
+        }
+      })();
     } catch (error) {
       console.error("Error uploading volume:", error);
       res.status(500).json({ error: "Failed to upload volume" });

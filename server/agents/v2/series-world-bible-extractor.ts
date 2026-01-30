@@ -497,6 +497,149 @@ Respond with a valid JSON object following this exact structure:
     return merged;
   }
 
+  async extractFromManuscript(manuscriptId: number, volumeNumber: number): Promise<ExtractedWorldBibleData | null> {
+    const manuscript = await storage.getImportedManuscript(manuscriptId);
+    if (!manuscript) {
+      console.error(`[SeriesWorldBibleExtractor] Manuscript ${manuscriptId} not found`);
+      return null;
+    }
+
+    if (!manuscript.seriesId) {
+      console.error(`[SeriesWorldBibleExtractor] Manuscript ${manuscriptId} is not part of a series`);
+      return null;
+    }
+
+    const allChapters = await storage.getImportedChaptersByManuscript(manuscriptId);
+    const validChapters = allChapters.filter(ch => {
+      const content = ch.editedContent || ch.originalContent;
+      return content && content.length > 100;
+    });
+
+    if (validChapters.length === 0) {
+      console.error(`[SeriesWorldBibleExtractor] No valid chapters found for manuscript ${manuscriptId}`);
+      return null;
+    }
+
+    const manuscriptText = validChapters
+      .sort((a, b) => a.chapterNumber - b.chapterNumber)
+      .map(ch => `--- Chapter ${ch.chapterNumber}: ${ch.title || 'Untitled'} ---\n\n${ch.editedContent || ch.originalContent}`)
+      .join("\n\n");
+
+    const truncatedManuscript = manuscriptText.length > 150000 
+      ? manuscriptText.substring(0, 150000) + "\n\n[... manuscript truncated for analysis ...]"
+      : manuscriptText;
+
+    const prompt = `Analyze the following imported manuscript (Volume ${volumeNumber} of a series) and extract all world-building elements that should be carried forward to future volumes.
+
+MANUSCRIPT:
+${truncatedManuscript}
+
+INSTRUCTIONS:
+1. Extract ALL named characters with their current status at the end of this volume
+2. Extract ALL named locations mentioned
+3. Identify key lessons and character growth
+4. Note any world rules or laws established
+5. List major plot events and their consequences
+6. Catalog significant objects and their current state
+7. Record any secrets or mysteries that remain unresolved
+
+Respond with a valid JSON object following this exact structure:
+{
+  "characters": [
+    {
+      "name": "Character Name",
+      "role": "protagonist/antagonist/supporting/minor",
+      "description": "Brief description",
+      "status": "alive/dead/missing/unknown",
+      "firstAppearanceVolume": ${volumeNumber},
+      "lastSeenVolume": ${volumeNumber},
+      "relationships": [{"character": "Other Name", "relation": "friend/enemy/lover/family"}],
+      "development": "How they changed during this volume",
+      "physicalTraits": ["trait1", "trait2"],
+      "skills": ["skill1", "skill2"]
+    }
+  ],
+  "locations": [
+    {
+      "name": "Location Name",
+      "description": "Brief description",
+      "type": "city/building/region/etc",
+      "firstMentionVolume": ${volumeNumber},
+      "significance": "Why this place matters",
+      "keyEvents": ["event1", "event2"]
+    }
+  ],
+  "lessons": [
+    {
+      "description": "What was learned",
+      "learnedByCharacter": "Character Name",
+      "volumeNumber": ${volumeNumber},
+      "impact": "How this affects future behavior"
+    }
+  ],
+  "worldRules": [
+    {
+      "category": "magic/society/physics/etc",
+      "rule": "Description of the rule",
+      "establishedVolume": ${volumeNumber},
+      "constraints": ["limitation1", "limitation2"]
+    }
+  ],
+  "timeline": [
+    {
+      "description": "Major event description",
+      "volumeNumber": ${volumeNumber},
+      "affectedCharacters": ["name1", "name2"],
+      "consequences": "What this means for the future"
+    }
+  ],
+  "objects": [
+    {
+      "name": "Object Name",
+      "description": "What it is",
+      "owner": "Current owner or null",
+      "significance": "Why it matters",
+      "status": "intact/destroyed/lost/transferred",
+      "firstAppearanceVolume": ${volumeNumber}
+    }
+  ],
+  "secrets": [
+    {
+      "description": "The secret or mystery",
+      "knownBy": ["character1", "character2"],
+      "revealedVolume": null,
+      "impact": "Potential impact when revealed",
+      "isResolved": false
+    }
+  ]
+}`;
+
+    console.log(`[SeriesWorldBibleExtractor] Extracting world bible from manuscript ${manuscriptId} (Volume ${volumeNumber})`);
+
+    try {
+      const response = await this.execute({ prompt });
+      
+      if (!response.content) {
+        console.error(`[SeriesWorldBibleExtractor] Empty response from AI for manuscript`);
+        return null;
+      }
+
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error(`[SeriesWorldBibleExtractor] No JSON found in response for manuscript`);
+        return null;
+      }
+
+      const extracted: ExtractedWorldBibleData = JSON.parse(jsonMatch[0]);
+      console.log(`[SeriesWorldBibleExtractor] Extracted from manuscript: ${extracted.characters?.length || 0} characters, ${extracted.locations?.length || 0} locations, ${extracted.lessons?.length || 0} lessons`);
+
+      return extracted;
+    } catch (error) {
+      console.error(`[SeriesWorldBibleExtractor] Error extracting from manuscript:`, error);
+      return null;
+    }
+  }
+
   async getSeriesWorldBible(seriesId: number): Promise<ExtractedWorldBibleData | null> {
     const result = await db.select().from(seriesWorldBible).where(eq(seriesWorldBible.seriesId, seriesId)).limit(1);
     
