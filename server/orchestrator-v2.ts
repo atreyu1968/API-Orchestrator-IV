@@ -2477,49 +2477,53 @@ ${decisions.join('\n')}
           console.warn(`[OrchestratorV2] Consistency violation in Chapter ${chapterNumber} (attempt ${consistencyAttempt}/${MAX_CONSISTENCY_ATTEMPTS}): ${consistencyResult.error}`);
           this.callbacks.onAgentStatus("universal-consistency", "warning", `Fixing consistency error (attempt ${consistencyAttempt})...`);
           
-          // First attempt: surgical fix. Subsequent attempts: full rewrite
-          const useSurgical = consistencyAttempt === 1;
+          // ALWAYS use full rewrite with complete context for consistency errors
+          // Surgical fixes are insufficient for continuity issues that require scene rewrites
+          this.callbacks.onAgentStatus("smart-editor", "active", `Full rewrite for consistency error (attempt ${consistencyAttempt})...`);
           
-          if (useSurgical) {
-            this.callbacks.onAgentStatus("smart-editor", "active", "Fixing continuity error surgically...");
-            
-            const surgicalFixResult = await this.smartEditor.surgicalFix({
-              chapterContent: finalText,
-              errorDescription: consistencyResult.error,
-              consistencyConstraints,
-            });
-            
-            this.addTokenUsage(surgicalFixResult.tokenUsage);
-            await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", surgicalFixResult.tokenUsage, chapterNumber);
-            
-            if (surgicalFixResult.patches && surgicalFixResult.patches.length > 0) {
-              const patchResult: PatchResult = applyPatches(finalText, surgicalFixResult.patches);
-              if (patchResult.success && patchResult.patchedText) {
-                finalText = patchResult.patchedText;
-                console.log(`[OrchestratorV2] Chapter ${chapterNumber}: Applied ${patchResult.appliedPatches} surgical patches`);
-              } else if (surgicalFixResult.fullContent) {
-                finalText = surgicalFixResult.fullContent;
-              }
-            } else if (surgicalFixResult.fullContent) {
-              finalText = surgicalFixResult.fullContent;
+          // Get fresh World Bible context for informed rewrites
+          const currentWB = await storage.getWorldBibleByProject(project.id);
+          
+          // Get scene summaries from previous chapters for context
+          const sceneSummariesContext = await this.getSceneSummariesContext(project.id, chapterNumber);
+          
+          // Get style guide if linked
+          const projectStyleGuide = project.styleGuideId 
+            ? await storage.getStyleGuide(project.styleGuideId) 
+            : null;
+          
+          // Build comprehensive chapter summaries from adjacent chapters
+          const adjacentChapters = await storage.getChaptersByProject(project.id);
+          const chapterSummariesList: string[] = [];
+          for (const ch of adjacentChapters) {
+            if (ch.chapterNumber !== chapterNumber && ch.summary) {
+              chapterSummariesList.push(`Cap ${ch.chapterNumber}: ${ch.summary}`);
             }
+          }
+          
+          const rewriteResult = await this.smartEditor.fullRewrite({
+            chapterContent: finalText,
+            errorDescription: `CORRECCIÓN OBLIGATORIA - VIOLACIÓN DE CONTINUIDAD:\n${consistencyResult.error}\n\nDebes reescribir las escenas afectadas para eliminar COMPLETAMENTE esta contradicción manteniendo la coherencia narrativa.`,
+            consistencyConstraints: consistencyConstraints + (sceneSummariesContext || ''),
+            worldBible: currentWB ? {
+              characters: currentWB.characters as any[],
+              locations: [], // Not in schema but expected by interface
+              worldRules: currentWB.worldRules as any[],
+              persistentInjuries: currentWB.persistentInjuries as any[],
+              plotDecisions: currentWB.plotDecisions as any[],
+            } : undefined,
+            chapterSummaries: chapterSummariesList,
+            styleGuide: projectStyleGuide?.content || undefined,
+          });
+          
+          this.addTokenUsage(rewriteResult.tokenUsage);
+          await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", rewriteResult.tokenUsage, chapterNumber);
+          
+          if (rewriteResult.rewrittenContent) {
+            finalText = rewriteResult.rewrittenContent;
+            console.log(`[OrchestratorV2] Chapter ${chapterNumber}: Full rewrite applied for consistency fix (attempt ${consistencyAttempt})`);
           } else {
-            // Full rewrite for persistent issues
-            this.callbacks.onAgentStatus("smart-editor", "active", `Full rewrite for persistent consistency error (attempt ${consistencyAttempt})...`);
-            
-            const rewriteResult = await this.smartEditor.fullRewrite({
-              chapterContent: finalText,
-              errorDescription: `CORRECCIÓN OBLIGATORIA - VIOLACIÓN DE CONTINUIDAD:\n${consistencyResult.error}\n\nEste error ha persistido después de correcciones quirúrgicas. Debes reescribir las secciones afectadas para eliminar COMPLETAMENTE esta contradicción.`,
-              consistencyConstraints,
-            });
-            
-            this.addTokenUsage(rewriteResult.tokenUsage);
-            await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", rewriteResult.tokenUsage, chapterNumber);
-            
-            if (rewriteResult.rewrittenContent) {
-              finalText = rewriteResult.rewrittenContent;
-              console.log(`[OrchestratorV2] Chapter ${chapterNumber}: Full rewrite applied for consistency fix`);
-            }
+            console.warn(`[OrchestratorV2] Chapter ${chapterNumber}: Full rewrite returned empty content`);
           }
           
           // RE-VALIDATE after correction to confirm the fix worked

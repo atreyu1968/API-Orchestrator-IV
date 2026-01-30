@@ -16,12 +16,19 @@ export interface SurgicalFixInput {
   chapterContent: string;
   errorDescription: string;
   consistencyConstraints?: string;
-  // Extended context for full rewrites
-  worldBible?: any;
+  // Extended context for full rewrites with maximum context
+  worldBible?: {
+    characters?: any[];
+    locations?: any[];
+    worldRules?: any[];
+    persistentInjuries?: any[];
+    plotDecisions?: any[];
+  };
   chapterNumber?: number;
   chapterTitle?: string;
   previousChapterSummary?: string;
   nextChapterSummary?: string;
+  chapterSummaries?: string[]; // All chapter summaries for broader context
   styleGuide?: string;
   projectTitle?: string;
   genre?: string;
@@ -222,6 +229,15 @@ Responde en JSON:
     }
     if (input.nextChapterSummary) {
       contextSection += `RESUMEN DEL CAPÍTULO SIGUIENTE:\n${input.nextChapterSummary}\n\n`;
+    }
+    
+    // Add all chapter summaries for broader narrative context
+    if (input.chapterSummaries && input.chapterSummaries.length > 0) {
+      contextSection += `CONTEXTO NARRATIVO (RESÚMENES DE OTROS CAPÍTULOS):\n`;
+      for (const summary of input.chapterSummaries.slice(0, 10)) {
+        contextSection += `${summary}\n`;
+      }
+      contextSection += `\n`;
     }
     
     // Add World Bible context if available
