@@ -225,9 +225,11 @@ export default function SeriesPage() {
       const response = await apiRequest("POST", `/api/series/${seriesId}/guide/extract`);
       return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, seriesId) => {
       setExtractingSeriesId(null);
       queryClient.invalidateQueries({ queryKey: ["/api/series/registry"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/series/${seriesId}/milestones`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/series/${seriesId}/threads`] });
       toast({ 
         title: "Extraccion completada", 
         description: `${data.milestonesCreated} hitos y ${data.threadsCreated} hilos extraidos` 
