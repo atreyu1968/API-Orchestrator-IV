@@ -1642,7 +1642,11 @@ ${decisions.join('\n')}
       });
 
       this.callbacks.onAgentStatus("universal-consistency", "warning", `Violation: ${result.criticalError}`);
-      return { isValid: false, error: result.criticalError };
+      // Return both error description AND correction instructions for the SmartEditor
+      const fullError = result.correctionInstructions 
+        ? `${result.criticalError}\n\nINSTRUCCIONES DE CORRECCIÓN ESPECÍFICAS:\n${result.correctionInstructions}`
+        : result.criticalError;
+      return { isValid: false, error: fullError };
     }
 
     if (result.newFacts && result.newFacts.length > 0) {

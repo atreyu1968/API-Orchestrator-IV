@@ -5,6 +5,7 @@ import type { WorldEntity, WorldRuleRecord, EntityRelationship } from '@shared/s
 interface ValidationResult {
   isValid: boolean;
   criticalError?: string;
+  correctionInstructions?: string; // Specific instructions on HOW to fix the error
   warnings?: string[];
   newFacts?: Array<{
     entityName: string;
@@ -255,6 +256,7 @@ RESPONDE EN JSON:
 {
   "isValid": boolean,
   "criticalError": "Descripción del error crítico que BLOQUEA la aprobación, o null si no hay",
+  "correctionInstructions": "INSTRUCCIONES ESPECÍFICAS Y DETALLADAS para corregir el error. Ejemplo: 'El personaje X tiene afonía, pero en el texto dice que susurra. SOLUCIÓN: Reemplazar el diálogo de X por comunicación no verbal (gestos, escribir notas, asentir). Localizar la frase exacta: [cita del texto problemático] y cambiarla por [alternativa correcta].' Si no hay error, dejar null.",
   "warnings": ["Lista de advertencias menores que no bloquean pero deben corregirse"],
   "newFacts": [
     { "entityName": "Nombre", "entityType": "CHARACTER|LOCATION|OBJECT|EVIDENCE", "update": { "atributo": "valor" } }
@@ -265,7 +267,14 @@ RESPONDE EN JSON:
   "newRelationships": [
     { "subject": "Personaje1", "target": "Personaje2", "relationType": "TIPO", "meta": {} }
   ]
-}`;
+}
+
+IMPORTANTE SOBRE correctionInstructions:
+- Debe ser MUY ESPECÍFICO: incluir la frase exacta del texto que viola la regla
+- Debe proponer una ALTERNATIVA CONCRETA que respete la regla
+- Si el personaje no puede hablar, sugerir gestos, señas, o comunicación escrita
+- Si hay inconsistencia física (ej: ojos), indicar el color correcto
+- Si hay error temporal/geográfico, indicar la corrección exacta`;
 
     try {
       const response = await this.client.chat.completions.create({
@@ -281,6 +290,7 @@ RESPONDE EN JSON:
       return {
         isValid: result.isValid ?? true,
         criticalError: result.criticalError || undefined,
+        correctionInstructions: result.correctionInstructions || undefined,
         warnings: result.warnings || [],
         newFacts: result.newFacts || [],
         newRules: result.newRules || [],
