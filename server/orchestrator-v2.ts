@@ -3189,43 +3189,67 @@ Si NO hay lesiones significativas, responde: {"injuries": []}`;
             `Capítulo ${c.chapterNumber}: ${c.title || "Sin título"} - ${(c.content || "").substring(0, 500)}...`
           );
           
-          // Run QA Agents in parallel batches (every 5 chapters for continuity, every 10 for voice)
-          const qaPromises: Promise<any>[] = [];
+          // Run QA Agents SEQUENTIALLY to avoid rate limits (was parallel, causing freezes)
+          const qaResults: any[] = [];
           
-          // Continuity Sentinel - analyze in blocks of 5 chapters
+          // Calculate total audits for progress tracking
+          const continuityBlocks = Math.ceil(chaptersForQA.length / 5);
+          const voiceBlocks = Math.ceil(chaptersForQA.length / 10);
+          const totalAudits = continuityBlocks + voiceBlocks + 1; // +1 for semantic
+          let completedAudits = 0;
+          
+          // Continuity Sentinel - analyze in blocks of 5 chapters (SEQUENTIAL)
           for (let i = 0; i < chaptersForQA.length; i += 5) {
+            if (await this.shouldStopProcessing(project.id)) return;
+            
             const block = chaptersForQA.slice(i, i + 5);
             const startChapter = completedChapters[i]?.chapterNumber || i + 1;
             const endChapter = completedChapters[Math.min(i + 4, completedChapters.length - 1)]?.chapterNumber || i + 5;
-            qaPromises.push(
-              this.continuitySentinel.auditContinuity(block, startChapter, endChapter)
-                .then(result => ({ type: 'continuity', result, startChapter, endChapter }))
-                .catch(e => ({ type: 'continuity', error: e.message }))
-            );
+            
+            completedAudits++;
+            this.callbacks.onAgentStatus("beta-reader", "active", `Auditoría continuidad caps ${startChapter}-${endChapter} (${completedAudits}/${totalAudits})...`);
+            
+            try {
+              const result = await this.continuitySentinel.auditContinuity(block, startChapter, endChapter);
+              qaResults.push({ type: 'continuity', result, startChapter, endChapter });
+            } catch (e: any) {
+              qaResults.push({ type: 'continuity', error: e.message });
+            }
           }
           
-          // Voice Rhythm Auditor - analyze in blocks of 10 chapters
+          // Voice Rhythm Auditor - analyze in blocks of 10 chapters (SEQUENTIAL)
           for (let i = 0; i < chaptersForQA.length; i += 10) {
+            if (await this.shouldStopProcessing(project.id)) return;
+            
             const block = chaptersForQA.slice(i, i + 10);
             const startChapter = completedChapters[i]?.chapterNumber || i + 1;
             const endChapter = completedChapters[Math.min(i + 9, completedChapters.length - 1)]?.chapterNumber || i + 10;
-            qaPromises.push(
-              this.voiceRhythmAuditor.auditVoiceRhythm(block, startChapter, endChapter)
-                .then(result => ({ type: 'voice', result, startChapter, endChapter }))
-                .catch(e => ({ type: 'voice', error: e.message }))
-            );
+            
+            completedAudits++;
+            this.callbacks.onAgentStatus("beta-reader", "active", `Auditoría voz/ritmo caps ${startChapter}-${endChapter} (${completedAudits}/${totalAudits})...`);
+            
+            try {
+              const result = await this.voiceRhythmAuditor.auditVoiceRhythm(block, startChapter, endChapter);
+              qaResults.push({ type: 'voice', result, startChapter, endChapter });
+            } catch (e: any) {
+              qaResults.push({ type: 'voice', error: e.message });
+            }
           }
           
-          // Semantic Repetition Detector - analyze full manuscript summaries
-          qaPromises.push(
-            this.semanticRepetitionDetector.detectRepetitions(chapterSummaries, completedChapters.length)
-              .then(result => ({ type: 'semantic', result }))
-              .catch(e => ({ type: 'semantic', error: e.message }))
-          );
+          // Semantic Repetition Detector - analyze full manuscript summaries (SEQUENTIAL)
+          if (await this.shouldStopProcessing(project.id)) return;
           
-          this.callbacks.onAgentStatus("beta-reader", "active", `Ejecutando ${qaPromises.length} auditorías QA en paralelo...`);
+          completedAudits++;
+          this.callbacks.onAgentStatus("beta-reader", "active", `Auditoría repeticiones semánticas (${completedAudits}/${totalAudits})...`);
           
-          const qaResults = await Promise.all(qaPromises);
+          try {
+            const result = await this.semanticRepetitionDetector.detectRepetitions(chapterSummaries, completedChapters.length);
+            qaResults.push({ type: 'semantic', result });
+          } catch (e: any) {
+            qaResults.push({ type: 'semantic', error: e.message });
+          }
+          
+          this.callbacks.onAgentStatus("beta-reader", "active", `Auditoría QA completada (${totalAudits} análisis secuenciales).`);
           
           // Process QA results and convert to unified issue format
           for (const qaResult of qaResults) {
