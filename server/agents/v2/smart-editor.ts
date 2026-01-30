@@ -16,6 +16,15 @@ export interface SurgicalFixInput {
   chapterContent: string;
   errorDescription: string;
   consistencyConstraints?: string;
+  // Extended context for full rewrites
+  worldBible?: any;
+  chapterNumber?: number;
+  chapterTitle?: string;
+  previousChapterSummary?: string;
+  nextChapterSummary?: string;
+  styleGuide?: string;
+  projectTitle?: string;
+  genre?: string;
 }
 
 export interface SmartEditorOutput {
@@ -190,34 +199,105 @@ Responde en JSON:
   }
 
   /**
-   * Full chapter rewrite - last resort when surgical patches fail
-   * Rewrites the entire chapter following correction instructions while preserving style
+   * Full chapter rewrite - rewrites entire chapter with complete context
+   * Now includes World Bible, character info, and all relevant context for better corrections
    */
   async fullRewrite(input: SurgicalFixInput): Promise<AgentResponse & { rewrittenContent?: string }> {
     console.log(`[SmartEditor] Full rewrite for chapter (${input.chapterContent.length} chars)...`);
     
-    const rewritePrompt = `REESCRITURA COMPLETA DE CAPÍTULO
+    // Build comprehensive context section
+    let contextSection = "";
+    
+    if (input.projectTitle || input.genre) {
+      contextSection += `PROYECTO: "${input.projectTitle || 'Sin título'}" (${input.genre || 'Ficción'})\n\n`;
+    }
+    
+    if (input.chapterNumber || input.chapterTitle) {
+      contextSection += `CAPÍTULO ${input.chapterNumber || '?'}: "${input.chapterTitle || 'Sin título'}"\n\n`;
+    }
+    
+    // Add narrative context from adjacent chapters
+    if (input.previousChapterSummary) {
+      contextSection += `RESUMEN DEL CAPÍTULO ANTERIOR:\n${input.previousChapterSummary}\n\n`;
+    }
+    if (input.nextChapterSummary) {
+      contextSection += `RESUMEN DEL CAPÍTULO SIGUIENTE:\n${input.nextChapterSummary}\n\n`;
+    }
+    
+    // Add World Bible context if available
+    if (input.worldBible) {
+      const wb = input.worldBible;
+      
+      if (wb.characters && wb.characters.length > 0) {
+        contextSection += `PERSONAJES PRINCIPALES:\n`;
+        for (const char of wb.characters.slice(0, 10)) {
+          contextSection += `- ${char.name}: ${char.description || char.role || 'Sin descripción'}\n`;
+          if (char.traits) contextSection += `  Rasgos: ${Array.isArray(char.traits) ? char.traits.join(', ') : char.traits}\n`;
+        }
+        contextSection += `\n`;
+      }
+      
+      if (wb.locations && wb.locations.length > 0) {
+        contextSection += `LOCACIONES:\n`;
+        for (const loc of wb.locations.slice(0, 5)) {
+          contextSection += `- ${loc.name}: ${loc.description || 'Sin descripción'}\n`;
+        }
+        contextSection += `\n`;
+      }
+      
+      if (wb.worldRules && wb.worldRules.length > 0) {
+        contextSection += `REGLAS DEL MUNDO (OBLIGATORIAS):\n`;
+        for (const rule of wb.worldRules) {
+          contextSection += `- ${rule}\n`;
+        }
+        contextSection += `\n`;
+      }
+      
+      if (wb.persistentInjuries && Object.keys(wb.persistentInjuries).length > 0) {
+        contextSection += `HERIDAS/CONDICIONES PERSISTENTES:\n`;
+        for (const [char, injuries] of Object.entries(wb.persistentInjuries)) {
+          contextSection += `- ${char}: ${Array.isArray(injuries) ? injuries.join(', ') : injuries}\n`;
+        }
+        contextSection += `\n`;
+      }
+      
+      if (wb.plotDecisions && Object.keys(wb.plotDecisions).length > 0) {
+        contextSection += `DECISIONES DE TRAMA ESTABLECIDAS:\n`;
+        for (const [key, value] of Object.entries(wb.plotDecisions)) {
+          contextSection += `- ${key}: ${value}\n`;
+        }
+        contextSection += `\n`;
+      }
+    }
+    
+    // Add style guide if available
+    if (input.styleGuide) {
+      contextSection += `GUÍA DE ESTILO:\n${input.styleGuide}\n\n`;
+    }
+    
+    const rewritePrompt = `REESCRITURA COMPLETA DE CAPÍTULO CON CONTEXTO
 
-IMPORTANTE: Los parches quirúrgicos han fallado repetidamente. Debes REESCRIBIR el capítulo completo corrigiendo todos los problemas indicados.
-
-PROBLEMAS A CORREGIR:
+${contextSection}
+PROBLEMAS QUE DEBES CORREGIR OBLIGATORIAMENTE:
 ${input.errorDescription}
 
-${input.consistencyConstraints ? `RESTRICCIONES DE CONSISTENCIA QUE DEBES RESPETAR:\n${input.consistencyConstraints}\n` : ''}
+${input.consistencyConstraints ? `RESTRICCIONES DE CONSISTENCIA:\n${input.consistencyConstraints}\n\n` : ''}
 
-CAPÍTULO ORIGINAL:
+CAPÍTULO ORIGINAL A REESCRIBIR:
 ${input.chapterContent}
 
 INSTRUCCIONES ESTRICTAS:
-1. Reescribe el capítulo COMPLETO desde el principio hasta el final
-2. CORRIGE todos los problemas indicados arriba
-3. MANTÉN el estilo, tono y voz narrativa del autor original
-4. PRESERVA la estructura general de escenas y la longitud aproximada
-5. NO agregues contenido nuevo que no estaba en el original
-6. NO elimines escenas o eventos importantes del original
-7. El resultado debe ser el capítulo CORREGIDO y COMPLETO
+1. REESCRIBE el capítulo COMPLETO desde el principio hasta el final
+2. CORRIGE TODOS los problemas listados arriba - esto es OBLIGATORIO
+3. RESPETA el World Bible: personajes, locaciones, reglas del mundo, heridas persistentes
+4. MANTÉN el estilo, tono y voz narrativa del autor original
+5. PRESERVA la estructura general de escenas y la longitud aproximada
+6. NO agregues contenido nuevo que no estaba en el original
+7. NO elimines escenas o eventos importantes del original
+8. VERIFICA que cada problema listado haya sido corregido antes de entregar
 
-Responde ÚNICAMENTE con el capítulo reescrito, sin explicaciones ni comentarios adicionales.`;
+El resultado debe ser el capítulo COMPLETO y CORREGIDO.
+Responde ÚNICAMENTE con el capítulo reescrito, sin explicaciones, comentarios ni formato markdown.`;
 
     const response = await this.generateContent(rewritePrompt);
     

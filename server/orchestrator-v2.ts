@@ -223,6 +223,68 @@ Detecta ideas repetidas, frases recurrentes, foreshadowing sin resolver y elemen
   }
 }
 
+// Internal Agent: Injury Extractor - extracts significant injuries from chapter content
+class InjuryExtractorAgent extends BaseAgent {
+  constructor() {
+    super({
+      name: "Injury Extractor",
+      role: "injury_extractor",
+      systemPrompt: `Eres un analizador de contenido narrativo especializado en detectar lesiones y condiciones físicas de personajes.
+Tu trabajo es identificar SOLO lesiones SIGNIFICATIVAS que afectarían las acciones futuras de los personajes.
+
+INCLUIR:
+- Disparos, cortes profundos, huesos rotos
+- Quemaduras graves, envenenamientos
+- Cirugías, amputaciones
+- Cualquier herida que limite movimiento o capacidades
+
+IGNORAR:
+- Moretones menores, rasguños superficiales
+- Cansancio normal, hambre, sed
+- Dolor emocional (sin manifestación física)
+
+RESPONDE SIEMPRE EN JSON VÁLIDO.`,
+      model: "deepseek-chat",
+      useThinking: false,
+    });
+  }
+
+  async execute(input: { chapterNumber: number; content: string; characterNames: string[] }): Promise<any> {
+    const prompt = `Analiza este capítulo y extrae SOLO las lesiones, heridas o condiciones físicas SIGNIFICATIVAS.
+
+PERSONAJES CONOCIDOS: ${input.characterNames.join(', ')}
+
+CAPÍTULO ${input.chapterNumber}:
+${input.content.substring(0, 8000)}
+
+Responde en JSON:
+{
+  "injuries": [
+    {
+      "personaje": "Nombre del personaje",
+      "tipo_lesion": "Descripción breve de la lesión",
+      "parte_afectada": "brazo/pierna/torso/cabeza/etc",
+      "severidad": "leve|moderada|grave|critica",
+      "efecto_esperado": "Qué limitaciones debería tener en capítulos siguientes",
+      "es_temporal": false
+    }
+  ]
+}
+
+Si NO hay lesiones significativas, responde: {"injuries": []}`;
+
+    const response = await this.generateContent(prompt);
+    let result: { injuries: any[] } = { injuries: [] };
+    try {
+      const jsonMatch = response.content.match(/\{[\s\S]*"injuries"[\s\S]*\}/);
+      if (jsonMatch) result = JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      console.error("[InjuryExtractor] Failed to parse:", e);
+    }
+    return { ...result, tokenUsage: response.tokenUsage };
+  }
+}
+
 // Interface for QA issues (unified format)
 interface QAIssue {
   source: string;
@@ -265,6 +327,7 @@ export class OrchestratorV2 {
   private continuitySentinel = new ContinuitySentinelAgent();
   private voiceRhythmAuditor = new VoiceRhythmAuditorAgent();
   private semanticRepetitionDetector = new SemanticRepetitionDetectorAgent();
+  private injuryExtractor = new InjuryExtractorAgent();
   
   // Beta Reader for commercial viability analysis
   private betaReader = new BetaReaderAgent();
@@ -914,72 +977,20 @@ ${decisions.join('\n')}
       .slice(0, 20);
     
     if (characterNames.length === 0) return;
-    
-    const prompt = `Analiza este capítulo y extrae SOLO las lesiones, heridas o condiciones físicas SIGNIFICATIVAS que sufren los personajes.
-
-PERSONAJES CONOCIDOS: ${characterNames.join(', ')}
-
-CAPÍTULO ${chapterNumber}:
-${chapterContent.substring(0, 8000)}
-
-INSTRUCCIONES:
-- Solo reporta lesiones SIGNIFICATIVAS que afectarían acciones futuras
-- Ignora moretones menores, cansancio normal, etc.
-- Incluye: disparos, cortes profundos, huesos rotos, quemaduras, envenenamientos, cirugías, amputaciones
-
-Responde en JSON:
-{
-  "injuries": [
-    {
-      "personaje": "Nombre del personaje",
-      "tipo_lesion": "Descripción breve de la lesión",
-      "parte_afectada": "brazo/pierna/torso/cabeza/etc",
-      "severidad": "leve|moderada|grave|critica",
-      "efecto_esperado": "Qué limitaciones debería tener en capítulos siguientes",
-      "es_temporal": false
-    }
-  ]
-}
-
-Si NO hay lesiones significativas, responde: {"injuries": []}`;
 
     try {
-      const response = await this.callAI(prompt, "deepseek-chat", 0.3, 1500);
-      this.addTokenUsage(response.tokenUsage);
+      // Use the InjuryExtractor agent instead of raw API call
+      const response = await this.injuryExtractor.execute({
+        chapterNumber,
+        content: chapterContent,
+        characterNames,
+      });
       
-      // Robust JSON parsing with multiple recovery strategies
-      let parsed: { injuries: any[] } | null = null;
-      const content = response.content;
-      
-      // Strategy 1: Match JSON object containing "injuries"
-      const jsonMatch = content.match(/\{[\s\S]*"injuries"[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          parsed = JSON.parse(jsonMatch[0]);
-        } catch (e) {
-          // Strategy 2: Find first { and last } for malformed JSON
-          const firstBrace = content.indexOf('{');
-          const lastBrace = content.lastIndexOf('}');
-          if (firstBrace !== -1 && lastBrace > firstBrace) {
-            try {
-              parsed = JSON.parse(content.substring(firstBrace, lastBrace + 1));
-            } catch (e2) {
-              // Strategy 3: Try to extract just the injuries array
-              const arrayMatch = content.match(/\[[\s\S]*?\]/);
-              if (arrayMatch) {
-                try {
-                  const injuries = JSON.parse(arrayMatch[0]);
-                  if (Array.isArray(injuries)) {
-                    parsed = { injuries };
-                  }
-                } catch (e3) {
-                  console.warn(`[OrchestratorV2] All JSON parsing strategies failed for Chapter ${chapterNumber}`);
-                }
-              }
-            }
-          }
-        }
+      if (response.tokenUsage) {
+        this.addTokenUsage(response.tokenUsage);
       }
+      
+      const parsed = response;
       
       if (!parsed || !Array.isArray(parsed.injuries) || parsed.injuries.length === 0) {
         return;
@@ -2630,7 +2641,7 @@ Si NO hay lesiones significativas, responde: {"injuries": []}`;
 
         // LitAgents 2.1: Extract injuries from chapter content and save to World Bible
         try {
-          const worldBibleData = await storage.getWorldBibleByProject(project.id);
+          const worldBibleData = await storage.getWorldBibleByProject(project.id) as any;
           const characters = (worldBibleData?.characters || worldBibleData?.personajes || []) as any[];
           await this.extractInjuriesFromChapter(project.id, chapterNumber, finalText, characters);
         } catch (injuryError) {
@@ -3688,13 +3699,28 @@ ${issuesDescription}`;
                     console.warn(`[OrchestratorV2] Full rewrite FAILED for Chapter ${chapNum} - no valid content returned`);
                   }
                 } else {
-                  // MINOR ISSUES: Use fullRewrite for reliability (patches were failing too often)
-                  console.log(`[OrchestratorV2] Minor issues for Chapter ${chapNum}, using fullRewrite for reliability`);
+                  // MINOR ISSUES: Use fullRewrite with FULL CONTEXT for reliability
+                  console.log(`[OrchestratorV2] Minor issues for Chapter ${chapNum}, using fullRewrite with full context`);
                   
                   const fixResult = await this.smartEditor.fullRewrite({
                     chapterContent: chapter.content,
-                    errorDescription: `PROBLEMAS A CORREGIR:\n${issuesDescription}`,
+                    errorDescription: issuesDescription,
                     consistencyConstraints: JSON.stringify(chapterContext.mainCharacters),
+                    // Pass full context for better corrections
+                    worldBible: {
+                      characters: chapterContext.mainCharacters,
+                      locations: chapterContext.locations,
+                      worldRules: chapterContext.worldRules,
+                      persistentInjuries: chapterContext.persistentInjuries,
+                      plotDecisions: chapterContext.plotDecisions,
+                    },
+                    chapterNumber: chapNum,
+                    chapterTitle: chapter.title || undefined,
+                    previousChapterSummary: chapterContext.previousChapterSummary,
+                    nextChapterSummary: chapterContext.nextChapterSummary,
+                    styleGuide: chapterContext.styleGuide,
+                    projectTitle: project.title,
+                    genre: project.genre || undefined,
                   });
                   
                   this.addTokenUsage(fixResult.tokenUsage);
@@ -3781,13 +3807,27 @@ ${issuesDescription}`;
                     console.error(`[OrchestratorV2] Pre-review surgicalFix failed for Chapter ${chapNum}:`, patchError);
                   }
                   
-                  // LAST RESORT: Try fullRewrite again with simpler prompt
+                  // LAST RESORT: Try fullRewrite again with full context
                   if (!retrySuccess) {
-                    console.log(`[OrchestratorV2] Pre-review: Chapter ${chapNum} surgicalFix failed, final fullRewrite attempt...`);
+                    console.log(`[OrchestratorV2] Pre-review: Chapter ${chapNum} surgicalFix failed, final fullRewrite attempt with full context...`);
                     try {
                       const retryResult = await this.smartEditor.fullRewrite({
                         chapterContent: chapter.content,
-                        errorDescription: `CORRIGE ESTOS PROBLEMAS:\n${issuesDescription.substring(0, 2000)}\n\nReescribe el capítulo corrigiendo los problemas. El resultado DEBE ser diferente del original.`,
+                        errorDescription: `CORRIGE ESTOS PROBLEMAS (OBLIGATORIO):\n${issuesDescription}\n\nReescribe el capítulo corrigiendo TODOS los problemas. El resultado DEBE ser diferente del original.`,
+                        worldBible: {
+                          characters: chapterContext.mainCharacters,
+                          locations: chapterContext.locations,
+                          worldRules: chapterContext.worldRules,
+                          persistentInjuries: chapterContext.persistentInjuries,
+                          plotDecisions: chapterContext.plotDecisions,
+                        },
+                        chapterNumber: chapNum,
+                        chapterTitle: chapter.title || undefined,
+                        previousChapterSummary: chapterContext.previousChapterSummary,
+                        nextChapterSummary: chapterContext.nextChapterSummary,
+                        styleGuide: chapterContext.styleGuide,
+                        projectTitle: project.title,
+                        genre: project.genre || undefined,
                       });
                       this.addTokenUsage(retryResult.tokenUsage);
                       
@@ -4395,12 +4435,26 @@ ${issuesDescription}`;
                     }
                   }
 
-                  // FALLBACK: If still no content, use fullRewrite as last resort
+                  // FALLBACK: If still no content, use fullRewrite as last resort with full context
                   if (!correctedContent) {
-                    console.log(`[OrchestratorV2] Forcing fullRewrite as last resort for Chapter ${chapNum}`);
+                    console.log(`[OrchestratorV2] Forcing fullRewrite as last resort for Chapter ${chapNum} with full context`);
                     const fixResult = await this.smartEditor.fullRewrite({
                       chapterContent: chapter.content || "",
                       errorDescription: issuesDescription,
+                      worldBible: {
+                        characters: chapterContext.mainCharacters,
+                        locations: chapterContext.locations,
+                        worldRules: chapterContext.worldRules,
+                        persistentInjuries: chapterContext.persistentInjuries,
+                        plotDecisions: chapterContext.plotDecisions,
+                      },
+                      chapterNumber: chapNum,
+                      chapterTitle: chapter.title || undefined,
+                      previousChapterSummary: chapterContext.previousChapterSummary,
+                      nextChapterSummary: chapterContext.nextChapterSummary,
+                      styleGuide: chapterContext.styleGuide,
+                      projectTitle: project.title,
+                      genre: project.genre || undefined,
                     });
                     this.addTokenUsage(fixResult.tokenUsage);
                     if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
@@ -4511,30 +4565,34 @@ ${issuesDescription}`;
                 }
               }
               
-              // LAST RESORT: Full chapter rewrite with simplified instructions
+              // LAST RESORT: Full chapter rewrite with full context
               if (!retrySuccess) {
-                console.log(`[OrchestratorV2] Attempting FULL REWRITE as last resort for Chapter ${chapNum}...`);
+                console.log(`[OrchestratorV2] Attempting FULL REWRITE as last resort for Chapter ${chapNum} with full context...`);
                 this.callbacks.onAgentStatus("smart-editor", "active", `Capitulo ${chapNum}: reescritura completa (último recurso)...`);
                 
-                // Simplify the issues to just the essential corrections needed
-                const simplifiedIssues = chapterIssues.slice(0, 3).map((issue, idx) => 
-                  `${idx + 1}. [${issue.severidad?.toUpperCase() || 'MAYOR'}] ${issue.descripcion?.substring(0, 200) || 'Error de continuidad'}`
+                // Include all issues for complete correction
+                const allIssuesDescription = chapterIssues.map((issue, idx) => 
+                  `${idx + 1}. [${issue.severidad?.toUpperCase() || 'MAYOR'}] ${issue.categoria}: ${issue.descripcion}\n   Corrección: ${issue.instrucciones_correccion || 'Corregir según descripción'}`
                 ).join('\n');
-                
-                const directInstructions = `REESCRITURA OBLIGATORIA - INSTRUCCIONES DIRECTAS:
-
-${simplifiedIssues}
-
-REGLAS:
-- Reescribe el capítulo completo corrigiendo SOLO los problemas indicados
-- Mantén exactamente el mismo tono, estilo y longitud
-- NO añadas contenido nuevo ni escenas nuevas
-- El resultado DEBE ser diferente al original`;
 
                 try {
                   const fullRewriteResult = await this.smartEditor.fullRewrite({
                     chapterContent: chapter.content || "",
-                    errorDescription: directInstructions,
+                    errorDescription: allIssuesDescription,
+                    worldBible: {
+                      characters: chapterContext.mainCharacters,
+                      locations: chapterContext.locations,
+                      worldRules: chapterContext.worldRules,
+                      persistentInjuries: chapterContext.persistentInjuries,
+                      plotDecisions: chapterContext.plotDecisions,
+                    },
+                    chapterNumber: chapNum,
+                    chapterTitle: chapter.title || undefined,
+                    previousChapterSummary: chapterContext.previousChapterSummary,
+                    nextChapterSummary: chapterContext.nextChapterSummary,
+                    styleGuide: chapterContext.styleGuide,
+                    projectTitle: project.title,
+                    genre: project.genre || undefined,
                   });
                   this.addTokenUsage(fullRewriteResult.tokenUsage);
                   
@@ -4807,7 +4865,7 @@ REGLAS:
         this.callbacks.onAgentStatus("chapter-architect", "active", `Planificando escenas para Capítulo ${chapterNum}...`);
         
         // Get full outline for plot context (World Bible stores as chapterOutlines, not chapters)
-        const plotData = worldBibleData?.plotOutline as any;
+        const plotData = (worldBibleData as any)?.plotOutline as any;
         const fullOutline = plotData?.chapterOutlines || plotData?.chapters || [];
         
         const chapterPlan = await this.chapterArchitect.execute({
@@ -5046,7 +5104,7 @@ REGLAS:
 
         // Plan new scenes (WITH constraints)
         // Get full outline for plot context (World Bible stores as chapterOutlines, not chapters)
-        const plotData2 = worldBibleData?.plotOutline as any;
+        const plotData2 = (worldBibleData as any)?.plotOutline as any;
         const fullOutline = plotData2?.chapterOutlines || plotData2?.chapters || [];
         
         const chapterPlan = await this.chapterArchitect.execute({
