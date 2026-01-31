@@ -54,7 +54,7 @@ Preferred communication style: Simple, everyday language.
 - **Translation Export Improvements**: Markdown exports strip artifacts, omit dividers, and use localized chapter labels.
 - **Immediate Continuity Validation**: Validates chapters after writing, enforcing consistency through targeted rewrites.
 - **Mandatory Continuity Constraints**: Ghostwriter receives structured constraints to prevent violations.
-- **DeepSeek-Based FinalReviewer with Tranche System**: Divides manuscripts into tranches for cost-efficient review, accumulating context and deduplicating issues.
+- **DeepSeek-Based FinalReviewer with Tranche System**: Divides manuscripts into tranches for cost-efficient review, accumulating context and deduplicating issues. Token-aware tranche sizing (70K limit per tranche) with 40K reserved for prompt overhead.
 
 ### LitAgents 2.0 (Scene-Based Pipeline)
 - **Architecture**: Scene-based writing pipeline optimized for DeepSeek AI models.

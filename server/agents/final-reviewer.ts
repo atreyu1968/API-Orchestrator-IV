@@ -492,12 +492,12 @@ SALIDA OBLIGATORIA (JSON):
 }
 `;
 
-// DeepSeek R1 has 131k token context limit; reserve ~20k for prompt and response
-const MAX_TOKENS_PER_TRANCHE = 100000;
+// DeepSeek R1 has 131k token context limit; reserve ~40k for prompt overhead (World Bible, style guide, instructions, accumulated context) and response
+const MAX_TOKENS_PER_TRANCHE = 70000;
 // Approximate tokens per character (conservative estimate for Spanish text)
 const TOKENS_PER_CHAR = 0.35;
 // Fallback chapter limit when no act structure is available
-const CHAPTERS_PER_TRANCHE_FALLBACK = 8;
+const CHAPTERS_PER_TRANCHE_FALLBACK = 5;
 
 export class FinalReviewerAgent extends BaseAgent {
   constructor() {
@@ -983,20 +983,45 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
       console.log(`[FinalReviewer] Dividiendo ${totalChapters} capítulos por ACTOS: ${actTranches.map(t => `${t.label}(${t.chapters.length})`).join(', ')}`);
     }
     
-    // Fallback to fixed-size tranches if no act structure available OR if act structure produced no valid tranches
+    // Fallback to token-aware tranches if no act structure available OR if act structure produced no valid tranches
     if (actTranches.length === 0) {
-      const numFixedTranches = Math.ceil(totalChapters / CHAPTERS_PER_TRANCHE_FALLBACK);
-      for (let t = 0; t < numFixedTranches; t++) {
-        const startIdx = t * CHAPTERS_PER_TRANCHE_FALLBACK;
-        const endIdx = Math.min(startIdx + CHAPTERS_PER_TRANCHE_FALLBACK, totalChapters);
+      // Build tranches dynamically based on token estimation rather than fixed chapter count
+      let currentTranche: typeof sortedChapters = [];
+      let currentTokens = 0;
+      let trancheCount = 0;
+      
+      for (const chapter of sortedChapters) {
+        const chapterTokens = (chapter.contenido?.length || 0) * TOKENS_PER_CHAR;
+        
+        // If adding this chapter would exceed limit and we have chapters, save current tranche
+        if (currentTranche.length > 0 && (currentTokens + chapterTokens > MAX_TOKENS_PER_TRANCHE || currentTranche.length >= CHAPTERS_PER_TRANCHE_FALLBACK)) {
+          trancheCount++;
+          actTranches.push({
+            chapters: currentTranche,
+            label: `Tramo ${trancheCount}`,
+            actName: `Tramo ${trancheCount}`,
+            goal: '',
+          });
+          currentTranche = [];
+          currentTokens = 0;
+        }
+        
+        currentTranche.push(chapter);
+        currentTokens += chapterTokens;
+      }
+      
+      // Add remaining chapters as final tranche
+      if (currentTranche.length > 0) {
+        trancheCount++;
         actTranches.push({
-          chapters: sortedChapters.slice(startIdx, endIdx),
-          label: `Tramo ${t + 1}`,
-          actName: `Tramo ${t + 1}`,
+          chapters: currentTranche,
+          label: `Tramo ${trancheCount}`,
+          actName: `Tramo ${trancheCount}`,
           goal: '',
         });
       }
-      console.log(`[FinalReviewer] Dividiendo ${totalChapters} capítulos en ${numFixedTranches} tramos de ~${CHAPTERS_PER_TRANCHE_FALLBACK} capítulos (sin estructura de actos válida)`);
+      
+      console.log(`[FinalReviewer] Dividiendo ${totalChapters} capítulos en ${trancheCount} tramos basados en tokens (sin estructura de actos válida)`);
     }
 
     // Pre-analyze entire manuscript for global patterns (Deus Ex Machina, repetitions, etc.)
