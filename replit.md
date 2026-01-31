@@ -86,6 +86,14 @@ Preferred communication style: Simple, everyday language.
 - **Data Normalization**: Storage layer normalizes field names between extractor output and consumer expectations for consistent data contracts.
 - **UI Component**: SeriesWorldBiblePanel displays accumulated data with expandable sections for all entity types.
 
+### LitAgents 2.5 (Proactive Quality Prevention)
+- **Purpose**: Prevents minor quality issues during initial composition rather than detecting them only during final review.
+- **Enhanced VocabularyTracker**: Lower threshold (2 repetitions), detects domain-specific/technical words repeated 3+ times in 2 paragraphs, tracks scene transitions for abrupt changes.
+- **Transition Validation**: SmartEditor penalizes abrupt scene transitions (location/time jumps without narrative connection) with -1 ESTILO per occurrence.
+- **Chekhov's Gun Validation**: SmartEditor detects objects used without prior establishment, penalizing with -1 LÓGICA per occurrence.
+- **Ghostwriter Prevention**: Explicit instructions about smooth transitions ("Veinte minutos después...") and object establishment before use.
+- **Architecture Principle**: Prevention > Detection > Correction (minimize token waste on corrections during FinalReviewer cycles).
+
 ### LitAgents 2.4 (Death Tracking & Loop Prevention)
 - **Purpose**: Prevents character resurrection errors and infinite correction loops in the FinalReviewer.
 - **Deceased Character Tracking**: UniversalConsistency automatically extracts deaths (estado_vital=MUERTO, capitulo_muerte, causa_muerte) and injects a prominent "PERSONAJES FALLECIDOS" block into Ghostwriter constraints, prohibiting dead characters from appearing alive.
