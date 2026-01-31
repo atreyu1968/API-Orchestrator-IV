@@ -454,6 +454,29 @@ export const PROMPTS_V2 = {
     ╚══════════════════════════════════════════════════════════════════╝
     
     ╔══════════════════════════════════════════════════════════════════╗
+    ║ 🔗 TRANSICIONES Y CHEKHOV'S GUN (LitAgents 2.5)                 ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║                                                                  ║
+    ║ TRANSICIONES SUAVES (NUNCA saltos bruscos):                     ║
+    ║    - Si cambia la ubicación: describe brevemente el tránsito    ║
+    ║      ("Veinte minutos después, el taxi lo dejó en...")          ║
+    ║    - Si cambia el tiempo: indica el paso del tiempo             ║
+    ║      ("Al día siguiente...", "Cuando el reloj marcó las...")    ║
+    ║    - Si cambia la perspectiva: transición gradual, no corte     ║
+    ║    - PROHIBIDO: saltar de un lugar a otro sin conectar          ║
+    ║    → La última frase de cada escena debe ANTICIPAR el cambio    ║
+    ║                                                                  ║
+    ║ CHEKHOV'S GUN (Todo objeto usado debe estar establecido):       ║
+    ║    - Si un personaje usa un objeto (arma, herramienta, etc.)    ║
+    ║      → debe haberse mencionado antes en la narrativa            ║
+    ║    - PROHIBIDO: objetos que "aparecen" convenientemente         ║
+    ║      ("sacó un frasco de..." sin haberlo establecido antes)     ║
+    ║    - Si es improvisado: describe explícitamente la búsqueda     ║
+    ║      ("Buscó algo que sirviera. Encontró un trozo de...")       ║
+    ║    → ANTES de usar cualquier objeto: ¿ya se mencionó?           ║
+    ╚══════════════════════════════════════════════════════════════════╝
+    
+    ╔══════════════════════════════════════════════════════════════════╗
     ║ 🕐📍🏥 COHERENCIA TEMPORAL, GEOGRÁFICA Y FÍSICA                  ║
     ╠══════════════════════════════════════════════════════════════════╣
     ║                                                                  ║
@@ -592,6 +615,27 @@ export const PROMPTS_V2 = {
     ║      → LÓGICA = 4 máximo.                                       ║
     ║    - Recuperación milagrosa (herida grave → activo en horas)    ║
     ║      → LÓGICA = 5 máximo.                                       ║
+    ╚══════════════════════════════════════════════════════════════════╝
+    
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║ 🔗 TRANSICIONES Y CHEKHOV'S GUN (LitAgents 2.5)                 ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║                                                                  ║
+    ║ ❌ TRANSICIÓN ABRUPTA: Si hay un cambio de ubicación o tiempo   ║
+    ║    sin conectar narrativamente (salto brusco entre escenas)     ║
+    ║    → ESTILO - 1 punto por cada transición abrupta.              ║
+    ║    → FEEDBACK: especificar dónde ocurre el salto.               ║
+    ║                                                                  ║
+    ║ ❌ OBJETO SIN ORIGEN (Chekhov's Gun inverso):                   ║
+    ║    - Personaje usa objeto no mencionado anteriormente           ║
+    ║      (frasco, herramienta, arma que "aparece" de la nada)       ║
+    ║      → LÓGICA - 1 punto por cada objeto sin origen.             ║
+    ║    → FEEDBACK: identificar el objeto y sugerir establecerlo.    ║
+    ║                                                                  ║
+    ║ ❌ REPETICIÓN DE PALABRAS TÉCNICAS:                             ║
+    ║    - Misma palabra técnica/específica 3+ veces en 2 párrafos    ║
+    ║      → ESTILO - 1 punto.                                        ║
+    ║    → FEEDBACK: identificar la palabra y sugerir sinónimos.      ║
     ╚══════════════════════════════════════════════════════════════════╝
 
     REGLAS DE APROBACIÓN:

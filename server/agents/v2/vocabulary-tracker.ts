@@ -1,5 +1,6 @@
-// LitAgents 2.2 - Vocabulary Tracker
+// LitAgents 2.5 - Enhanced Vocabulary Tracker
 // Tracks used expressions and vocabulary to prevent semantic repetition
+// Improved: Lower thresholds, domain-specific word detection, transition tracking
 
 interface VocabularyReport {
   overusedWords: string[];
@@ -7,6 +8,8 @@ interface VocabularyReport {
   dialogueVerbs: { verb: string; count: number }[];
   paragraphStarters: string[];
   avoidInNextScene: string[];
+  domainWords: { word: string; count: number }[]; // Technical/domain-specific words
+  sceneTransitions: string[]; // Track how scenes end for transition quality
 }
 
 // Common words to ignore (articles, prepositions, etc.)
@@ -68,7 +71,6 @@ const AI_CLICHES = [
 export class VocabularyTracker {
   
   analyzeText(text: string): VocabularyReport {
-    // Normalize text to remove accents for consistent matching
     const normalizedText = normalizeText(text);
     
     const words = normalizedText
@@ -76,20 +78,27 @@ export class VocabularyTracker {
       .split(/\s+/)
       .filter(w => w.length > 3 && !STOP_WORDS.has(w));
     
-    // Count word frequency
     const wordCount = new Map<string, number>();
     for (const word of words) {
       wordCount.set(word, (wordCount.get(word) || 0) + 1);
     }
     
-    // Find overused words (appearing more than 3 times)
+    // LitAgents 2.5: Lower threshold to 2 repetitions for sensitive detection
     const overusedWords = Array.from(wordCount.entries())
-      .filter(([_, count]) => count > 3)
+      .filter(([_, count]) => count >= 2)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 15)
+      .slice(0, 20)
       .map(([word, count]) => `${word}(${count}x)`);
     
-    // Extract dialogue verbs usage (using normalized text)
+    // LitAgents 2.5: Detect domain-specific/technical words (longer, less common)
+    // Words with 7+ letters that appear 2+ times are likely domain-specific
+    const domainWords = Array.from(wordCount.entries())
+      .filter(([word, count]) => word.length >= 7 && count >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([word, count]) => ({ word, count }));
+    
+    // Extract dialogue verbs usage
     const dialogueVerbCount = new Map<string, number>();
     for (const verb of DIALOGUE_VERBS) {
       const regex = new RegExp(`\\b${verb}\\b`, 'gi');
@@ -109,6 +118,15 @@ export class VocabularyTracker {
       .filter(Boolean)
       .slice(-10);
     
+    // LitAgents 2.5: Track scene transitions (last sentences of paragraphs)
+    const sceneTransitions = paragraphs
+      .map(p => {
+        const sentences = p.trim().split(/[.!?]+/).filter(Boolean);
+        return sentences.length > 0 ? sentences[sentences.length - 1].trim().substring(0, 100) : '';
+      })
+      .filter(t => t.length > 20)
+      .slice(-5);
+    
     // Detect AI cliches in text
     const recentExpressions: string[] = [];
     for (const pattern of AI_CLICHES) {
@@ -121,9 +139,9 @@ export class VocabularyTracker {
     // Generate avoid list for next scene
     const avoidInNextScene: string[] = [];
     
-    // Add overused dialogue verbs
+    // Add overused dialogue verbs (threshold lowered to 1)
     dialogueVerbs
-      .filter(v => v.count >= 2)
+      .filter(v => v.count >= 1)
       .forEach(v => avoidInNextScene.push(`verbo "${v.verb}" (ya usado ${v.count}x)`));
     
     // Add repeated paragraph starters
@@ -136,15 +154,22 @@ export class VocabularyTracker {
     // Add detected cliches
     recentExpressions.forEach(expr => avoidInNextScene.push(`expresion "${expr}"`));
     
-    // Add most overused content words
-    overusedWords.slice(0, 5).forEach(w => avoidInNextScene.push(`palabra ${w}`));
+    // Add most overused content words (now includes 2x repetitions)
+    overusedWords.slice(0, 8).forEach(w => avoidInNextScene.push(`palabra ${w}`));
+    
+    // LitAgents 2.5: Add domain-specific words to avoid list
+    domainWords
+      .filter(d => d.count >= 2)
+      .forEach(d => avoidInNextScene.push(`término técnico "${d.word}" (${d.count}x) - usa sinónimo`));
     
     return {
       overusedWords,
       recentExpressions,
       dialogueVerbs,
       paragraphStarters: starters,
-      avoidInNextScene
+      avoidInNextScene,
+      domainWords,
+      sceneTransitions
     };
   }
 
