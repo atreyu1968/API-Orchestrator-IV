@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { OrchestratorV2 } from "./orchestrator-v2";
 import { queueManager } from "./queue-manager";
-import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema, consistencyViolations, worldEntities, worldRulesTable, worldBibles } from "@shared/schema";
+import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema, consistencyViolations, worldEntities, worldRulesTable, worldBibles, chapterAnnotations, insertChapterAnnotationSchema, chapters as chaptersTable } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import multer from "multer";
 import mammoth from "mammoth";
@@ -3362,6 +3362,164 @@ ${series.seriesGuide.substring(0, 50000)}`;
       res.status(500).json({ error: error.message || "Failed to reset chapter" });
     }
   });
+
+  // ============ MANUAL CHAPTER EDITING ENDPOINTS ============
+
+  // Update chapter content manually (save edits)
+  const updateChapterContentSchema = z.object({
+    content: z.string().min(1, "Content cannot be empty"),
+  });
+
+  app.put("/api/chapters/:chapterId", async (req: Request, res: Response) => {
+    try {
+      const chapterId = parseInt(req.params.chapterId);
+      
+      const validation = updateChapterContentSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.errors });
+      }
+      
+      const { content } = validation.data;
+      
+      // Get the chapter first to verify it exists
+      const existingChapter = await db.select().from(chaptersTable).where(eq(chaptersTable.id, chapterId)).limit(1);
+      if (existingChapter.length === 0) {
+        return res.status(404).json({ error: "Chapter not found" });
+      }
+      
+      const chapter = existingChapter[0];
+      
+      // Count words in new content
+      const wordCount = content.trim().split(/\s+/).filter(w => w.length > 0).length;
+      
+      // Save the original content if not already saved
+      const originalContent = chapter.originalContent || chapter.content;
+      
+      await storage.updateChapter(chapterId, {
+        content,
+        wordCount,
+        originalContent,
+      });
+      
+      console.log(`[ManualEdit] Chapter ${chapterId} updated manually, ${wordCount} words`);
+      
+      res.json({ 
+        success: true,
+        chapterId,
+        wordCount,
+        message: "Chapter content saved successfully",
+      });
+    } catch (error: any) {
+      console.error("Error updating chapter content:", error);
+      res.status(500).json({ error: error.message || "Failed to update chapter" });
+    }
+  });
+
+  // Get annotations for a chapter
+  app.get("/api/chapters/:chapterId/annotations", async (req: Request, res: Response) => {
+    try {
+      const chapterId = parseInt(req.params.chapterId);
+      
+      const annotations = await db.select()
+        .from(chapterAnnotations)
+        .where(eq(chapterAnnotations.chapterId, chapterId))
+        .orderBy(chapterAnnotations.startOffset);
+      
+      res.json(annotations);
+    } catch (error: any) {
+      console.error("Error fetching annotations:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch annotations" });
+    }
+  });
+
+  // Create a new annotation
+  app.post("/api/chapters/:chapterId/annotations", async (req: Request, res: Response) => {
+    try {
+      const chapterId = parseInt(req.params.chapterId);
+      
+      // Get chapter to verify it exists and get projectId
+      const existingChapter = await db.select().from(chaptersTable).where(eq(chaptersTable.id, chapterId)).limit(1);
+      if (existingChapter.length === 0) {
+        return res.status(404).json({ error: "Chapter not found" });
+      }
+      
+      const annotationSchema = z.object({
+        startOffset: z.number().min(0),
+        endOffset: z.number().min(0),
+        annotationType: z.enum(["error", "suggestion", "note"]).default("error"),
+        content: z.string().optional(),
+        note: z.string().optional(),
+      });
+      
+      const validation = annotationSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.errors });
+      }
+      
+      const { startOffset, endOffset, annotationType, content, note } = validation.data;
+      
+      const [newAnnotation] = await db.insert(chapterAnnotations)
+        .values({
+          chapterId,
+          projectId: existingChapter[0].projectId,
+          startOffset,
+          endOffset,
+          annotationType,
+          content: content || null,
+          note: note || null,
+          resolved: false,
+        })
+        .returning();
+      
+      console.log(`[Annotation] Created annotation for chapter ${chapterId}: ${annotationType}`);
+      
+      res.json(newAnnotation);
+    } catch (error: any) {
+      console.error("Error creating annotation:", error);
+      res.status(500).json({ error: error.message || "Failed to create annotation" });
+    }
+  });
+
+  // Mark annotation as resolved
+  app.patch("/api/annotations/:annotationId/resolve", async (req: Request, res: Response) => {
+    try {
+      const annotationId = parseInt(req.params.annotationId);
+      
+      const [updated] = await db.update(chapterAnnotations)
+        .set({ 
+          resolved: true, 
+          resolvedAt: sql`CURRENT_TIMESTAMP` 
+        })
+        .where(eq(chapterAnnotations.id, annotationId))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Annotation not found" });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error resolving annotation:", error);
+      res.status(500).json({ error: error.message || "Failed to resolve annotation" });
+    }
+  });
+
+  // Delete an annotation
+  app.delete("/api/annotations/:annotationId", async (req: Request, res: Response) => {
+    try {
+      const annotationId = parseInt(req.params.annotationId);
+      
+      await db.delete(chapterAnnotations)
+        .where(eq(chapterAnnotations.id, annotationId));
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting annotation:", error);
+      res.status(500).json({ error: error.message || "Failed to delete annotation" });
+    }
+  });
+
+  // ============ END MANUAL CHAPTER EDITING ENDPOINTS ============
 
   // Endpoint to rewrite a specific chapter with improvement instructions
   const rewriteChapterSchema = z.object({

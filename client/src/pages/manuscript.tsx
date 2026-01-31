@@ -416,7 +416,7 @@ export default function ManuscriptPage() {
             <CardTitle className="text-lg">Vista Previa</CardTitle>
           </CardHeader>
           <CardContent className="flex-1 min-h-0">
-            <ChapterViewer chapter={selectedChapter} />
+            <ChapterViewer chapter={selectedChapter} projectId={currentProject?.id} />
           </CardContent>
         </Card>
 

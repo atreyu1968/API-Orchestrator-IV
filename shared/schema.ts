@@ -170,6 +170,25 @@ export const insertEditingQueueSchema = createInsertSchema(editingQueue).omit({ 
 export type InsertEditingQueue = z.infer<typeof insertEditingQueueSchema>;
 export type EditingQueueItem = typeof editingQueue.$inferSelect;
 
+// Manual editing annotations - marks errors to be corrected in chapters
+export const chapterAnnotations = pgTable("chapter_annotations", {
+  id: serial("id").primaryKey(),
+  chapterId: integer("chapter_id").notNull().references(() => chapters.id, { onDelete: "cascade" }),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  startOffset: integer("start_offset").notNull(), // Character offset where annotation starts
+  endOffset: integer("end_offset").notNull(), // Character offset where annotation ends
+  annotationType: text("annotation_type").notNull().default("error"), // error, suggestion, note
+  content: text("content"), // The annotated text fragment
+  note: text("note"), // User's note about the issue
+  resolved: boolean("resolved").default(false),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  resolvedAt: timestamp("resolved_at"),
+});
+
+export const insertChapterAnnotationSchema = createInsertSchema(chapterAnnotations).omit({ id: true, createdAt: true, resolvedAt: true });
+export type InsertChapterAnnotation = z.infer<typeof insertChapterAnnotationSchema>;
+export type ChapterAnnotation = typeof chapterAnnotations.$inferSelect;
+
 // LitAgents 2.0: Plot Threads for Narrative Director
 export const plotThreads = pgTable("plot_threads", {
   id: serial("id").primaryKey(),
