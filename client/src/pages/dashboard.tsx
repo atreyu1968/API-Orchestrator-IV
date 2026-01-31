@@ -878,6 +878,9 @@ export default function Dashboard() {
                             : currentProject.finalScore >= 7 
                               ? "Aceptable con reservas"
                               : "No publicable - Requiere revisión"}
+                          {currentProject.revisionCycle && currentProject.revisionCycle > 0 && (
+                            <span className="ml-2">(Ciclo {currentProject.revisionCycle})</span>
+                          )}
                         </p>
                       </div>
                       <div className="text-right">
