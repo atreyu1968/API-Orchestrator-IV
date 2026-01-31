@@ -3194,8 +3194,21 @@ ${decisions.join('\n')}
 
     } catch (error) {
       console.error(`[OrchestratorV2] Error:`, error);
-      this.callbacks.onError(error instanceof Error ? error.message : String(error));
-      await storage.updateProject(project.id, { status: "error" });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.callbacks.onError(errorMessage);
+      
+      // Use "paused" instead of "error" to allow easy resume
+      await storage.updateProject(project.id, { status: "paused" });
+      
+      await storage.createActivityLog({
+        projectId: project.id,
+        level: "error",
+        message: `Error en orquestador: ${errorMessage.substring(0, 300)}. Presiona "Continuar" para reintentar.`,
+        agentRole: "system",
+        metadata: { error: errorMessage, recoverable: true },
+      });
+      
+      console.log(`[OrchestratorV2] Project ${project.id} paused after error - can resume with "Continuar" button`);
     }
   }
 
@@ -4464,8 +4477,15 @@ ${issuesDescription}`;
         // FinalReviewer returns 'result' not 'parsed'
         if (!reviewResult.result) {
           console.error("[OrchestratorV2] FinalReviewer failed to parse result");
-          this.callbacks.onError("Error al analizar el manuscrito");
-          await storage.updateProject(project.id, { status: "error" });
+          this.callbacks.onError("Error al analizar el manuscrito - presiona Continuar para reintentar");
+          await storage.updateProject(project.id, { status: "paused" });
+          await storage.createActivityLog({
+            projectId: project.id,
+            level: "error",
+            message: `FinalReviewer no pudo parsear respuesta (ciclo ${currentCycle}). Presiona "Continuar" para reintentar.`,
+            agentRole: "final-reviewer",
+            metadata: { cycle: currentCycle, recoverable: true },
+          });
           return;
         }
 
@@ -5277,8 +5297,29 @@ ${issuesDescription}`;
       }
     } catch (error) {
       console.error("[OrchestratorV2] Final review error:", error);
-      this.callbacks.onError(error instanceof Error ? error.message : String(error));
-      await storage.updateProject(project.id, { status: "error" });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.callbacks.onError(errorMessage);
+      
+      // Instead of "error" state, use "paused" to allow easy resume
+      // Save the current cycle state so it can resume from where it left off
+      await storage.updateProject(project.id, { 
+        status: "paused",
+      });
+      
+      // Log the error with context for easier debugging
+      await storage.createActivityLog({
+        projectId: project.id,
+        level: "error",
+        message: `Error durante revisión final (ciclo ${project.revisionCycle || 1}): ${errorMessage.substring(0, 300)}. Presiona "Continuar" para reintentar.`,
+        agentRole: "final-reviewer",
+        metadata: { 
+          error: errorMessage,
+          cycle: project.revisionCycle || 1,
+          recoverable: true,
+        },
+      });
+      
+      console.log(`[OrchestratorV2] Project ${project.id} paused after FinalReviewer error - can resume with "Continuar" button`);
     }
   }
 
