@@ -110,6 +110,15 @@ Preferred communication style: Simple, everyday language.
 - **Escalated Corrections**: generateEscalatedCorrection() creates expanded rewrite instructions that affect ALL chapters after the death event, with specific instructions to remove the dead character's active appearances.
 - **Automatic Scope Expansion**: When resurrection errors persist, the system automatically expands the correction scope to include all post-death chapters instead of just the flagged ones.
 
+### LitAgents 2.7 (Structural Issue Detection)
+- **Purpose**: Prevents infinite rewrite loops for issues that cannot be resolved by content rewriting (e.g., "move epilogue to end", "rename chapter").
+- **Structural Issue Detection**: `isStructuralIssue()` analyzes issue descriptions and instructions to detect patterns requiring moving/reordering/renaming instead of rewriting (mover capítulo, reubicar epílogo, renombrar, error de compaginación, etc.).
+- **Auto-Resolution System**: `autoResolveStructuralIssues()` automatically marks structural issues as "resolved" after 2 correction attempts on affected chapters, preventing infinite loops.
+- **Hash-Based Tracking**: Resolved structural issues are added to `resolvedIssueHashes` to prevent re-reporting in subsequent cycles.
+- **User Notification**: Activity logs inform users that structural issues require manual intervention (moving chapters, changing titles) and are accepted with reservations.
+- **Chapter Cleanup**: Chapters are removed from rewrite lists if their only remaining issues were structural.
+- **Enhanced Error Context**: FinalReviewer errors now include detailed context (cycle number, previous scores, resolved hashes count) for better debugging.
+
 ### Re-editor (LitEditors) Development Editor
 - **Purpose**: Transforms the Re-editor into a Development Editor with forensic consistency audits and commercial viability analysis.
 - **ForensicConsistencyAuditor**: Processes manuscripts in batches, detects 7 violation types, and builds incremental entity states.

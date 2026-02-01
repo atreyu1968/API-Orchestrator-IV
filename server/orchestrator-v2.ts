@@ -718,6 +718,110 @@ ${decisions.join('\n')}
   }
 
   // ============================================
+  // STRUCTURAL ISSUE DETECTION (LitAgents 2.7)
+  // ============================================
+  
+  /**
+   * Detect issues that are structural (require moving/reordering chapters, not rewriting).
+   * These issues cannot be resolved by content rewriting and should be marked as resolved
+   * after a limited number of correction attempts to prevent infinite loops.
+   */
+  private isStructuralIssue(issue: FinalReviewIssue): boolean {
+    const desc = (issue.descripcion || "").toLowerCase();
+    const instructions = (issue.instrucciones_correccion || "").toLowerCase();
+    const categoria = (issue.categoria || "").toLowerCase();
+    
+    // Patterns that indicate structural issues (require moving/reordering, not rewriting)
+    const structuralPatterns = [
+      /mover\s+(el\s+)?(capítulo|cap\.?|epilogo|epílogo|prologo|prólogo)/i,
+      /reubicar\s+(el\s+)?(capítulo|cap\.?|epilogo|epílogo)/i,
+      /colocar\s+(el\s+)?(capítulo|cap\.?|epilogo|epílogo)\s+(al\s+)?final/i,
+      /situado\s+al\s+(principio|inicio)/i,
+      /(al\s+inicio|al\s+principio)\s+.*spoiler/i,
+      /renombrar\s+(capítulo|cap\.?)/i,
+      /cambiar\s+(el\s+)?título\s+del\s+capítulo/i,
+      /estructura\s+confusa/i,
+      /error\s+de\s+compaginación/i,
+      /flashforward\s+.*claro/i,
+    ];
+    
+    const combinedText = `${desc} ${instructions}`;
+    
+    for (const pattern of structuralPatterns) {
+      if (pattern.test(combinedText)) {
+        return true;
+      }
+    }
+    
+    // Category-based structural detection
+    const structuralCategories = [
+      "coherencia_temporal",
+      "estructura",
+      "ordenamiento",
+    ];
+    
+    if (structuralCategories.includes(categoria)) {
+      // Check if instructions mention moving rather than rewriting content
+      if (/mover|reubicar|renombrar|reordenar|intercambiar/i.test(instructions)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Mark structural issues as resolved after they've been attempted twice.
+   * This prevents infinite loops on issues that cannot be fixed by rewriting.
+   */
+  private async autoResolveStructuralIssues(
+    projectId: number,
+    issues: FinalReviewIssue[],
+    chapterCorrectionCounts: Map<number, number>
+  ): Promise<{ resolvedIssues: FinalReviewIssue[]; remainingIssues: FinalReviewIssue[] }> {
+    const resolvedIssues: FinalReviewIssue[] = [];
+    const remainingIssues: FinalReviewIssue[] = [];
+    
+    for (const issue of issues) {
+      const isStructural = this.isStructuralIssue(issue);
+      const affectedChapters = issue.capitulos_afectados || [];
+      
+      // Check if all affected chapters have been corrected at least twice
+      const allChaptersCorrectedTwice = affectedChapters.length > 0 && 
+        affectedChapters.every(ch => (chapterCorrectionCounts.get(ch) || 0) >= 2);
+      
+      if (isStructural && allChaptersCorrectedTwice) {
+        console.log(`[OrchestratorV2] AUTO-RESOLVING structural issue: "${issue.categoria}" in caps ${affectedChapters.join(',')} - cannot be fixed by rewriting`);
+        resolvedIssues.push(issue);
+      } else {
+        remainingIssues.push(issue);
+      }
+    }
+    
+    // Mark structural issues as resolved in database
+    if (resolvedIssues.length > 0) {
+      await this.markIssuesResolved(projectId, resolvedIssues);
+      
+      // Log activity for user visibility
+      await storage.createActivityLog({
+        projectId,
+        level: "info",
+        message: `Se marcaron ${resolvedIssues.length} issue(s) estructurales como "aceptados con reservas" (requieren edición manual: mover capítulos, cambiar títulos, etc.)`,
+        agentRole: "orchestrator",
+        metadata: {
+          structuralIssues: resolvedIssues.map(i => ({
+            categoria: i.categoria,
+            descripcion: i.descripcion?.substring(0, 100),
+            capitulos: i.capitulos_afectados,
+          })),
+        },
+      });
+    }
+    
+    return { resolvedIssues, remainingIssues };
+  }
+
+  // ============================================
   // PERSISTENT ISSUE LOOP DETECTION (LitAgents 2.4)
   // ============================================
 
@@ -4570,6 +4674,42 @@ ${issuesDescription}`;
         });
         
         console.log(`[OrchestratorV2] Cycle ${currentCycle} report persisted: ${puntuacion_global}/10, ${issues?.length || 0} issues`);
+
+        // === STRUCTURAL ISSUE AUTO-RESOLUTION (LitAgents 2.7) ===
+        // Detect issues that require moving/reordering chapters (not rewriting) and auto-resolve them
+        // after 2 correction attempts to prevent infinite loops (e.g., "move epilogue to end")
+        if (issues && issues.length > 0 && currentCycle >= 2) {
+          const { resolvedIssues, remainingIssues } = await this.autoResolveStructuralIssues(
+            project.id,
+            issues,
+            chapterCorrectionCounts
+          );
+          
+          if (resolvedIssues.length > 0) {
+            console.log(`[OrchestratorV2] Auto-resolved ${resolvedIssues.length} structural issues that cannot be fixed by rewriting`);
+            
+            // Update issues list to exclude auto-resolved structural issues
+            issues = remainingIssues;
+            finalResult.issues = issues;
+            
+            // Remove chapters from rewrite list if their only issues were structural
+            if (capitulos_para_reescribir && capitulos_para_reescribir.length > 0) {
+              const resolvedChapters = new Set(
+                resolvedIssues.flatMap(i => i.capitulos_afectados || [])
+              );
+              const remainingChapters = remainingIssues.flatMap(i => i.capitulos_afectados || []);
+              const remainingChaptersSet = new Set(remainingChapters);
+              
+              // Only keep chapters that still have non-structural issues
+              capitulos_para_reescribir = capitulos_para_reescribir.filter(ch => 
+                !resolvedChapters.has(ch) || remainingChaptersSet.has(ch)
+              );
+              finalResult.capitulos_para_reescribir = capitulos_para_reescribir;
+              
+              console.log(`[OrchestratorV2] Updated chapters to rewrite: ${capitulos_para_reescribir.length} (after structural issue removal)`);
+            }
+          }
+        }
 
         // === LOOP DETECTION (LitAgents 2.4) ===
         // Track which issues persist across cycles and escalate if they recur 3+ times
