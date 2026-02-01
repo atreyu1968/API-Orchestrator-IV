@@ -714,8 +714,11 @@ ${decisions.join('\n')}
       .trim()
       .substring(0, 100);
     
-    // Sort chapters for consistent hashing
-    const chapters = (issue.capitulos_afectados || []).sort((a, b) => a - b).join(",");
+    // Sort chapters for consistent hashing (normalize to DB format for consistency)
+    const chapters = (issue.capitulos_afectados || [])
+      .map(ch => this.normalizeToDbChapterNumber(ch))
+      .sort((a, b) => a - b)
+      .join(",");
     
     // Create hash from category + description + chapters
     const hashInput = `${issue.categoria || "unknown"}|${normalizedDesc}|${chapters}`;
@@ -843,7 +846,8 @@ ${decisions.join('\n')}
     
     for (const issue of issues) {
       const isStructural = this.isStructuralIssue(issue);
-      const affectedChapters = issue.capitulos_afectados || [];
+      // Normalize chapter numbers to DB format (-1 -> 998, -2 -> 999)
+      const affectedChapters = (issue.capitulos_afectados || []).map(ch => this.normalizeToDbChapterNumber(ch));
       
       // Check if all affected chapters have been corrected at least twice
       const allChaptersCorrectedTwice = affectedChapters.length > 0 && 
@@ -983,7 +987,8 @@ ${decisions.join('\n')}
     allChapters: Array<{ chapterNumber: number; title: string; content: string }>
   ): { affectedChapters: number[]; instruction: string } {
     const isResurrection = this.isResurrectionError(issue);
-    const originalChapters = issue.capitulos_afectados || [];
+    // Normalize chapter numbers to DB format (-1 -> 998, -2 -> 999)
+    const originalChapters = (issue.capitulos_afectados || []).map(ch => this.normalizeToDbChapterNumber(ch));
     
     if (isResurrection) {
       // For resurrection errors, we need to identify ALL chapters after the death
@@ -4164,7 +4169,9 @@ ${decisions.join('\n')}
           if (previousCycleIssuesFiltered.length > 0) {
             console.log(`[OrchestratorV2] Adding ${previousCycleIssuesFiltered.length} unresolved issues from previous FinalReviewer cycle`);
             for (const issue of previousCycleIssuesFiltered) {
-              for (const chapNum of (issue.capitulos_afectados || [])) {
+              for (const rawChapNum of (issue.capitulos_afectados || [])) {
+                // Normalize chapter number: FinalReviewer may report -1 for epilogue, but DB stores as 998
+                const chapNum = this.normalizeToDbChapterNumber(rawChapNum);
                 // Check chapter correction limits to prevent infinite loops
                 const correctionCount = chapterCorrectionCounts.get(chapNum) || 0;
                 if (correctionCount >= MAX_CORRECTIONS_PER_CHAPTER) {
@@ -4560,7 +4567,8 @@ ${issuesDescription}`;
               
               // Mark the issues for these chapters as resolved using hash system
               const issuesToResolve = previousCycleIssuesFiltered.filter(issue => {
-                const affectedChapters = issue.capitulos_afectados || [];
+                // Normalize chapter numbers to DB format (-1 -> 998, -2 -> 999)
+                const affectedChapters = (issue.capitulos_afectados || []).map(ch => this.normalizeToDbChapterNumber(ch));
                 return affectedChapters.some(ch => successfullyFixedChapters.includes(ch));
               });
               if (issuesToResolve.length > 0) {
