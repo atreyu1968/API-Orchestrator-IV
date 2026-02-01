@@ -493,6 +493,49 @@ export async function registerRoutes(
     }
   });
 
+  // Reset reviewer state - clears all review history to start fresh
+  app.post("/api/projects/:id/reset-reviewer", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Clear reviewer state
+      await storage.updateProject(id, {
+        finalReviewResult: null,
+        finalScore: null,
+        revisionCycle: 0,
+        resolvedIssueHashes: [],
+        chapterCorrectionCounts: null,
+      });
+
+      // Reset final-reviewer agent status
+      await storage.updateAgentStatus(id, "final-reviewer", {
+        status: "idle",
+        currentTask: "Crítico reiniciado - listo para nueva evaluación",
+      });
+
+      // Log the action
+      await storage.createActivityLog({
+        projectId: id,
+        level: "info",
+        message: "Se reinició el estado del crítico. La próxima evaluación comenzará desde cero sin historial previo.",
+        agentRole: "final-reviewer",
+      });
+
+      res.json({ 
+        success: true, 
+        message: "Estado del crítico reiniciado. La próxima evaluación será completamente nueva." 
+      });
+    } catch (error) {
+      console.error("Error resetting reviewer state:", error);
+      res.status(500).json({ error: "Failed to reset reviewer state" });
+    }
+  });
+
   app.get("/api/projects/:id/export-docx", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);

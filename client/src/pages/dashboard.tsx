@@ -135,6 +135,7 @@ export default function Dashboard() {
   const [showArchitectDialog, setShowArchitectDialog] = useState(false);
   const [architectInstructions, setArchitectInstructions] = useState("");
   const [showExtendDialog, setShowExtendDialog] = useState(false);
+  const [showResetReviewerDialog, setShowResetReviewerDialog] = useState(false);
   const [targetChapters, setTargetChapters] = useState("");
   const [useV2Pipeline, setUseV2Pipeline] = useState(true);
   const [sceneProgress, setSceneProgress] = useState<{chapterNumber: number; sceneNumber: number; totalScenes: number; wordCount: number} | null>(null);
@@ -439,6 +440,23 @@ export default function Dashboard() {
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo completar el proyecto", variant: "destructive" });
+    },
+  });
+
+  const resetReviewerMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/projects/${id}/reset-reviewer`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-statuses"] });
+      setShowResetReviewerDialog(false);
+      toast({ title: "Crítico reiniciado", description: "La próxima evaluación comenzará desde cero" });
+      addLog("info", "Estado del crítico reiniciado - sin historial previo", "final-reviewer");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo reiniciar el crítico", variant: "destructive" });
     },
   });
 
@@ -1038,6 +1056,23 @@ export default function Dashboard() {
                         </div>
                       </div>
                     )}
+                    
+                    {/* Reset Reviewer Button */}
+                    <div className="mt-4 pt-4 border-t border-border/50">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setShowResetReviewerDialog(true)}
+                        className="w-full"
+                        data-testid="button-reset-reviewer"
+                      >
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Reiniciar Crítico desde cero
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-2 text-center">
+                        Borra el historial de evaluaciones para empezar una revisión completamente nueva
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -1508,6 +1543,21 @@ export default function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Reset Reviewer Confirmation Dialog */}
+      <ConfirmDialog
+        open={showResetReviewerDialog}
+        onOpenChange={setShowResetReviewerDialog}
+        title="Reiniciar Crítico"
+        description="Esto borrará todo el historial de evaluaciones del crítico (puntuación, issues resueltos, ciclos de corrección). La próxima evaluación comenzará completamente desde cero, sin sesgos de revisiones anteriores."
+        confirmText="Reiniciar Crítico"
+        cancelText="Cancelar"
+        onConfirm={() => {
+          if (currentProject) {
+            resetReviewerMutation.mutate(currentProject.id);
+          }
+        }}
+      />
     </div>
   );
 }
