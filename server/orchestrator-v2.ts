@@ -685,6 +685,18 @@ ${decisions.join('\n')}
     const possibleNumbers = this.normalizeChapterNumber(targetNum);
     return possibleNumbers.includes(chapterNum);
   }
+  
+  /**
+   * Normalize a chapter number to the database format.
+   * FinalReviewer may report -1 for epilogue, but database stores it as 998.
+   * FinalReviewer may report -2 for author note, but database stores it as 999.
+   * Returns the database format number.
+   */
+  private normalizeToDbChapterNumber(chapNum: number): number {
+    if (chapNum === -1) return 998; // Epilogue
+    if (chapNum === -2) return 999; // Author note
+    return chapNum; // Regular chapters and already-normalized special chapters
+  }
 
   // ============================================
   // ISSUE HASH TRACKING SYSTEM (synced with reedit-orchestrator)
@@ -4769,10 +4781,11 @@ ${issuesDescription}`;
             
             // Remove chapters from rewrite list if their only issues were structural
             if (capitulos_para_reescribir && capitulos_para_reescribir.length > 0) {
+              // Normalize chapter numbers to DB format (-1 -> 998, -2 -> 999)
               const resolvedChapters = new Set(
-                resolvedIssues.flatMap(i => i.capitulos_afectados || [])
+                resolvedIssues.flatMap(i => (i.capitulos_afectados || []).map(ch => this.normalizeToDbChapterNumber(ch)))
               );
-              const remainingChapters = remainingIssues.flatMap(i => i.capitulos_afectados || []);
+              const remainingChapters = remainingIssues.flatMap(i => (i.capitulos_afectados || []).map(ch => this.normalizeToDbChapterNumber(ch)));
               const remainingChaptersSet = new Set(remainingChapters);
               
               // Only keep chapters that still have non-structural issues
@@ -4848,8 +4861,9 @@ ${issuesDescription}`;
           const extractedChapters: number[] = [];
           for (const issue of issues) {
             // Extract from ALL issues that have chapter info and correction instructions
+            // Normalize chapter numbers to DB format (-1 -> 998, -2 -> 999)
             if (issue.capitulos_afectados?.length > 0 && issue.instrucciones_correccion) {
-              extractedChapters.push(...issue.capitulos_afectados);
+              extractedChapters.push(...issue.capitulos_afectados.map(ch => this.normalizeToDbChapterNumber(ch)));
             }
           }
           if (extractedChapters.length > 0) {
@@ -4860,7 +4874,7 @@ ${issuesDescription}`;
             // Last resort: extract from ALL issues even without explicit instructions
             for (const issue of issues) {
               if (issue.capitulos_afectados?.length > 0) {
-                extractedChapters.push(...issue.capitulos_afectados);
+                extractedChapters.push(...issue.capitulos_afectados.map(ch => this.normalizeToDbChapterNumber(ch)));
               }
             }
             if (extractedChapters.length > 0) {
@@ -4978,10 +4992,14 @@ ${issuesDescription}`;
           // Ensure issues array is initialized
           const allIssues = issues ?? [];
           
-          // Aggregate all issues by chapter
+          // Aggregate all issues by chapter (normalize chapter numbers to database format)
           for (const issue of allIssues) {
             const affectedChapters = issue.capitulos_afectados || [];
-            for (const chapNum of affectedChapters) {
+            for (const rawChapNum of affectedChapters) {
+              // Normalize chapter number: FinalReviewer may report -1 for epilogue, but DB stores as 998
+              // Also handle -2 -> 999 for author notes
+              const chapNum = this.normalizeToDbChapterNumber(rawChapNum);
+              
               if (!aggregatedIssuesByChapter.has(chapNum)) {
                 aggregatedIssuesByChapter.set(chapNum, {
                   issues: [],
@@ -5863,11 +5881,23 @@ ${issuesDescription}`;
   async regenerateTruncatedChapters(project: Project, minWordCount: number = 100): Promise<void> {
     console.log(`[OrchestratorV2] Regenerating truncated chapters for project ${project.id} (min: ${minWordCount} words)`);
     
+    // Use different thresholds for special chapters vs regular chapters
+    const MIN_WORDS_REGULAR_CHAPTER = 500;
+    const MIN_WORDS_SPECIAL_CHAPTER = 150;
+    
+    const isSpecialChapter = (chapterNumber: number): boolean => {
+      // Prologue: 0, Epilogue: -1 or 998, Author note: -2 or 999
+      return chapterNumber === 0 || chapterNumber === -1 || chapterNumber === 998 || 
+             chapterNumber === -2 || chapterNumber === 999;
+    };
+    
     try {
       const chapters = await storage.getChaptersByProject(project.id);
       const truncatedChapters = chapters.filter(ch => {
         const wordCount = ch.content ? ch.content.split(/\s+/).length : 0;
-        return wordCount < minWordCount;
+        // Use appropriate threshold based on chapter type
+        const minWords = isSpecialChapter(ch.chapterNumber) ? MIN_WORDS_SPECIAL_CHAPTER : MIN_WORDS_REGULAR_CHAPTER;
+        return wordCount < minWords;
       });
 
       if (truncatedChapters.length === 0) {
