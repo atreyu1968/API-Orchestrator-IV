@@ -831,6 +831,75 @@ ${decisions.join('\n')}
     
     return false;
   }
+
+  // ============================================
+  // MERGE REQUEST REINTERPRETATION (LitAgents 2.8)
+  // ============================================
+  
+  /**
+   * Detects if an issue suggests merging/fusing chapters.
+   * These cannot be executed, so we reinterpret them as condensation requests.
+   */
+  private isMergeRequest(issue: FinalReviewIssue): boolean {
+    const combinedText = `${issue.descripcion || ""} ${issue.instrucciones_correccion || ""}`.toLowerCase();
+    
+    const mergePatterns = [
+      /fusionar\s+(los\s+)?(capítulos?|caps?\.?)/i,
+      /combinar\s+(los\s+)?(capítulos?|caps?\.?)/i,
+      /unir\s+(los\s+)?(capítulos?|caps?\.?)/i,
+      /merge\s+(the\s+)?chapter/i,
+      /integrar\s+(en\s+)?un\s+(solo\s+)?capítulo/i,
+      /hacer\s+un\s+(solo\s+)?capítulo/i,
+      /(capítulos?\s+\d+\s+y\s+\d+)\s+(deberían|podrían)\s+(ser\s+)?(uno|fusionarse)/i,
+    ];
+    
+    return mergePatterns.some(pattern => pattern.test(combinedText));
+  }
+  
+  /**
+   * Reinterprets merge suggestions as condensation instructions.
+   * Instead of trying to fuse chapters (impossible), we:
+   * 1. Ask each affected chapter to condense and improve pacing
+   * 2. Add transitions that connect both chapters better
+   * 3. Remove redundant content between them
+   */
+  private reinterpretMergeAsCondensation(issues: FinalReviewIssue[]): FinalReviewIssue[] {
+    return issues.map(issue => {
+      if (!this.isMergeRequest(issue)) {
+        return issue;
+      }
+      
+      console.log(`[OrchestratorV2] REINTERPRETING merge request as condensation: "${issue.descripcion?.substring(0, 80)}..."`);
+      
+      // Transform the merge instruction into a condensation instruction
+      const originalInstructions = issue.instrucciones_correccion || "";
+      const affectedChapters = issue.capitulos_afectados || [];
+      
+      const condensationInstructions = `
+NOTA: La sugerencia original de "fusionar capítulos" no es posible ejecutar automáticamente.
+ALTERNATIVA APLICADA: Condensación agresiva y mejora de ritmo.
+
+INSTRUCCIONES DE CONDENSACIÓN (alternativa a fusión):
+1. CONDENSAR AGRESIVAMENTE: Eliminar todo el relleno, descripciones redundantes y diálogos que no aporten información nueva.
+2. MEJORAR TRANSICIONES: Crear conexiones narrativas más fluidas con el capítulo anterior/siguiente.
+3. ELIMINAR REDUNDANCIAS: Si información ya apareció en capítulos adyacentes, eliminarla.
+4. ACELERAR RITMO: Convertir exposición en acción, reducir monólogo interno.
+5. OBJETIVO: Reducir extensión al menos 30% manteniendo toda la información esencial.
+
+Contexto original del revisor: ${originalInstructions}
+
+Capítulos a condensar: ${affectedChapters.join(", ")}
+`.trim();
+      
+      return {
+        ...issue,
+        categoria: "ritmo" as any, // Change category from structural to pacing
+        instrucciones_correccion: condensationInstructions,
+        // Keep original description for context but prepend clarification
+        descripcion: `[REINTERPRETADO: fusión → condensación] ${issue.descripcion || ""}`,
+      };
+    });
+  }
   
   /**
    * Mark structural issues as resolved after they've been attempted twice.
@@ -2777,6 +2846,30 @@ ${decisions.join('\n')}
 
         this.addTokenUsage(globalResult.tokenUsage);
         await this.logAiUsage(project.id, "global-architect", "deepseek-reasoner", globalResult.tokenUsage);
+        
+        // LitAgents 2.8: Log subplot coherence warnings if detected
+        const subplotWarnings = (globalResult as any).subplotWarnings as string[] | undefined;
+        if (subplotWarnings && subplotWarnings.length > 0) {
+          console.warn(`[OrchestratorV2] GlobalArchitect detected ${subplotWarnings.length} subplot coherence issue(s)`);
+          
+          await storage.createActivityLog({
+            projectId: project.id,
+            level: "warn",
+            message: `⚠️ ADVERTENCIA DE SUBTRAMAS - Se detectaron ${subplotWarnings.length} problema(s) de coherencia en el diseño inicial. La escritura continuará, pero estos problemas pueden requerir corrección posterior.`,
+            agentRole: "global-architect",
+            metadata: { subplotWarnings },
+          });
+          
+          // Log each warning individually for visibility
+          for (const warning of subplotWarnings) {
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: "warn",
+              message: warning,
+              agentRole: "global-architect",
+            });
+          }
+        }
         
         // Save Global Architect's reasoning to thought logs for context sharing
         if (globalResult.thoughtSignature) {
@@ -4859,6 +4952,23 @@ ${issuesDescription}`;
 
         finalResult = reviewResult.result;
         let { veredicto, puntuacion_global, issues, capitulos_para_reescribir } = finalResult;
+
+        // LitAgents 2.8: Reinterpret merge requests as condensation (before any processing)
+        if (issues && issues.length > 0) {
+          const mergeRequestCount = issues.filter(i => this.isMergeRequest(i)).length;
+          if (mergeRequestCount > 0) {
+            console.log(`[OrchestratorV2] Found ${mergeRequestCount} merge request(s) - REINTERPRETING as condensation`);
+            issues = this.reinterpretMergeAsCondensation(issues);
+            finalResult.issues = issues; // Update the result object too
+            
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: "info",
+              message: `Se reinterpretaron ${mergeRequestCount} sugerencia(s) de "fusionar capítulos" como "condensación agresiva" (la fusión automática no es posible)`,
+              agentRole: "orchestrator",
+            });
+          }
+        }
 
         // NOTE: Issues are now tracked via hash system. The finalReviewResult is saved to DB
         // and issues are filtered using resolvedIssueHashes on next cycle (see pre-review correction section)

@@ -263,6 +263,104 @@ export class GlobalArchitectAgent extends BaseAgent {
     }
     
     console.log(`[GlobalArchitect] Successfully parsed and validated: ${regularChapters.length} regular chapters, ${parsed.plot_threads?.length || 0} threads`);
+    
+    // LitAgents 2.8: Validate subplot coherence BEFORE writing begins
+    const subplotValidation = this.validateSubplotCoherence(parsed);
+    if (subplotValidation.hasIssues) {
+      console.warn(`[GlobalArchitect] SUBPLOT COHERENCE ISSUES DETECTED:`);
+      subplotValidation.issues.forEach(issue => console.warn(`  - ${issue}`));
+      
+      // Attach warnings to the response but don't fail - let the user decide
+      return { 
+        ...response, 
+        parsed,
+        subplotWarnings: subplotValidation.issues,
+      } as AgentResponse & { parsed?: GlobalArchitectOutput; subplotWarnings?: string[] };
+    }
+    
     return { ...response, parsed };
+  }
+
+  /**
+   * LitAgents 2.8: Validates subplot coherence before writing begins.
+   * Checks that each plot_thread has chapters that develop it.
+   */
+  private validateSubplotCoherence(output: GlobalArchitectOutput): { hasIssues: boolean; issues: string[] } {
+    const issues: string[] = [];
+    const plotThreads = output.plot_threads || [];
+    const outline = output.outline || [];
+    const threeActStructure = output.three_act_structure;
+    
+    // Check 1: Each plot_thread should be referenced in at least one chapter summary
+    for (const thread of plotThreads) {
+      const threadName = thread.name?.toLowerCase() || "";
+      const threadGoal = thread.goal?.toLowerCase() || "";
+      
+      // Search for thread mentions in chapter summaries and key events
+      const mentionedInChapters = outline.filter(ch => {
+        const summary = (ch.summary || "").toLowerCase();
+        const keyEvent = (ch.key_event || "").toLowerCase();
+        const emotionalArc = (ch.emotional_arc || "").toLowerCase();
+        const combined = `${summary} ${keyEvent} ${emotionalArc}`;
+        
+        // Check if any significant word from the thread appears
+        const threadKeywords = threadName.split(/\s+/).filter(w => w.length > 3);
+        return threadKeywords.some(keyword => combined.includes(keyword));
+      });
+      
+      if (mentionedInChapters.length === 0) {
+        issues.push(`SUBTRAMA HUÉRFANA: "${thread.name}" no tiene capítulos que la desarrollen explícitamente. Considere añadirla a los resúmenes de capítulos o eliminarla.`);
+      } else if (mentionedInChapters.length < 2) {
+        issues.push(`SUBTRAMA DÉBIL: "${thread.name}" solo aparece en 1 capítulo. Las subtramas efectivas necesitan setup + desarrollo + payoff (mínimo 3 apariciones).`);
+      }
+    }
+    
+    // Check 2: Three-act structure balance (if present)
+    if (threeActStructure) {
+      const act1Chapters = threeActStructure.act1?.chapters?.length || 0;
+      const act2Chapters = threeActStructure.act2?.chapters?.length || 0;
+      const act3Chapters = threeActStructure.act3?.chapters?.length || 0;
+      const totalChapters = act1Chapters + act2Chapters + act3Chapters;
+      
+      if (totalChapters > 0) {
+        // Ideal: Act1=25%, Act2=50%, Act3=25%
+        const act1Ratio = act1Chapters / totalChapters;
+        const act2Ratio = act2Chapters / totalChapters;
+        const act3Ratio = act3Chapters / totalChapters;
+        
+        if (act1Ratio > 0.4) {
+          issues.push(`ESTRUCTURA DESEQUILIBRADA: Acto 1 ocupa ${Math.round(act1Ratio * 100)}% de la novela (ideal: 20-25%). Setup demasiado largo puede causar ritmo lento.`);
+        }
+        if (act2Ratio < 0.35) {
+          issues.push(`ESTRUCTURA DESEQUILIBRADA: Acto 2 solo ocupa ${Math.round(act2Ratio * 100)}% (ideal: 45-55%). El desarrollo de conflictos será insuficiente.`);
+        }
+        if (act3Ratio > 0.35) {
+          issues.push(`ESTRUCTURA DESEQUILIBRADA: Acto 3 ocupa ${Math.round(act3Ratio * 100)}% (ideal: 20-25%). Resolución demasiado larga puede diluir el impacto.`);
+        }
+      }
+    }
+    
+    // Check 3: Character arcs have proper development
+    const characters = output.world_bible?.characters || [];
+    for (const character of characters) {
+      if (character.role === "protagonist" || character.role === "antagonist") {
+        const charName = (character.name || "").toLowerCase();
+        
+        // Count chapter appearances in summaries/key events
+        const appearances = outline.filter(ch => {
+          const combined = `${ch.summary || ""} ${ch.key_event || ""}`.toLowerCase();
+          return combined.includes(charName);
+        });
+        
+        if (appearances.length < 3) {
+          issues.push(`ARCO INCOMPLETO: ${character.name} (${character.role}) solo aparece en ${appearances.length} capítulo(s). Protagonistas/antagonistas necesitan presencia sostenida.`);
+        }
+      }
+    }
+    
+    return {
+      hasIssues: issues.length > 0,
+      issues,
+    };
   }
 }
