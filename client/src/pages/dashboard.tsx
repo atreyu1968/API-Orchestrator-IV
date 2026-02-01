@@ -407,6 +407,21 @@ export default function Dashboard() {
     },
   });
 
+  const restartCorrectionsMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/projects/${id}/restart-corrections`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({ title: "Correcciones reiniciadas", description: "Reiniciando desde ciclo 0/15" });
+      addLog("thinking", "Reiniciando correcciones desde cero...", "smart-editor");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo reiniciar las correcciones", variant: "destructive" });
+    },
+  });
+
   const cancelProjectMutation = useMutation({
     mutationFn: async (id: number) => {
       const response = await apiRequest("POST", `/api/projects/${id}/cancel`);
@@ -1217,6 +1232,16 @@ export default function Dashboard() {
                       >
                         <Play className="h-4 w-4 mr-2" />
                         Continuar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => restartCorrectionsMutation.mutate(currentProject.id)}
+                        disabled={restartCorrectionsMutation.isPending}
+                        data-testid="button-restart-corrections"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Reiniciar Correcciones
                       </Button>
                     </>
                   )}

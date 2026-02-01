@@ -1291,6 +1291,89 @@ export async function registerRoutes(
     }
   });
 
+  // Restart corrections - reset cycle counter and restart final review from scratch
+  app.post("/api/projects/:id/restart-corrections", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Allow restarting corrections on paused, failed, or completed projects
+      const allowedStatuses = ["paused", "cancelled", "error", "failed_final_review", "completed", "awaiting_approval"];
+      if (!allowedStatuses.includes(project.status)) {
+        return res.status(400).json({ 
+          error: `No se puede reiniciar correcciones en estado '${project.status}'. Estados permitidos: ${allowedStatuses.join(", ")}` 
+        });
+      }
+
+      // Reset revision cycle to 0 and clear previous review results
+      await storage.updateProject(id, { 
+        status: "final_review_in_progress",
+        revisionCycle: 0,
+        finalReviewResult: null,
+        voiceAuditCompleted: false,
+        semanticCheckCompleted: false
+      } as any);
+
+      // Create activity log
+      await storage.createActivityLog({
+        projectId: id,
+        level: "info",
+        message: "Reiniciando correcciones desde cero (ciclo 0/15)...",
+        agentRole: "system",
+        metadata: { action: "restart_corrections" },
+      });
+
+      res.json({ 
+        success: true, 
+        message: "Corrections restarted from cycle 0", 
+        projectId: id 
+      });
+
+      // Start the final review process
+      const sendToStreams = (data: any) => {
+        const streams = activeStreams.get(id);
+        if (streams) {
+          const message = `data: ${JSON.stringify(data)}\n\n`;
+          streams.forEach(stream => stream.write(message));
+        }
+      };
+
+      const orchestratorV2 = new OrchestratorV2({
+        onAgentStatus: (agentName: string, status: string, currentTask?: string) => {
+          storage.updateAgentStatus(id, agentName, { status, currentTask: currentTask || "" });
+          sendToStreams({ type: "agent_status", agentName, status, currentTask });
+        },
+        onChapterComplete: (chapterNumber: number, wordCount: number, title: string) => {
+          sendToStreams({ type: "chapter_complete", chapterNumber, wordCount, title });
+        },
+        onSceneComplete: () => {},
+        onProjectComplete: () => {
+          sendToStreams({ type: "project_complete" });
+          persistActivityLog(id, "success", "Correcciones completadas exitosamente", "smart-editor");
+        },
+        onError: (error: string) => {
+          sendToStreams({ type: "error", error });
+          persistActivityLog(id, "error", error, "smart-editor");
+        },
+        onChaptersBeingCorrected: (chapterNumbers: number[], revisionCycle: number) => {
+          sendToStreams({ type: "chapters_being_corrected", chapterNumbers, revisionCycle });
+        },
+      });
+
+      orchestratorV2.runFinalReviewOnly(project, 15);
+      
+      console.log(`[RestartCorrections] Started corrections from cycle 0 for project ${id}`);
+
+    } catch (error) {
+      console.error("Error restarting corrections:", error);
+      res.status(500).json({ error: "Failed to restart corrections" });
+    }
+  });
+
   // Extend project - continue generating additional chapters for incomplete projects
   app.post("/api/projects/:id/extend", async (req: Request, res: Response) => {
     try {
