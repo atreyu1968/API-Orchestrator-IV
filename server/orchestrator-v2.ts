@@ -3318,12 +3318,20 @@ ${decisions.join('\n')}
               await this.logAiUsage(project.id, "ghostwriter-v2", "deepseek-chat", rewriteResult.tokenUsage, epilogueChapter.chapterNumber);
               
               if (rewriteResult.content) {
+                // Append new closure content to existing epilogue instead of replacing it
+                // This prevents truncating well-written epilogues
+                const existingContent = epilogueChapter.content || "";
+                const closureSection = `\n\n---\n\n${rewriteResult.content}`;
+                const newContent = existingContent + closureSection;
+                const newWordCount = newContent.split(/\s+/).length;
+                
                 await storage.updateChapter(epilogueChapter.id, {
-                  originalContent: epilogueChapter.originalContent, // Keep original
-                  content: rewriteResult.content,
+                  originalContent: epilogueChapter.originalContent || existingContent, // Keep original
+                  content: newContent,
+                  wordCount: newWordCount,
                 });
                 
-                console.log(`[OrchestratorV2] Epilogue rewritten to close ${directorResult.unresolvedThreads.length} narrative threads`);
+                console.log(`[OrchestratorV2] Epilogue rewritten to close ${directorResult.unresolvedThreads.length} narrative threads (${newWordCount} words)`);
                 this.callbacks.onAgentStatus("ghostwriter-v2", "completed", `Epilogue rewritten (${directorResult.unresolvedThreads.length} threads closed)`);
               } else {
                 console.log(`[OrchestratorV2] Epilogue rewrite failed - no content generated`);
