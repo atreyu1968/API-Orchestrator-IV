@@ -2319,6 +2319,53 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
     }
   }
 
+  // LitAgents 2.9: Get error history to prevent repeating past mistakes
+  private async getErrorHistoryForWriting(projectId: number): Promise<string> {
+    try {
+      const violations = await storage.getConsistencyViolationsByProject(projectId);
+      if (!violations || violations.length === 0) return "";
+
+      // Get unique error types and descriptions (limit to recent 10)
+      const recentErrors = violations
+        .filter(v => v.status !== 'resolved')
+        .slice(0, 10);
+
+      if (recentErrors.length === 0) return "";
+
+      const errorTypes = new Map<string, string[]>();
+      for (const v of recentErrors) {
+        const type = v.violationType || 'GENERAL';
+        if (!errorTypes.has(type)) {
+          errorTypes.set(type, []);
+        }
+        errorTypes.get(type)!.push(v.description.substring(0, 150));
+      }
+
+      const parts: string[] = [
+        "╔══════════════════════════════════════════════════════════════════╗",
+        "║ ⚠️ ERRORES DETECTADOS EN ESTE PROYECTO - EVITAR REPETIR ⚠️       ║",
+        "╠══════════════════════════════════════════════════════════════════╣"
+      ];
+
+      Array.from(errorTypes.entries()).forEach(([type, descriptions]) => {
+        parts.push(`║ ${type}:`);
+        descriptions.slice(0, 3).forEach(desc => {
+          parts.push(`║   • ${desc}`);
+        });
+      });
+
+      parts.push("╠══════════════════════════════════════════════════════════════════╣");
+      parts.push("║ NO cometas estos errores. Verifica antes de escribir.            ║");
+      parts.push("╚══════════════════════════════════════════════════════════════════╝");
+
+      console.log(`[OrchestratorV2] Generated error history with ${recentErrors.length} past errors`);
+      return parts.join("\n");
+    } catch (err) {
+      console.error(`[OrchestratorV2] Failed to get error history:`, err);
+      return "";
+    }
+  }
+
   private async validateAndUpdateConsistency(
     projectId: number,
     chapterNumber: number,
@@ -3192,6 +3239,9 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
           console.log(`[OrchestratorV2] Loaded ${previousChaptersText.length} chars of recent text for vocabulary tracking`);
         }
 
+        // LitAgents 2.9: Get error history to avoid past mistakes
+        const errorHistory = await this.getErrorHistoryForWriting(project.id);
+
         for (const scene of sceneBreakdown.scenes) {
           if (await this.shouldStopProcessing(project.id)) {
             console.log(`[OrchestratorV2] Project ${project.id} was cancelled during scene writing`);
@@ -3200,16 +3250,28 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
 
           this.callbacks.onAgentStatus("ghostwriter-v2", "active", `Writing Scene ${scene.scene_num}...`);
 
+          // LitAgents 2.9: Pre-scene validation - verify characters exist in World Bible
+          let preSceneWarnings = "";
+          if (scene.characters && scene.characters.length > 0 && worldBible.characters) {
+            const knownCharNames = (worldBible.characters as any[]).map(c => c.name?.toLowerCase() || "");
+            const unknownChars = scene.characters.filter(c => !knownCharNames.includes(c.toLowerCase()));
+            if (unknownChars.length > 0) {
+              preSceneWarnings = `⚠️ PERSONAJES NO REGISTRADOS: ${unknownChars.join(", ")}. Debes establecerlos apropiadamente o usar personajes conocidos.\n`;
+              console.log(`[OrchestratorV2] Pre-scene validation: Unknown characters detected: ${unknownChars.join(", ")}`);
+            }
+          }
+
           const sceneResult = await this.ghostwriter.execute({
             scenePlan: scene,
             prevSceneContext: lastContext,
             rollingSummary,
             worldBible,
             guiaEstilo,
-            consistencyConstraints: enrichedConstraints,
+            consistencyConstraints: preSceneWarnings + enrichedConstraints,
             previousChaptersText, // LitAgents 2.2: For vocabulary anti-repetition
             currentChapterText: fullChapterText, // LitAgents 2.2: Current chapter so far
             seriesWorldBible, // Series World Bible: Accumulated knowledge from previous volumes
+            errorHistory, // LitAgents 2.9: Past errors to avoid
           });
 
           if (sceneResult.error) {
@@ -3266,10 +3328,12 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
         if (editResult.parsed) {
           editorFeedback = editResult.parsed;
 
-          if (editResult.parsed.is_approved) {
-            this.callbacks.onAgentStatus("smart-editor", "completed", `Approved: ${editResult.parsed.logic_score}/10 Logic, ${editResult.parsed.style_score}/10 Style`);
-          } else if (editResult.parsed.patches && editResult.parsed.patches.length > 0) {
-            // Apply patches
+          // LitAgents 2.9: More strict approval - apply patches even if "approved" when patches exist
+          const hasPatches = editResult.parsed.patches && editResult.parsed.patches.length > 0;
+          const scores = { logic: editResult.parsed.logic_score, style: editResult.parsed.style_score };
+          
+          // Apply patches first if they exist, regardless of approval status
+          if (hasPatches) {
             this.callbacks.onAgentStatus("smart-editor", "active", `Applying ${editResult.parsed.patches.length} patches...`);
             
             const patchResult = applyPatches(fullChapterText, editResult.parsed.patches);
@@ -3278,7 +3342,9 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
             console.log(`[OrchestratorV2] Patch results: ${patchResult.appliedPatches}/${editResult.parsed.patches.length} applied`);
             patchResult.log.forEach(log => console.log(`  ${log}`));
 
-            this.callbacks.onAgentStatus("smart-editor", "completed", `${patchResult.appliedPatches} patches applied`);
+            this.callbacks.onAgentStatus("smart-editor", "completed", `${patchResult.appliedPatches} patches applied, ${scores.logic}/10 Logic, ${scores.style}/10 Style`);
+          } else if (editResult.parsed.is_approved) {
+            this.callbacks.onAgentStatus("smart-editor", "completed", `Approved: ${scores.logic}/10 Logic, ${scores.style}/10 Style`);
           } else if (editResult.parsed.needs_rewrite) {
             console.log(`[OrchestratorV2] Chapter ${chapterNumber} needs rewrite, but continuing with current version`);
             this.callbacks.onAgentStatus("smart-editor", "completed", "Needs improvement (continuing)");
