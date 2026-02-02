@@ -8156,17 +8156,34 @@ Responde en JSON:
 
       const parsed = verifyResult.parsed;
       if (parsed) {
-        // NEW LOGIC: Focus on whether the ORIGINAL issue was fixed
-        // Even if there are new issues, if the original is fixed, that's success
-        const logicOk = parsed.logic_score >= 6; // Slightly more lenient
+        // STRICT LOGIC: Original issue must be fixed AND no critical new issues
+        const logicOk = parsed.logic_score >= 7; // Stricter threshold
         const originalFixed = parsed.is_approved || logicOk;
         
-        // Collect weaknesses as potential new issues (to be added to registry)
+        // Collect weaknesses as potential new issues
         const newProblems = (parsed.weaknesses && parsed.weaknesses.length > 0) ? parsed.weaknesses : undefined;
+        
+        // NEW: If new problems are critical (LOGIC issues), reject the correction
+        const hasCriticalNewProblems = newProblems?.some((p: string) => 
+          p.toLowerCase().includes('logic') || 
+          p.toLowerCase().includes('continuidad') ||
+          p.toLowerCase().includes('contradicción') ||
+          p.toLowerCase().includes('inconsistenc')
+        );
+        
+        if (hasCriticalNewProblems) {
+          console.warn(`[OrchestratorV2] Correction REJECTED: introduced critical new problems`);
+          return {
+            valid: false,
+            originalIssueFixed: false,
+            newIssues: newProblems,
+            error: "La corrección introdujo nuevos problemas críticos. Rechazada."
+          };
+        }
         
         return {
           valid: originalFixed && logicOk,
-          originalIssueFixed: originalFixed, // CRITICAL: This is the key distinction
+          originalIssueFixed: originalFixed,
           newIssues: newProblems,
           error: originalFixed ? undefined : parsed.feedback,
         };

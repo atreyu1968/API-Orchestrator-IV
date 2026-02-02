@@ -135,34 +135,45 @@ export class SmartEditorAgent extends BaseAgent {
   async surgicalFix(input: SurgicalFixInput): Promise<AgentResponse & { patches?: Patch[], fullContent?: string }> {
     console.log(`[SmartEditor] Surgical fix for consistency error (${input.chapterContent.length} chars)...`);
     
-    const surgicalPrompt = `CORRECCIÓN QUIRÚRGICA DE CONTINUIDAD
+    const surgicalPrompt = `CORRECCIÓN QUIRÚRGICA ULTRA-CONSERVADORA
 
-ERROR DETECTADO:
+ERROR ESPECÍFICO A CORREGIR:
 ${input.errorDescription}
 
-${input.consistencyConstraints ? `RESTRICCIONES DE CONSISTENCIA:\n${input.consistencyConstraints}\n` : ''}
+${input.consistencyConstraints ? `RESTRICCIONES DE CONSISTENCIA (NO VIOLAR):\n${input.consistencyConstraints}\n` : ''}
 
 CONTENIDO DEL CAPÍTULO:
 ${input.chapterContent}
 
-INSTRUCCIONES:
-1. Identifica SOLO las frases o párrafos que contienen el error de continuidad
-2. Genera parches QUIRÚRGICOS mínimos para corregir el error
-3. NO reescribas el capítulo completo - solo las partes afectadas
-4. Mantén el estilo y tono del autor original
-5. El campo "original_text_snippet" DEBE contener el texto EXACTO que aparece en el capítulo
+REGLAS ABSOLUTAS (VIOLACIÓN = CORRECCIÓN RECHAZADA):
+1. CAMBIO MÍNIMO: Solo modifica las 1-3 palabras/frases que causan el error específico
+2. NO AÑADAS contenido nuevo (diálogos, descripciones, acciones)
+3. NO ELIMINES contenido existente más allá de lo estrictamente necesario
+4. NO CAMBIES nombres de personajes, lugares, objetos u otros elementos canónicos
+5. NO MODIFIQUES la línea temporal ni introduzcas nuevos eventos
+6. PRESERVA el estilo, ritmo y voz narrativa exactos del autor
+7. Si el parche requiere cambiar más de 50 palabras, ES DEMASIADO GRANDE - busca una solución más quirúrgica
+8. El campo "original_text_snippet" DEBE ser texto EXACTO del capítulo (copiar-pegar literal)
+
+ANTES DE GENERAR CADA PARCHE, PREGÚNTATE:
+- ¿Este cambio podría romper algo más en la narrativa?
+- ¿Estoy cambiando más de lo estrictamente necesario?
+- ¿Estoy introduciendo información nueva que no existía?
+
+SI LA RESPUESTA A CUALQUIERA ES "SÍ", BUSCA UNA SOLUCIÓN MÁS CONSERVADORA.
 
 Responde en JSON:
 {
-  "error_analysis": "Breve análisis del error y dónde está",
+  "error_analysis": "Análisis breve: qué está mal y dónde EXACTAMENTE",
   "patches": [
     {
-      "original_text_snippet": "texto EXACTO a reemplazar (mínimo 20 caracteres, debe existir en el capítulo)",
-      "replacement_text": "texto corregido",
-      "reason": "motivo del cambio"
+      "original_text_snippet": "texto EXACTO a reemplazar (debe existir verbatim en el capítulo)",
+      "replacement_text": "texto corregido (mismo número de palabras ±10%)",
+      "reason": "motivo del cambio mínimo"
     }
   ],
-  "correction_summary": "Resumen de los cambios realizados"
+  "words_changed_count": 5,
+  "correction_summary": "Resumen de cambios: modificadas X palabras para corregir Y"
 }`;
 
     const response = await this.generateContent(surgicalPrompt);
@@ -181,13 +192,32 @@ Responde en JSON:
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         // Map to correct field names that patcher expects
-        const patches: Patch[] = (parsed.patches || []).map((p: any) => ({
+        const rawPatches: Patch[] = (parsed.patches || []).map((p: any) => ({
           original_text_snippet: p.original_text_snippet || p.original || "",
           replacement_text: p.replacement_text || p.replacement || "",
           reason: p.reason || "Corrección de continuidad"
         }));
         
-        console.log(`[SmartEditor] Surgical fix: ${patches.length} patches generated`);
+        // VALIDATION: Reject patches that are too large (>100 words changed)
+        const validPatches = rawPatches.filter((patch) => {
+          const originalWords = patch.original_text_snippet.split(/\s+/).length;
+          const replacementWords = patch.replacement_text.split(/\s+/).length;
+          const wordsDiff = Math.abs(originalWords - replacementWords);
+          const maxWords = Math.max(originalWords, replacementWords);
+          
+          // Reject if: 1) More than 100 words, or 2) Size change >50%
+          if (maxWords > 100) {
+            console.warn(`[SmartEditor] REJECTED patch: too large (${maxWords} words)`);
+            return false;
+          }
+          if (originalWords > 10 && wordsDiff / originalWords > 0.5) {
+            console.warn(`[SmartEditor] REJECTED patch: size change too large (${Math.round(wordsDiff/originalWords*100)}%)`);
+            return false;
+          }
+          return true;
+        });
+        
+        console.log(`[SmartEditor] Surgical fix: ${validPatches.length}/${rawPatches.length} patches accepted`);
         if (parsed.error_analysis) {
           console.log(`[SmartEditor] Analysis: ${parsed.error_analysis}`);
         }
@@ -195,7 +225,7 @@ Responde en JSON:
           console.log(`[SmartEditor] Summary: ${parsed.correction_summary}`);
         }
         
-        return { ...response, patches };
+        return { ...response, patches: validPatches };
       }
     } catch (e) {
       console.error("[SmartEditor] Failed to parse surgical fix response:", e);
