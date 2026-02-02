@@ -160,16 +160,31 @@ export default function Dashboard() {
   const [sceneProgress, setSceneProgress] = useState<{chapterNumber: number; sceneNumber: number; totalScenes: number; wordCount: number} | null>(null);
   const [chaptersBeingCorrected, setChaptersBeingCorrected] = useState<{chapterNumbers: number[]; revisionCycle: number} | null>(null);
   const [detectAndFixProgress, setDetectAndFixProgress] = useState<DetectAndFixProgress | null>(null);
-  const [correctionSystem, setCorrectionSystem] = useState<'detect-fix' | 'legacy'>(() => {
-    const saved = localStorage.getItem('litagents-correction-system');
-    return (saved === 'legacy' ? 'legacy' : 'detect-fix') as 'detect-fix' | 'legacy';
-  });
+  const [correctionSystem, setCorrectionSystem] = useState<'detect-fix' | 'legacy'>('detect-fix');
   const { projects, currentProject, setSelectedProjectId } = useProject();
   
-  // Persist correction system preference
+  // Load correction system preference from server on mount
   useEffect(() => {
-    localStorage.setItem('litagents-correction-system', correctionSystem);
-  }, [correctionSystem]);
+    fetch('/api/config/correction-system')
+      .then(res => res.json())
+      .then(data => {
+        if (data.correctionSystem === 'detect-fix' || data.correctionSystem === 'legacy') {
+          setCorrectionSystem(data.correctionSystem);
+        }
+      })
+      .catch(() => {/* ignore, use default */});
+  }, []);
+  
+  // Sync correction system preference to server and localStorage
+  const updateCorrectionSystem = (value: 'detect-fix' | 'legacy') => {
+    setCorrectionSystem(value);
+    localStorage.setItem('litagents-correction-system', value);
+    fetch('/api/config/correction-system', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ correctionSystem: value })
+    }).catch(() => {/* ignore errors */});
+  };
 
   const handleExportData = async () => {
     setIsExporting(true);
@@ -754,7 +769,7 @@ export default function Dashboard() {
           )}
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-card">
             <span className="text-sm text-muted-foreground whitespace-nowrap">Sistema de Corrección:</span>
-            <Select value={correctionSystem} onValueChange={(v) => setCorrectionSystem(v as 'detect-fix' | 'legacy')}>
+            <Select value={correctionSystem} onValueChange={(v) => updateCorrectionSystem(v as 'detect-fix' | 'legacy')}>
               <SelectTrigger className="w-[200px] h-8" data-testid="select-correction-system-global">
                 <SelectValue />
               </SelectTrigger>

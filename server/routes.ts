@@ -96,11 +96,33 @@ export async function registerRoutes(
   // Track active detect-and-fix processes to prevent parallel execution (shared across endpoints)
   const activeDetectAndFix = new Set<number>();
   const isDetectAndFixActive = (projectId: number) => activeDetectAndFix.has(projectId);
+  
+  // Global correction system preference (used by orchestrator for automatic corrections)
+  let globalCorrectionSystem: 'detect-fix' | 'legacy' = 'detect-fix';
+  
+  // Export getter for orchestrator to use
+  (global as any).getCorrectionSystem = () => globalCorrectionSystem;
 
   // Setup cookie parser and authentication
   app.use(cookieParser());
   setupAuthRoutes(app);
   app.use(authMiddleware);
+
+  // Global correction system configuration endpoints
+  app.get("/api/config/correction-system", (_req: Request, res: Response) => {
+    res.json({ correctionSystem: globalCorrectionSystem });
+  });
+
+  app.post("/api/config/correction-system", (req: Request, res: Response) => {
+    const { correctionSystem } = req.body;
+    if (correctionSystem === 'detect-fix' || correctionSystem === 'legacy') {
+      globalCorrectionSystem = correctionSystem;
+      console.log(`[Config] Correction system set to: ${globalCorrectionSystem}`);
+      res.json({ correctionSystem: globalCorrectionSystem });
+    } else {
+      res.status(400).json({ error: "Invalid correction system. Use 'detect-fix' or 'legacy'" });
+    }
+  });
 
   app.get("/api/projects", async (req: Request, res: Response) => {
     try {

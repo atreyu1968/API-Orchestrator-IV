@@ -4147,10 +4147,19 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
       } else {
         // Need to run FinalReviewer to get/improve score
         // CRITICAL: Set status to final_review_in_progress to prevent auto-recovery from interrupting
-        // LitAgents 2.9: Increased from 5 to 15 cycles to allow more correction attempts
-        console.log(`[OrchestratorV2] Project has score ${currentScore}/10 (< 9), running FinalReviewer...`);
-        await storage.updateProject(project.id, { status: "final_review_in_progress" });
-        await this.runFinalReviewOnly(project, 15);
+        // LitAgents 2.9.4: Check global correction system preference
+        const getCorrectionSystem = (global as any).getCorrectionSystem;
+        const correctionSystem = getCorrectionSystem ? getCorrectionSystem() : 'detect-fix';
+        
+        if (correctionSystem === 'detect-fix') {
+          console.log(`[OrchestratorV2] Project has score ${currentScore}/10 (< 9), running Detect & Fix (v2.9.4)...`);
+          await storage.updateProject(project.id, { status: "final_review_in_progress" });
+          await this.detectAndFixStrategy(project);
+        } else {
+          console.log(`[OrchestratorV2] Project has score ${currentScore}/10 (< 9), running Legacy FinalReviewer...`);
+          await storage.updateProject(project.id, { status: "final_review_in_progress" });
+          await this.runFinalReviewOnly(project, 15);
+        }
       }
 
     } catch (error) {
