@@ -27,6 +27,7 @@ import { BetaReaderAgent, type BetaReaderReport, type FlaggedChapter } from "./a
 import { applyPatches, type PatchResult } from "./utils/patcher";
 import type { TokenUsage } from "./agents/base-agent";
 import type { Project, Chapter, InsertPlotThread, WorldEntity, WorldRuleRecord, EntityRelationship } from "@shared/schema";
+import OpenAI from "openai";
 import { consistencyViolations } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -2371,7 +2372,18 @@ O si hay problemas:
 Si la corrección es segura y solo arregla los problemas reportados, apruébala.
 Si detectas cambios problemáticos, recházala con concerns específicos.`;
 
-      const response = await this.deepseekClient.chat.completions.create({
+      // Create DeepSeek client for validation
+      const apiKey = process.env.DEEPSEEK_API_KEY;
+      if (!apiKey) {
+        console.warn(`[OrchestratorV2] No DEEPSEEK_API_KEY available for AI validation, skipping`);
+        return { approved: true, concerns: ['Sin API key para validación IA'], confidence: 0.3 };
+      }
+      const deepseekClient = new OpenAI({
+        apiKey,
+        baseURL: "https://api.deepseek.com",
+      });
+
+      const response = await deepseekClient.chat.completions.create({
         model: "deepseek-chat",
         messages: [
           { role: "system", content: "Eres un validador experto de consistencia literaria. Respondes SOLO en JSON válido, sin texto adicional." },
@@ -2493,7 +2505,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
     if (words1.size === 0 || words2.size === 0) return 0;
     
     let overlap = 0;
-    for (const word of words1) {
+    for (const word of Array.from(words1)) {
       if (words2.has(word)) overlap++;
     }
     
@@ -4944,6 +4956,30 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             }
             console.log(`[OrchestratorV2] Pre-review: ${chaptersToFix.length} chapters to correct: ${chaptersToFix.join(', ')}`);
             
+            // Generate summary of WHY chapters need correction
+            const categoryCount: Record<string, number> = {};
+            const severityCount: Record<string, number> = { critica: 0, mayor: 0, menor: 0 };
+            for (const issue of combinedPreReviewIssues) {
+              const cat = issue.categoria || issue.source || 'otros';
+              categoryCount[cat] = (categoryCount[cat] || 0) + 1;
+              const sev = (issue.severidad || 'mayor').toLowerCase();
+              if (sev.includes('crit')) severityCount.critica++;
+              else if (sev.includes('may') || sev.includes('major')) severityCount.mayor++;
+              else severityCount.menor++;
+            }
+            const topCategories = Object.entries(categoryCount)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 4)
+              .map(([cat, count]) => `${cat}(${count})`)
+              .join(', ');
+            
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: "info",
+              message: `🔍 CICLO DE CORRECCIÓN: ${chaptersToFix.length} capítulos con ${combinedPreReviewIssues.length} problemas | Críticos: ${severityCount.critica}, Mayores: ${severityCount.mayor}, Menores: ${severityCount.menor} | Categorías: ${topCategories}`,
+              agentRole: "orchestrator",
+            });
+            
             // Notify frontend about chapters being corrected
             if (this.callbacks.onChaptersBeingCorrected) {
               this.callbacks.onChaptersBeingCorrected(chaptersToFix, 0); // 0 = pre-review phase
@@ -4975,6 +5011,21 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
                 return sev === 'critica' || sev === 'crítica' || sev === 'mayor' || sev === 'critical' || sev === 'major';
               });
               console.log(`[OrchestratorV2] Pre-review Chapter ${chapNum}: ${chapterQaIssues.length} issues, hasCriticalOrMajor=${hasCriticalOrMajor}, severities=[${chapterQaIssues.map(i => i.severidad).join(', ')}]`);
+
+              // Log detailed reason WHY this chapter needs correction
+              const issuesSummary = chapterQaIssues.slice(0, 3).map(i => {
+                const cat = i.categoria || i.source || 'error';
+                const sev = (i.severidad || 'mayor').toLowerCase();
+                const desc = (i.descripcion || '').substring(0, 80);
+                return `[${sev.toUpperCase()}] ${cat}: ${desc}${desc.length >= 80 ? '...' : ''}`;
+              }).join(' | ');
+              
+              await storage.createActivityLog({
+                projectId: project.id,
+                level: hasCriticalOrMajor ? "warn" : "info",
+                message: `📋 Cap ${chapNum} requiere corrección (${chapterQaIssues.length} problemas): ${issuesSummary}`,
+                agentRole: "smart-editor",
+              });
               
               // Build unified correction prompt with FULL CONTEXT including exact text locations
               const issuesDescription = chapterQaIssues.map(i => {
@@ -5944,6 +5995,22 @@ Si el error es de inconsistencia física/edad:
             const hasCriticalOrMajor = hasCriticalIssue || hasMajorIssue;
 
             console.log(`[OrchestratorV2] Correcting Chapter ${chapNum}: ${chapterIssues.length} issues (critical/major: ${hasCriticalOrMajor})`);
+            
+            // Log detailed reason WHY this chapter needs correction
+            const postReviewIssuesSummary = chapterIssues.slice(0, 3).map(i => {
+              const cat = i.categoria || 'error';
+              const sev = (i.severidad || 'mayor').toLowerCase();
+              const desc = (i.descripcion || '').substring(0, 80);
+              return `[${sev.toUpperCase()}] ${cat}: ${desc}${desc.length >= 80 ? '...' : ''}`;
+            }).join(' | ');
+            
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: hasCriticalOrMajor ? "warn" : "info",
+              message: `📋 Cap ${chapNum} requiere corrección (${chapterIssues.length} problemas): ${postReviewIssuesSummary}`,
+              agentRole: "smart-editor",
+            });
+            
             this.callbacks.onAgentStatus("smart-editor", "active", `Corrigiendo capítulo ${chapNum} (${hasCriticalOrMajor ? 'reescritura' : 'parches'}, ${chapterIssues.length} problemas)...`);
 
             // Build UNIFIED correction prompt from ALL aggregated issues
