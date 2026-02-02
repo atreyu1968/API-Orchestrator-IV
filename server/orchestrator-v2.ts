@@ -2290,6 +2290,217 @@ ${canonicalItems.join('\n')}
   }
 
   /**
+   * LitAgents 2.9.2: AI-powered validation for surgical corrections
+   * Uses AI to evaluate if a correction introduces subtle consistency violations
+   * that regex patterns cannot detect (e.g., personality changes, timeline shifts)
+   */
+  private async validateCorrectionWithAI(
+    originalContent: string,
+    correctedContent: string,
+    worldBible: any,
+    chapterNumber: number,
+    issues: string[]
+  ): Promise<{ approved: boolean; concerns: string[]; confidence: number }> {
+    
+    try {
+      // Build compact World Bible context for validation
+      const characters = worldBible?.characters || worldBible?.personajes || [];
+      const characterContext = characters.slice(0, 5).map((c: any) => {
+        const name = c.name || c.nombre;
+        const traits = [];
+        if (c.eyeColor || c.ojos) traits.push(`ojos: ${c.eyeColor || c.ojos}`);
+        if (c.hairColor || c.cabello) traits.push(`cabello: ${c.hairColor || c.cabello}`);
+        if (c.personality || c.personalidad) traits.push(`personalidad: ${c.personality || c.personalidad}`);
+        if (c.status === 'dead' || c.status === 'muerto') traits.push('ESTADO: MUERTO');
+        return `- ${name}: ${traits.join(', ')}`;
+      }).join('\n');
+
+      const locations = worldBible?.locations || worldBible?.ubicaciones || [];
+      const locationContext = locations.slice(0, 5).map((l: any) => 
+        `- ${l.name || l.nombre}`
+      ).join('\n');
+
+      // Find the actual changed sections for surgical review
+      const diffExcerpts = this.extractSurgicalChanges(originalContent, correctedContent);
+
+      const validationPrompt = `Eres un validador de correcciones literarias. Tu tarea es evaluar si una corrección quirúrgica introduce problemas de consistencia.
+
+## WORLD BIBLE (Elementos canónicos que NO deben cambiar)
+### Personajes:
+${characterContext || 'No disponible'}
+
+### Ubicaciones:
+${locationContext || 'No disponible'}
+
+## PROBLEMAS ORIGINALES QUE SE INTENTABAN CORREGIR:
+${issues.slice(0, 5).join('\n')}
+
+## CAMBIOS DETECTADOS (secciones modificadas):
+${diffExcerpts || 'No se detectaron cambios significativos'}
+
+## CONTEXTO GENERAL:
+### Inicio del texto original:
+${originalContent.substring(0, 800)}...
+
+### Inicio del texto corregido:
+${correctedContent.substring(0, 800)}...
+
+## INSTRUCCIONES DE VALIDACIÓN:
+Analiza si la corrección:
+1. ¿Cambió características físicas de personajes (color de ojos, cabello, edad)?
+2. ¿Resucitó personajes que deberían estar muertos?
+3. ¿Eliminó ubicaciones importantes o las renombró?
+4. ¿Cambió la personalidad o comportamiento típico de un personaje?
+5. ¿Introdujo inconsistencias temporales (eventos fuera de orden)?
+6. ¿Eliminó información importante sin reemplazarla?
+
+Responde OBLIGATORIAMENTE en JSON con este formato exacto:
+{
+  "approved": true,
+  "confidence": 0.9,
+  "concerns": []
+}
+
+O si hay problemas:
+{
+  "approved": false,
+  "confidence": 0.8,
+  "concerns": ["problema 1", "problema 2"]
+}
+
+Si la corrección es segura y solo arregla los problemas reportados, apruébala.
+Si detectas cambios problemáticos, recházala con concerns específicos.`;
+
+      const response = await this.deepseekClient.chat.completions.create({
+        model: "deepseek-chat",
+        messages: [
+          { role: "system", content: "Eres un validador experto de consistencia literaria. Respondes SOLO en JSON válido, sin texto adicional." },
+          { role: "user", content: validationPrompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 500
+      });
+
+      const responseText = response.choices[0]?.message?.content || '';
+      
+      // Parse JSON response with fail-safe behavior
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const result = JSON.parse(jsonMatch[0]);
+          // Validate required fields exist
+          if (typeof result.approved !== 'boolean') {
+            console.warn(`[OrchestratorV2] AI validation returned invalid approved field, treating as suspicious`);
+            return { approved: false, concerns: ['Respuesta IA inválida - revisión manual recomendada'], confidence: 0.5 };
+          }
+          return {
+            approved: result.approved === true,
+            concerns: Array.isArray(result.concerns) ? result.concerns : [],
+            confidence: typeof result.confidence === 'number' ? Math.min(1, Math.max(0, result.confidence)) : 0.5
+          };
+        } catch (parseErr) {
+          console.warn(`[OrchestratorV2] Failed to parse AI validation JSON: ${parseErr}`);
+          // JSON parse failed - fail-safe: treat as suspicious
+          return { approved: false, concerns: ['Error parsing respuesta IA - revisión manual recomendada'], confidence: 0.6 };
+        }
+      }
+      
+      // No JSON found - fail-safe: treat as suspicious
+      console.warn(`[OrchestratorV2] AI validation returned no JSON, treating as suspicious`);
+      return { approved: false, concerns: ['No se pudo obtener validación IA - revisión manual recomendada'], confidence: 0.5 };
+      
+    } catch (err) {
+      console.error(`[OrchestratorV2] Error in AI correction validation:`, err);
+      // On API error, warn but don't block (to avoid blocking all corrections if API is down)
+      return { approved: true, concerns: ['Error de conexión IA - aprobado con precaución'], confidence: 0.3 };
+    }
+  }
+
+  /**
+   * Extract the actual changed sections between original and corrected content
+   * for surgical review by AI validation.
+   * Uses content-based comparison (not positional) to handle insertions/deletions correctly.
+   */
+  private extractSurgicalChanges(original: string, corrected: string): string {
+    const excerpts: string[] = [];
+    
+    try {
+      // Split into sentences for comparison
+      const originalSentences = original.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 10);
+      const correctedSentences = corrected.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 10);
+      
+      // Create sets for O(1) lookup - content-based comparison
+      const originalSet = new Set(originalSentences.map(s => s.trim()));
+      const correctedSet = new Set(correctedSentences.map(s => s.trim()));
+      
+      const changedCount = { added: 0, removed: 0, modified: 0 };
+      
+      // Find sentences that were REMOVED (in original but not in corrected)
+      for (const origSent of originalSentences) {
+        const trimmed = origSent.trim();
+        if (!correctedSet.has(trimmed) && excerpts.length < 6) {
+          // Check if it's a modification (similar sentence exists) or deletion
+          const similar = correctedSentences.find(cs => 
+            this.sentenceSimilarity(trimmed, cs.trim()) > 0.6
+          );
+          if (similar) {
+            excerpts.push(`[MODIFICADO]\n  ANTES: "${trimmed.substring(0, 120)}${trimmed.length > 120 ? '...' : ''}"\n  DESPUÉS: "${similar.trim().substring(0, 120)}${similar.length > 120 ? '...' : ''}"`);
+            changedCount.modified++;
+            // Mark as processed
+            correctedSet.delete(similar.trim());
+          } else {
+            excerpts.push(`[ELIMINADO]: "${trimmed.substring(0, 150)}${trimmed.length > 150 ? '...' : ''}"`);
+            changedCount.removed++;
+          }
+        }
+      }
+      
+      // Find sentences that were ADDED (in corrected but not in original, and not already matched)
+      for (const corrSent of correctedSentences) {
+        const trimmed = corrSent.trim();
+        if (!originalSet.has(trimmed) && correctedSet.has(trimmed) && excerpts.length < 6) {
+          excerpts.push(`[AÑADIDO]: "${trimmed.substring(0, 150)}${trimmed.length > 150 ? '...' : ''}"`);
+          changedCount.added++;
+        }
+      }
+      
+      if (excerpts.length === 0) {
+        // Check for very minor changes (whitespace, punctuation)
+        const origNorm = original.replace(/\s+/g, ' ').trim();
+        const corrNorm = corrected.replace(/\s+/g, ' ').trim();
+        if (origNorm === corrNorm) {
+          return 'Solo cambios de formato (espacios/saltos de línea)';
+        }
+        return `Cambios menores no detectables a nivel de oración (${originalSentences.length} oraciones)`;
+      }
+      
+      return `Resumen: ${changedCount.added} añadidos, ${changedCount.removed} eliminados, ${changedCount.modified} modificados\n\n${excerpts.join('\n\n')}`;
+      
+    } catch (err) {
+      console.warn(`[OrchestratorV2] Error extracting surgical changes:`, err);
+      return 'No se pudieron extraer cambios específicos';
+    }
+  }
+
+  /**
+   * Calculate simple similarity between two sentences (0-1)
+   * Uses word overlap ratio for efficiency
+   */
+  private sentenceSimilarity(sent1: string, sent2: string): number {
+    const words1 = new Set(sent1.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    const words2 = new Set(sent2.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    
+    if (words1.size === 0 || words2.size === 0) return 0;
+    
+    let overlap = 0;
+    for (const word of words1) {
+      if (words2.has(word)) overlap++;
+    }
+    
+    return overlap / Math.max(words1.size, words2.size);
+  }
+
+  /**
    * Analyze and summarize a style guide, extracting key writing instructions.
    * Saves the condensed style guide to the World Bible for consistent use.
    */
@@ -6013,6 +6224,51 @@ ${issuesDescription}`;
                   message: `⚠️ Validación detectó posibles regresiones en Cap ${chapNum}: ${validationResult.regressions.slice(0, 3).join('; ')}. Guardado con advertencias.`,
                   agentRole: "smart-editor",
                 });
+              }
+              
+              // LitAgents 2.9.2: AI validation for surgical corrections
+              // Only run if regex validation passed or had low severity (to save tokens)
+              if (validationResult.severity !== 'high') {
+                const issueDescriptions = chapterIssues.map((i: any) => i.descripcion || i.description || String(i));
+                const aiValidation = await this.validateCorrectionWithAI(
+                  chapter.content || '',
+                  correctedContent,
+                  worldBibleData,
+                  chapNum,
+                  issueDescriptions
+                );
+                
+                if (!aiValidation.approved && aiValidation.confidence >= 0.7) {
+                  // High confidence rejection from AI - block the save
+                  console.warn(`[OrchestratorV2] 🤖 AI validation rejected correction for Chapter ${chapNum} (confidence: ${aiValidation.confidence}):`);
+                  for (const concern of aiValidation.concerns) {
+                    console.warn(`  - ${concern}`);
+                  }
+                  
+                  await storage.createActivityLog({
+                    projectId: project.id,
+                    level: "error",
+                    message: `🤖 BLOQUEADO por IA: Corrección de Cap ${chapNum} rechazada (confianza ${(aiValidation.confidence * 100).toFixed(0)}%): ${aiValidation.concerns.slice(0, 2).join('; ')}`,
+                    agentRole: "smart-editor",
+                  });
+                  
+                  failedCount++;
+                  failedChaptersDetails.push({
+                    chapterNumber: chapNum,
+                    title: chapter.title || `Capítulo ${chapNum}`,
+                    error: 'Corrección bloqueada por validación IA',
+                    issues: aiValidation.concerns.slice(0, 3),
+                  });
+                  continue; // Skip saving this correction
+                } else if (!aiValidation.approved && aiValidation.confidence < 0.7) {
+                  // Low confidence rejection - warn but proceed
+                  await storage.createActivityLog({
+                    projectId: project.id,
+                    level: "warn",
+                    message: `🤖 Advertencia IA en Cap ${chapNum} (confianza ${(aiValidation.confidence * 100).toFixed(0)}%): ${aiValidation.concerns.slice(0, 2).join('; ')}. Guardando de todas formas.`,
+                    agentRole: "smart-editor",
+                  });
+                }
               }
               
               const wordCount = correctedContent.split(/\s+/).length;
