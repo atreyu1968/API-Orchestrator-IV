@@ -13,6 +13,13 @@ const statusLabels: Record<string, string> = {
   generating: "Generando",
   completed: "Completado",
   archived: "Archivado",
+  paused: "Pausado",
+  cancelled: "Cancelado",
+  error: "Error",
+  failed_final_review: "Revisión Fallida",
+  final_review_in_progress: "Revisando",
+  awaiting_approval: "Aprobación",
+  awaiting_final_review: "Pendiente Revisión",
 };
 
 const statusColors: Record<string, string> = {
@@ -20,6 +27,13 @@ const statusColors: Record<string, string> = {
   generating: "bg-blue-500/20 text-blue-600 dark:text-blue-400",
   completed: "bg-green-500/20 text-green-600 dark:text-green-400",
   archived: "bg-gray-500/20 text-gray-600 dark:text-gray-400",
+  paused: "bg-orange-500/20 text-orange-600 dark:text-orange-400",
+  cancelled: "bg-gray-500/20 text-gray-600 dark:text-gray-400",
+  error: "bg-red-500/20 text-red-600 dark:text-red-400",
+  failed_final_review: "bg-red-500/20 text-red-600 dark:text-red-400",
+  final_review_in_progress: "bg-purple-500/20 text-purple-600 dark:text-purple-400",
+  awaiting_approval: "bg-amber-500/20 text-amber-600 dark:text-amber-400",
+  awaiting_final_review: "bg-indigo-500/20 text-indigo-600 dark:text-indigo-400",
 };
 
 export function ProjectSelector({ 
