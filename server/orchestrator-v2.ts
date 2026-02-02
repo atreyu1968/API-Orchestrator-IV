@@ -4976,7 +4976,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             await storage.createActivityLog({
               projectId: project.id,
               level: "info",
-              message: `🔍 CICLO DE CORRECCIÓN: ${chaptersToFix.length} capítulos con ${combinedPreReviewIssues.length} problemas | Críticos: ${severityCount.critica}, Mayores: ${severityCount.mayor}, Menores: ${severityCount.menor} | Categorías: ${topCategories}`,
+              message: `[CICLO] ${chaptersToFix.length} caps con ${combinedPreReviewIssues.length} problemas | Criticos: ${severityCount.critica}, Mayores: ${severityCount.mayor}, Menores: ${severityCount.menor} | Categorias: ${topCategories}`,
               agentRole: "orchestrator",
             });
             
@@ -5023,7 +5023,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
               await storage.createActivityLog({
                 projectId: project.id,
                 level: hasCriticalOrMajor ? "warn" : "info",
-                message: `📋 Cap ${chapNum} requiere corrección (${chapterQaIssues.length} problemas): ${issuesSummary}`,
+                message: `[CORRECCION] Cap ${chapNum} (${chapterQaIssues.length} problemas): ${issuesSummary}`,
                 agentRole: "smart-editor",
               });
               
@@ -5123,7 +5123,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
                     timelineSection = '\nEVENTOS CRONOLÓGICOS RELEVANTES:\n' + chapterContext.timelineEvents.map((e: any) => `- ${e.event || e.evento}: ${e.timeMarker || e.when || ''}`).join('\n');
                   }
                   
-                  const fullContextPrompt = `CONTEXTO COMPLETO PARA REESCRITURA (WORLD BIBLE):
+                  const fullContextPrompt = `CONTEXTO PARA CORRECCIÓN:
 - Proyecto: "${chapterContext.projectTitle}" (${chapterContext.genre})
 - Capítulo ${chapterContext.chapterNumber}: "${chapterContext.chapterTitle}"
 ${chapterContext.previousChapterSummary ? `- Capítulo anterior: ${chapterContext.previousChapterSummary}` : ''}
@@ -5141,77 +5141,111 @@ ${chapterContext.styleGuide ? `GUÍA DE ESTILO:\n${chapterContext.styleGuide}\n`
 PROBLEMAS A CORREGIR (OBLIGATORIO):
 ${issuesDescription}`;
 
-                  // LitAgents 2.1: Use fullRewrite for critical/major issues with FULL consistency context
-                  // Build the same consistency context that Ghostwriter receives during writing
+                  // LitAgents 2.9.3: ALWAYS try surgical fix FIRST, even for critical/major issues
+                  // fullRewrite damages chapters - only use as absolute last resort
                   const preReviewConsistencyContext = await this.buildConsistencyContextForCorrection(
                     project.id, chapNum, worldBibleData, project
                   );
                   
-                  const fixResult = await this.smartEditor.fullRewrite({
+                  console.log(`[OrchestratorV2] Critical/major issues for Chapter ${chapNum}, trying SURGICAL FIX first`);
+                  
+                  const surgicalResult = await this.smartEditor.surgicalFix({
                     chapterContent: chapter.content,
                     errorDescription: fullContextPrompt,
                     consistencyConstraints: preReviewConsistencyContext || JSON.stringify(chapterContext.mainCharacters),
                   });
                   
-                  this.addTokenUsage(fixResult.tokenUsage);
-                  await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, chapNum);
+                  this.addTokenUsage(surgicalResult.tokenUsage);
+                  await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", surgicalResult.tokenUsage, chapNum);
                   
-                  // fullRewrite returns rewrittenContent, not parsed.corrected_text
-                  console.log(`[OrchestratorV2] fullRewrite result for Chapter ${chapNum}: error=${fixResult.error || 'none'}, rewrittenContent=${fixResult.rewrittenContent?.length || 0} chars, content=${fixResult.content?.length || 0} chars`);
+                  console.log(`[OrchestratorV2] surgicalFix result for critical issues Chapter ${chapNum}: patches=${surgicalResult.patches?.length || 0}`);
                   
-                  if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
-                    correctedContent = fixResult.rewrittenContent;
-                    console.log(`[OrchestratorV2] Full rewrite successful for Chapter ${chapNum}: ${correctedContent.length} chars`);
-                  } else if (fixResult.content && fixResult.content.length > 100) {
-                    // Fallback to raw content if rewrittenContent not parsed
-                    correctedContent = fixResult.content;
-                    console.log(`[OrchestratorV2] Full rewrite fallback for Chapter ${chapNum}: ${correctedContent.length} chars`);
-                  } else {
-                    console.warn(`[OrchestratorV2] Full rewrite FAILED for Chapter ${chapNum} - no valid content returned`);
+                  // Try to apply patches first
+                  if (surgicalResult.patches && surgicalResult.patches.length > 0) {
+                    const patchResult: PatchResult = applyPatches(chapter.content, surgicalResult.patches);
+                    if (patchResult.success && patchResult.patchedText && patchResult.patchedText !== chapter.content) {
+                      correctedContent = patchResult.patchedText;
+                      console.log(`[OrchestratorV2] Surgical fix applied ${patchResult.appliedPatches}/${surgicalResult.patches.length} patches for Chapter ${chapNum}`);
+                      
+                      await storage.createActivityLog({
+                        projectId: project.id,
+                        level: "info",
+                        message: `[QUIRURGICO] Cap ${chapNum}: ${patchResult.appliedPatches} parches aplicados para ${chapterQaIssues.length} problemas criticos/mayores`,
+                        agentRole: "smart-editor",
+                      });
+                    }
+                  }
+                  
+                  // Only use fullRewrite as LAST RESORT if surgical fix failed completely
+                  if (!correctedContent) {
+                    console.warn(`[OrchestratorV2] Surgical fix failed for Chapter ${chapNum}, falling back to fullRewrite as LAST RESORT`);
+                    
+                    await storage.createActivityLog({
+                      projectId: project.id,
+                      level: "warn",
+                      message: `[FALLBACK] Cap ${chapNum}: Parches fallaron, usando reescritura como ultimo recurso`,
+                      agentRole: "smart-editor",
+                    });
+                    
+                    const fixResult = await this.smartEditor.fullRewrite({
+                      chapterContent: chapter.content,
+                      errorDescription: fullContextPrompt,
+                      consistencyConstraints: preReviewConsistencyContext || JSON.stringify(chapterContext.mainCharacters),
+                    });
+                    
+                    this.addTokenUsage(fixResult.tokenUsage);
+                    await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, chapNum);
+                    
+                    console.log(`[OrchestratorV2] fullRewrite result for Chapter ${chapNum}: error=${fixResult.error || 'none'}, rewrittenContent=${fixResult.rewrittenContent?.length || 0} chars`);
+                    
+                    if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
+                      correctedContent = fixResult.rewrittenContent;
+                      console.log(`[OrchestratorV2] Full rewrite successful for Chapter ${chapNum}: ${correctedContent.length} chars`);
+                    } else if (fixResult.content && fixResult.content.length > 100) {
+                      correctedContent = fixResult.content;
+                      console.log(`[OrchestratorV2] Full rewrite fallback for Chapter ${chapNum}: ${correctedContent.length} chars`);
+                    } else {
+                      console.warn(`[OrchestratorV2] Full rewrite FAILED for Chapter ${chapNum} - no valid content returned`);
+                    }
                   }
                 } else {
-                  // MINOR ISSUES: Use fullRewrite with FULL CONTEXT for reliability
-                  console.log(`[OrchestratorV2] Minor issues for Chapter ${chapNum}, using fullRewrite with full context`);
+                  // MINOR ISSUES: Use surgicalFix (patches) - NOT fullRewrite
+                  // fullRewrite damages chapters by changing too much content
+                  console.log(`[OrchestratorV2] Minor issues for Chapter ${chapNum}, using SURGICAL FIX (patches only)`);
                   
-                  // Build full consistency context for minor issues too
                   const minorIssuesConsistencyContext = await this.buildConsistencyContextForCorrection(
                     project.id, chapNum, worldBibleData, project
                   );
                   
-                  const fixResult = await this.smartEditor.fullRewrite({
+                  const fixResult = await this.smartEditor.surgicalFix({
                     chapterContent: chapter.content,
                     errorDescription: issuesDescription,
                     consistencyConstraints: minorIssuesConsistencyContext,
-                    // Pass full context for better corrections
-                    worldBible: {
-                      characters: chapterContext.mainCharacters,
-                      locations: chapterContext.locations,
-                      worldRules: chapterContext.worldRules,
-                      persistentInjuries: chapterContext.persistentInjuries,
-                      plotDecisions: chapterContext.plotDecisions,
-                    },
-                    chapterNumber: chapNum,
-                    chapterTitle: chapter.title || undefined,
-                    previousChapterSummary: chapterContext.previousChapterSummary,
-                    nextChapterSummary: chapterContext.nextChapterSummary,
-                    styleGuide: chapterContext.styleGuide,
-                    projectTitle: project.title,
-                    genre: project.genre || undefined,
                   });
                   
                   this.addTokenUsage(fixResult.tokenUsage);
                   await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, chapNum);
                   
-                  console.log(`[OrchestratorV2] fullRewrite result for minor issues Chapter ${chapNum}: error=${fixResult.error || 'none'}, rewrittenContent=${fixResult.rewrittenContent?.length || 0} chars, content=${fixResult.content?.length || 0} chars`);
+                  console.log(`[OrchestratorV2] surgicalFix result for minor issues Chapter ${chapNum}: patches=${fixResult.patches?.length || 0}`);
                   
-                  if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
-                    correctedContent = fixResult.rewrittenContent;
-                    console.log(`[OrchestratorV2] Full rewrite successful for Chapter ${chapNum}: ${correctedContent.length} chars`);
-                  } else if (fixResult.content && fixResult.content.length > 100) {
-                    correctedContent = fixResult.content;
-                    console.log(`[OrchestratorV2] Full rewrite fallback for Chapter ${chapNum}: ${correctedContent.length} chars`);
+                  // Apply patches if available
+                  if (fixResult.patches && fixResult.patches.length > 0) {
+                    const patchResult: PatchResult = applyPatches(chapter.content, fixResult.patches);
+                    if (patchResult.success && patchResult.patchedText && patchResult.patchedText !== chapter.content) {
+                      correctedContent = patchResult.patchedText;
+                      console.log(`[OrchestratorV2] Surgical fix applied ${patchResult.appliedPatches}/${fixResult.patches.length} patches for Chapter ${chapNum}`);
+                      
+                      await storage.createActivityLog({
+                        projectId: project.id,
+                        level: "info",
+                        message: `[QUIRURGICO] Cap ${chapNum}: ${patchResult.appliedPatches} parches aplicados, ${fixResult.patches.length - patchResult.appliedPatches} omitidos`,
+                        agentRole: "smart-editor",
+                      });
+                    } else {
+                      console.warn(`[OrchestratorV2] Surgical fix patches failed to apply for Chapter ${chapNum}`);
+                    }
                   } else {
-                    console.warn(`[OrchestratorV2] Full rewrite FAILED for minor issues Chapter ${chapNum} - no valid content returned`);
+                    console.warn(`[OrchestratorV2] Surgical fix returned no patches for Chapter ${chapNum}`);
                   }
                 }
                 
@@ -6007,7 +6041,7 @@ Si el error es de inconsistencia física/edad:
             await storage.createActivityLog({
               projectId: project.id,
               level: hasCriticalOrMajor ? "warn" : "info",
-              message: `📋 Cap ${chapNum} requiere corrección (${chapterIssues.length} problemas): ${postReviewIssuesSummary}`,
+              message: `[CORRECCION] Cap ${chapNum} (${chapterIssues.length} problemas): ${postReviewIssuesSummary}`,
               agentRole: "smart-editor",
             });
             
@@ -6100,7 +6134,7 @@ Si el error es de inconsistencia física/edad:
                   timelineSection = '\nEVENTOS CRONOLÓGICOS RELEVANTES:\n' + chapterContext.timelineEvents.map((e: any) => `- ${e.event || e.evento}: ${e.timeMarker || e.when || ''}`).join('\n');
                 }
                 
-                const fullContextPrompt = `CONTEXTO COMPLETO PARA REESCRITURA (WORLD BIBLE):
+                const fullContextPrompt = `CONTEXTO PARA CORRECCIÓN:
 - Proyecto: "${chapterContext.projectTitle}" (${chapterContext.genre})
 - Capítulo ${chapterContext.chapterNumber}: "${chapterContext.chapterTitle}"
 ${chapterContext.previousChapterSummary ? `- Capítulo anterior: ${chapterContext.previousChapterSummary}` : ''}
@@ -6118,28 +6152,68 @@ ${chapterContext.styleGuide ? `GUÍA DE ESTILO:\n${chapterContext.styleGuide}\n`
 PROBLEMAS A CORREGIR (OBLIGATORIO):
 ${issuesDescription}`;
 
-                // LitAgents 2.1: Use fullRewrite for critical/major issues with FULL consistency context
-                // Build the same consistency context that Ghostwriter receives during writing
+                // LitAgents 2.9.3: ALWAYS try surgical fix FIRST, even for critical/major issues
+                // fullRewrite damages chapters - only use as absolute last resort
                 const fullConsistencyContext = await this.buildConsistencyContextForCorrection(
                   project.id, chapNum, worldBibleData, project
                 );
                 
-                const fixResult = await this.smartEditor.fullRewrite({
+                console.log(`[OrchestratorV2] Post-review: Critical/major issues for Chapter ${chapNum}, trying SURGICAL FIX first`);
+                
+                const surgicalResult = await this.smartEditor.surgicalFix({
                   chapterContent: chapter.content || "",
                   errorDescription: fullContextPrompt,
                   consistencyConstraints: fullConsistencyContext || JSON.stringify(chapterContext.mainCharacters),
                 });
 
-                this.addTokenUsage(fixResult.tokenUsage);
-                await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, chapNum);
+                this.addTokenUsage(surgicalResult.tokenUsage);
+                await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", surgicalResult.tokenUsage, chapNum);
 
-                // fullRewrite returns rewrittenContent
-                if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
-                  correctedContent = fixResult.rewrittenContent;
-                  console.log(`[OrchestratorV2] Full rewrite successful: ${correctedContent.length} chars`);
-                } else if (fixResult.content && fixResult.content.length > 100) {
-                  correctedContent = fixResult.content;
-                  console.log(`[OrchestratorV2] Full rewrite fallback: ${correctedContent.length} chars`);
+                console.log(`[OrchestratorV2] surgicalFix result for post-review Chapter ${chapNum}: patches=${surgicalResult.patches?.length || 0}`);
+
+                // Try to apply patches first
+                if (surgicalResult.patches && surgicalResult.patches.length > 0) {
+                  const patchResult: PatchResult = applyPatches(chapter.content || "", surgicalResult.patches);
+                  if (patchResult.success && patchResult.patchedText && patchResult.patchedText !== chapter.content) {
+                    correctedContent = patchResult.patchedText;
+                    console.log(`[OrchestratorV2] Post-review surgical fix applied ${patchResult.appliedPatches}/${surgicalResult.patches.length} patches for Chapter ${chapNum}`);
+                    
+                    await storage.createActivityLog({
+                      projectId: project.id,
+                      level: "info",
+                      message: `[QUIRURGICO] Cap ${chapNum}: ${patchResult.appliedPatches} parches post-review aplicados`,
+                      agentRole: "smart-editor",
+                    });
+                  }
+                }
+                
+                // Only use fullRewrite as LAST RESORT if surgical fix failed completely
+                if (!correctedContent) {
+                  console.warn(`[OrchestratorV2] Post-review surgical fix failed for Chapter ${chapNum}, falling back to fullRewrite as LAST RESORT`);
+                  
+                  await storage.createActivityLog({
+                    projectId: project.id,
+                    level: "warn",
+                    message: `[FALLBACK] Cap ${chapNum}: Parches fallaron, usando reescritura como ultimo recurso`,
+                    agentRole: "smart-editor",
+                  });
+                  
+                  const fixResult = await this.smartEditor.fullRewrite({
+                    chapterContent: chapter.content || "",
+                    errorDescription: fullContextPrompt,
+                    consistencyConstraints: fullConsistencyContext || JSON.stringify(chapterContext.mainCharacters),
+                  });
+
+                  this.addTokenUsage(fixResult.tokenUsage);
+                  await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, chapNum);
+
+                  if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 100) {
+                    correctedContent = fixResult.rewrittenContent;
+                    console.log(`[OrchestratorV2] Full rewrite successful: ${correctedContent.length} chars`);
+                  } else if (fixResult.content && fixResult.content.length > 100) {
+                    correctedContent = fixResult.content;
+                    console.log(`[OrchestratorV2] Full rewrite fallback: ${correctedContent.length} chars`);
+                  }
                 }
               } else {
                 // MINOR ISSUES ONLY: Try patches first with full consistency context
