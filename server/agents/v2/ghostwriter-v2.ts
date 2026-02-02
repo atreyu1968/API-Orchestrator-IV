@@ -102,12 +102,14 @@ export class GhostwriterV2Agent extends BaseAgent {
       console.log(`[GhostwriterV2] Wrote ${wordCount} words for Scene ${input.scenePlan.scene_num}`);
       
       // LitAgents 2.9: Pre-validation - detect truncated or incomplete scenes
-      const content = response.content;
-      const hasAbruptEnding = content.endsWith('...') || content.endsWith('—') || content.match(/[a-záéíóúñ]$/i);
+      const content = response.content.trim();
+      const lastChar = content.slice(-1);
+      const endsWithPunctuation = ['.', '!', '?', '"', '»', ')'].includes(lastChar);
+      const hasAbruptEnding = content.endsWith('...') || content.endsWith('—') || !endsWithPunctuation;
       const isTooShort = wordCount < 150; // Scenes should be at least 150 words
       
-      if (hasAbruptEnding || isTooShort) {
-        console.warn(`[GhostwriterV2] Scene ${input.scenePlan.scene_num} may be truncated (${wordCount} words, abrupt=${hasAbruptEnding})`);
+      if (isTooShort || (hasAbruptEnding && !endsWithPunctuation)) {
+        console.warn(`[GhostwriterV2] Scene ${input.scenePlan.scene_num} may be truncated (${wordCount} words, ends with "${lastChar}")`);
         // Could implement auto-retry here in future versions
       }
     }

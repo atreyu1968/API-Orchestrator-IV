@@ -3252,9 +3252,14 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
 
           // LitAgents 2.9: Pre-scene validation - verify characters exist in World Bible
           let preSceneWarnings = "";
-          if (scene.characters && scene.characters.length > 0 && worldBible.characters) {
-            const knownCharNames = (worldBible.characters as any[]).map(c => c.name?.toLowerCase() || "");
-            const unknownChars = scene.characters.filter(c => !knownCharNames.includes(c.toLowerCase()));
+          if (scene.characters && Array.isArray(scene.characters) && scene.characters.length > 0 && worldBible.characters) {
+            const knownCharNames = (worldBible.characters as any[]).map(c => (c.name || c || "").toString().toLowerCase());
+            // Normalize scene characters (could be strings or objects with name property)
+            const sceneCharNames = scene.characters.map((c: any) => 
+              typeof c === 'string' ? c.toLowerCase() : (c.name || "").toString().toLowerCase()
+            ).filter((n: string) => n.length > 0);
+            
+            const unknownChars = sceneCharNames.filter((c: string) => !knownCharNames.includes(c));
             if (unknownChars.length > 0) {
               preSceneWarnings = `⚠️ PERSONAJES NO REGISTRADOS: ${unknownChars.join(", ")}. Debes establecerlos apropiadamente o usar personajes conocidos.\n`;
               console.log(`[OrchestratorV2] Pre-scene validation: Unknown characters detected: ${unknownChars.join(", ")}`);
