@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Play, FileText, Clock, CheckCircle, Download, Archive, Copy, Trash2, ClipboardCheck, RefreshCw, Ban, CheckCheck, Plus, Upload, Database, Info, ExternalLink, Loader2, BookOpen, Crosshair } from "lucide-react";
@@ -159,6 +160,7 @@ export default function Dashboard() {
   const [sceneProgress, setSceneProgress] = useState<{chapterNumber: number; sceneNumber: number; totalScenes: number; wordCount: number} | null>(null);
   const [chaptersBeingCorrected, setChaptersBeingCorrected] = useState<{chapterNumbers: number[]; revisionCycle: number} | null>(null);
   const [detectAndFixProgress, setDetectAndFixProgress] = useState<DetectAndFixProgress | null>(null);
+  const [correctionSystem, setCorrectionSystem] = useState<'detect-fix' | 'legacy'>('detect-fix');
   const { projects, currentProject, setSelectedProjectId } = useProject();
 
   const handleExportData = async () => {
@@ -905,16 +907,39 @@ export default function Dashboard() {
                         <BookOpen className="h-4 w-4 mr-2" />
                         {critiqueMutation.isPending ? "Analizando..." : "Criticar"}
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => finalReviewMutation.mutate(currentProject.id)}
-                        disabled={finalReviewMutation.isPending}
-                        data-testid="button-final-review"
-                      >
-                        <ClipboardCheck className="h-4 w-4 mr-2" />
-                        Revisión Final
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Select value={correctionSystem} onValueChange={(v) => setCorrectionSystem(v as 'detect-fix' | 'legacy')}>
+                          <SelectTrigger className="w-[180px] h-8" data-testid="select-correction-system">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="detect-fix">Detect & Fix (v2.9.4)</SelectItem>
+                            <SelectItem value="legacy">Revisión Clásica</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (correctionSystem === 'detect-fix') {
+                              detectAndFixMutation.mutate(currentProject.id);
+                            } else {
+                              finalReviewMutation.mutate(currentProject.id);
+                            }
+                          }}
+                          disabled={finalReviewMutation.isPending || detectAndFixMutation.isPending}
+                          data-testid="button-run-correction"
+                        >
+                          {correctionSystem === 'detect-fix' ? (
+                            <Crosshair className="h-4 w-4 mr-2" />
+                          ) : (
+                            <ClipboardCheck className="h-4 w-4 mr-2" />
+                          )}
+                          {(finalReviewMutation.isPending || detectAndFixMutation.isPending) 
+                            ? "Procesando..." 
+                            : "Ejecutar"}
+                        </Button>
+                      </div>
                       <Button
                         variant="outline"
                         size="sm"
@@ -1346,16 +1371,39 @@ export default function Dashboard() {
                         <RefreshCw className="h-4 w-4 mr-2" />
                         Reiniciar Correcciones
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => detectAndFixMutation.mutate(currentProject.id)}
-                        disabled={detectAndFixMutation.isPending}
-                        data-testid="button-detect-and-fix"
-                      >
-                        <Crosshair className="h-4 w-4 mr-2" />
-                        Detectar y Corregir
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Select value={correctionSystem} onValueChange={(v) => setCorrectionSystem(v as 'detect-fix' | 'legacy')}>
+                          <SelectTrigger className="w-[180px] h-8" data-testid="select-correction-system-paused">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="detect-fix">Detect & Fix (v2.9.4)</SelectItem>
+                            <SelectItem value="legacy">Revisión Clásica</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (correctionSystem === 'detect-fix') {
+                              detectAndFixMutation.mutate(currentProject.id);
+                            } else {
+                              finalReviewMutation.mutate(currentProject.id);
+                            }
+                          }}
+                          disabled={finalReviewMutation.isPending || detectAndFixMutation.isPending}
+                          data-testid="button-run-correction-paused"
+                        >
+                          {correctionSystem === 'detect-fix' ? (
+                            <Crosshair className="h-4 w-4 mr-2" />
+                          ) : (
+                            <ClipboardCheck className="h-4 w-4 mr-2" />
+                          )}
+                          {(finalReviewMutation.isPending || detectAndFixMutation.isPending) 
+                            ? "Procesando..." 
+                            : "Ejecutar Corrección"}
+                        </Button>
+                      </div>
                     </>
                   )}
 
