@@ -302,6 +302,38 @@ interface QAIssue {
   categoria?: string;
 }
 
+// LitAgents 2.9.4: Issue Registry for "Detect All, Then Fix" strategy
+// Issues are detected in 3 consecutive reviews, deduplicated, then fixed one by one with verification
+interface RegisteredIssue {
+  id: string; // Unique hash for deduplication
+  source: string; // Which review detected it (review-1, review-2, review-3)
+  chapter: number;
+  tipo: string;
+  severidad: 'critico' | 'mayor' | 'menor';
+  descripcion: string;
+  contexto?: string;
+  instrucciones?: string;
+  correccion?: string;
+  // Tracking
+  status: 'pending' | 'fixing' | 'verifying' | 'resolved' | 'escalated';
+  attempts: number;
+  lastAttemptError?: string;
+  resolvedAt?: string;
+  // For rollback
+  originalContent?: string;
+}
+
+interface IssueRegistry {
+  projectId: number;
+  createdAt: string;
+  detectionPhaseComplete: boolean;
+  issues: RegisteredIssue[];
+  // Stats
+  totalDetected: number;
+  totalResolved: number;
+  totalEscalated: number;
+}
+
 interface OrchestratorV2Callbacks {
   onAgentStatus: (role: string, status: string, message?: string) => void;
   onChapterComplete: (chapterNumber: number, wordCount: number, chapterTitle: string) => void;
@@ -7825,5 +7857,439 @@ ${issuesDescription}`;
         metadata: { error: errorMessage, recoverable: true },
       });
     }
+  }
+
+  // =============================================================================
+  // LitAgents 2.9.4: "DETECT ALL, THEN FIX" STRATEGY
+  // Phase 1: Run 3 consecutive reviews to detect ALL issues (no corrections)
+  // Phase 2: Fix issues one by one with verification (no new issues introduced)
+  // =============================================================================
+
+  /**
+   * Generate a unique hash for an issue to enable deduplication
+   */
+  private generateIssueHash(issue: { chapter: number; tipo: string; descripcion: string; contexto?: string }): string {
+    const normalizedDesc = issue.descripcion.toLowerCase().trim().substring(0, 100);
+    const normalizedContext = (issue.contexto || '').toLowerCase().trim().substring(0, 50);
+    const raw = `${issue.chapter}-${issue.tipo}-${normalizedDesc}-${normalizedContext}`;
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+      const char = raw.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(36);
+  }
+
+  /**
+   * Phase 1: Exhaustive Detection
+   * Run FinalReviewer 3 times and consolidate all issues into a deduplicated registry
+   */
+  async exhaustiveDetection(project: any, chapters: any[], worldBible: any): Promise<IssueRegistry> {
+    const registry: IssueRegistry = {
+      projectId: project.id,
+      createdAt: new Date().toISOString(),
+      detectionPhaseComplete: false,
+      issues: [],
+      totalDetected: 0,
+      totalResolved: 0,
+      totalEscalated: 0,
+    };
+
+    const seenHashes = new Set<string>();
+
+    this.callbacks.onAgentStatus("final-reviewer", "active", "Fase de detección: ejecutando 3 revisiones exhaustivas...");
+    
+    await storage.createActivityLog({
+      projectId: project.id,
+      level: "info",
+      message: "[DETECCION] Iniciando fase de detección exhaustiva (3 revisiones consecutivas)",
+      agentRole: "orchestrator",
+    });
+
+    for (let reviewNum = 1; reviewNum <= 3; reviewNum++) {
+      console.log(`[OrchestratorV2] Detection Phase: Review ${reviewNum}/3`);
+      this.callbacks.onAgentStatus("final-reviewer", "active", `Revisión ${reviewNum}/3 en progreso...`);
+
+      try {
+        const reviewResult = await this.finalReviewer.execute({
+          chapters: chapters.map(c => ({
+            number: c.chapterNumber,
+            title: c.title || `Capítulo ${c.chapterNumber}`,
+            content: c.content || '',
+          })),
+          worldBible,
+          projectTitle: project.title,
+          projectGenre: project.genre,
+          projectTone: project.tone,
+        });
+
+        this.addTokenUsage(reviewResult.tokenUsage);
+        await this.logAiUsage(project.id, "final-reviewer", "deepseek-reasoner", reviewResult.tokenUsage);
+
+        const issues = reviewResult.parsed?.issues || [];
+        let newIssuesThisReview = 0;
+
+        for (const issue of issues) {
+          const chapterNum = this.normalizeChapterNumber(issue.capitulo || 0);
+          const hash = this.generateIssueHash({
+            chapter: chapterNum,
+            tipo: issue.tipo,
+            descripcion: issue.descripcion,
+            contexto: issue.contexto,
+          });
+
+          if (!seenHashes.has(hash)) {
+            seenHashes.add(hash);
+            newIssuesThisReview++;
+
+            const registeredIssue: RegisteredIssue = {
+              id: hash,
+              source: `review-${reviewNum}`,
+              chapter: chapterNum,
+              tipo: issue.tipo,
+              severidad: (issue.severidad as 'critico' | 'mayor' | 'menor') || 'menor',
+              descripcion: issue.descripcion,
+              contexto: issue.contexto,
+              instrucciones: issue.instrucciones,
+              correccion: issue.correccion,
+              status: 'pending',
+              attempts: 0,
+            };
+            registry.issues.push(registeredIssue);
+          }
+        }
+
+        console.log(`[OrchestratorV2] Review ${reviewNum}: Found ${issues.length} issues, ${newIssuesThisReview} new (${seenHashes.size} total unique)`);
+        
+        await storage.createActivityLog({
+          projectId: project.id,
+          level: "info",
+          message: `[DETECCION] Revisión ${reviewNum}/3: ${issues.length} issues encontrados, ${newIssuesThisReview} nuevos, ${seenHashes.size} únicos acumulados`,
+          agentRole: "final-reviewer",
+        });
+
+      } catch (error) {
+        console.error(`[OrchestratorV2] Detection review ${reviewNum} failed:`, error);
+        await storage.createActivityLog({
+          projectId: project.id,
+          level: "error",
+          message: `[DETECCION] Error en revisión ${reviewNum}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          agentRole: "final-reviewer",
+        });
+      }
+    }
+
+    registry.detectionPhaseComplete = true;
+    registry.totalDetected = registry.issues.length;
+
+    // Sort by severity (critico > mayor > menor) and chapter number
+    const severityOrder = { critico: 0, mayor: 1, menor: 2 };
+    registry.issues.sort((a, b) => {
+      const sevDiff = severityOrder[a.severidad] - severityOrder[b.severidad];
+      if (sevDiff !== 0) return sevDiff;
+      return a.chapter - b.chapter;
+    });
+
+    await storage.createActivityLog({
+      projectId: project.id,
+      level: "success",
+      message: `[DETECCION COMPLETA] ${registry.totalDetected} issues únicos detectados en 3 revisiones. Iniciando fase de corrección verificada.`,
+      agentRole: "orchestrator",
+    });
+
+    // Group by severity for summary
+    const bySeverity = { critico: 0, mayor: 0, menor: 0 };
+    for (const issue of registry.issues) {
+      bySeverity[issue.severidad]++;
+    }
+
+    this.callbacks.onAgentStatus("final-reviewer", "completed", 
+      `Detección completa: ${bySeverity.critico} críticos, ${bySeverity.mayor} mayores, ${bySeverity.menor} menores`);
+
+    return registry;
+  }
+
+  /**
+   * Mini-verifier: Check if a correction introduced new problems
+   * Only analyzes the specific paragraph/section that was modified
+   */
+  async verifyCorrection(
+    project: any,
+    chapter: any,
+    originalContent: string,
+    correctedContent: string,
+    issue: RegisteredIssue,
+    worldBible: any
+  ): Promise<{ valid: boolean; newIssues?: string[]; error?: string }> {
+    
+    // Use SmartEditor to verify the correction
+    // We'll check: 1) Original issue is fixed, 2) No new issues introduced
+    
+    const verificationPrompt = `Eres un verificador de correcciones. Analiza si la corrección aplicada es válida.
+
+ISSUE ORIGINAL:
+- Tipo: ${issue.tipo}
+- Severidad: ${issue.severidad}
+- Descripción: ${issue.descripcion}
+- Contexto: ${issue.contexto || 'N/A'}
+- Corrección sugerida: ${issue.correccion || issue.instrucciones || 'N/A'}
+
+TEXTO ORIGINAL (fragmento relevante):
+${originalContent.substring(0, 2000)}
+
+TEXTO CORREGIDO:
+${correctedContent.substring(0, 2000)}
+
+VERIFICA:
+1. ¿El issue original fue corregido? (SÍ/NO)
+2. ¿Se introdujeron nuevos problemas? (lista o "ninguno")
+3. ¿La corrección mantiene coherencia con el World Bible? (SÍ/NO)
+
+Responde en JSON:
+{
+  "issueFixed": true/false,
+  "newProblems": ["problema1", "problema2"] o [],
+  "coherent": true/false,
+  "verdict": "APROBADO" | "RECHAZADO",
+  "reason": "explicación breve"
+}`;
+
+    try {
+      const response = await callDeepSeek([
+        { role: "system", content: "Eres un verificador experto de correcciones literarias. Responde SOLO en JSON válido." },
+        { role: "user", content: verificationPrompt }
+      ], {
+        model: "deepseek-chat",
+        temperature: 0.3,
+        max_tokens: 1000,
+      });
+
+      this.addTokenUsage(response.tokenUsage);
+      await this.logAiUsage(project.id, "correction-verifier", "deepseek-chat", response.tokenUsage, issue.chapter);
+
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        const isValid = result.verdict === "APROBADO" && result.issueFixed && result.coherent;
+        
+        return {
+          valid: isValid,
+          newIssues: result.newProblems?.length > 0 ? result.newProblems : undefined,
+          error: isValid ? undefined : result.reason,
+        };
+      }
+
+      return { valid: false, error: "No se pudo parsear la verificación" };
+    } catch (error) {
+      console.error("[OrchestratorV2] Verification failed:", error);
+      return { valid: false, error: error instanceof Error ? error.message : "Error de verificación" };
+    }
+  }
+
+  /**
+   * Phase 2: Verified Correction
+   * Fix each issue one by one, verifying that no new problems are introduced
+   */
+  async verifiedCorrectionPhase(
+    project: any,
+    registry: IssueRegistry,
+    worldBible: any
+  ): Promise<IssueRegistry> {
+    const MAX_ATTEMPTS_PER_ISSUE = 3;
+    const chapters = await storage.getChaptersByProject(project.id);
+    const chapterMap = new Map(chapters.map(c => [c.chapterNumber, c]));
+
+    this.callbacks.onAgentStatus("smart-editor", "active", `Corrigiendo ${registry.issues.length} issues verificados...`);
+
+    await storage.createActivityLog({
+      projectId: project.id,
+      level: "info",
+      message: `[CORRECCION] Iniciando corrección verificada de ${registry.issues.length} issues`,
+      agentRole: "orchestrator",
+    });
+
+    let resolvedCount = 0;
+    let escalatedCount = 0;
+
+    for (let i = 0; i < registry.issues.length; i++) {
+      const issue = registry.issues[i];
+      
+      if (issue.status === 'resolved' || issue.status === 'escalated') continue;
+
+      const chapter = chapterMap.get(issue.chapter);
+      if (!chapter || !chapter.content) {
+        console.warn(`[OrchestratorV2] Chapter ${issue.chapter} not found for issue ${issue.id}`);
+        issue.status = 'escalated';
+        issue.lastAttemptError = 'Capítulo no encontrado';
+        escalatedCount++;
+        continue;
+      }
+
+      issue.status = 'fixing';
+      issue.originalContent = chapter.content;
+
+      this.callbacks.onAgentStatus("smart-editor", "active", 
+        `Issue ${i + 1}/${registry.issues.length}: Cap ${issue.chapter} - ${issue.tipo}`);
+
+      console.log(`[OrchestratorV2] Fixing issue ${i + 1}/${registry.issues.length}: ${issue.tipo} in chapter ${issue.chapter}`);
+
+      let corrected = false;
+      
+      while (issue.attempts < MAX_ATTEMPTS_PER_ISSUE && !corrected) {
+        issue.attempts++;
+
+        try {
+          // Apply surgical fix
+          const fixResult = await this.smartEditor.surgicalFix({
+            chapterContent: chapter.content,
+            issues: [{
+              tipo: issue.tipo,
+              severidad: issue.severidad,
+              descripcion: issue.descripcion,
+              contexto: issue.contexto,
+              instrucciones: issue.instrucciones || issue.correccion,
+            }],
+            worldBible,
+            attemptNumber: issue.attempts,
+          });
+
+          this.addTokenUsage(fixResult.tokenUsage);
+          await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", fixResult.tokenUsage, issue.chapter);
+
+          let correctedContent: string | null = null;
+
+          if (fixResult.patches && fixResult.patches.length > 0) {
+            const patchResult = applyPatches(chapter.content, fixResult.patches);
+            if (patchResult.appliedPatches > 0) {
+              correctedContent = patchResult.patchedText;
+            }
+          }
+
+          if (!correctedContent || correctedContent === chapter.content) {
+            issue.lastAttemptError = `Intento ${issue.attempts}: parche no aplicado`;
+            continue;
+          }
+
+          // Verify the correction
+          issue.status = 'verifying';
+          const verification = await this.verifyCorrection(
+            project,
+            chapter,
+            chapter.content,
+            correctedContent,
+            issue,
+            worldBible
+          );
+
+          if (verification.valid) {
+            // Save the corrected content
+            await storage.updateChapter(chapter.id, {
+              content: correctedContent,
+              wordCount: correctedContent.split(/\s+/).length,
+            });
+
+            // Update local chapter reference
+            chapter.content = correctedContent;
+
+            issue.status = 'resolved';
+            issue.resolvedAt = new Date().toISOString();
+            resolvedCount++;
+            corrected = true;
+
+            console.log(`[OrchestratorV2] Issue ${issue.id} resolved on attempt ${issue.attempts}`);
+            
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: "success",
+              message: `[CORREGIDO] Cap ${issue.chapter}: ${issue.tipo} - "${issue.descripcion.substring(0, 50)}..." (intento ${issue.attempts})`,
+              agentRole: "smart-editor",
+            });
+
+          } else {
+            // Verification failed - rollback and retry
+            issue.lastAttemptError = `Intento ${issue.attempts}: ${verification.error || 'verificación fallida'}`;
+            if (verification.newIssues) {
+              issue.lastAttemptError += ` (nuevos problemas: ${verification.newIssues.join(', ')})`;
+            }
+            console.warn(`[OrchestratorV2] Verification failed for issue ${issue.id}: ${verification.error}`);
+          }
+
+        } catch (error) {
+          issue.lastAttemptError = `Intento ${issue.attempts}: ${error instanceof Error ? error.message : 'error desconocido'}`;
+          console.error(`[OrchestratorV2] Fix attempt ${issue.attempts} failed:`, error);
+        }
+      }
+
+      if (!corrected) {
+        issue.status = 'escalated';
+        escalatedCount++;
+        
+        await storage.createActivityLog({
+          projectId: project.id,
+          level: "warn",
+          message: `[ESCALADO] Cap ${issue.chapter}: ${issue.tipo} - no se pudo corregir tras ${issue.attempts} intentos. Último error: ${issue.lastAttemptError}`,
+          agentRole: "smart-editor",
+        });
+      }
+
+      // Update progress
+      registry.totalResolved = resolvedCount;
+      registry.totalEscalated = escalatedCount;
+    }
+
+    this.callbacks.onAgentStatus("smart-editor", "completed", 
+      `Completado: ${resolvedCount} resueltos, ${escalatedCount} escalados de ${registry.issues.length}`);
+
+    await storage.createActivityLog({
+      projectId: project.id,
+      level: escalatedCount > 0 ? "warn" : "success",
+      message: `[CORRECCION COMPLETA] ${resolvedCount}/${registry.issues.length} issues resueltos, ${escalatedCount} escalados`,
+      agentRole: "orchestrator",
+    });
+
+    return registry;
+  }
+
+  /**
+   * Main entry point for the new "Detect All, Then Fix" strategy
+   */
+  async detectAndFixStrategy(project: any): Promise<{ registry: IssueRegistry; finalScore: number }> {
+    const chapters = await storage.getChaptersByProject(project.id);
+    const worldBibleRecord = await storage.getWorldBibleByProject(project.id);
+    const worldBible = worldBibleRecord?.content || {};
+
+    // Phase 1: Exhaustive Detection
+    const registry = await this.exhaustiveDetection(project, chapters, worldBible);
+
+    if (registry.issues.length === 0) {
+      await storage.createActivityLog({
+        projectId: project.id,
+        level: "success",
+        message: "[PERFECTO] No se encontraron issues en las 3 revisiones. Proyecto listo.",
+        agentRole: "orchestrator",
+      });
+      return { registry, finalScore: 10 };
+    }
+
+    // Phase 2: Verified Correction
+    const finalRegistry = await this.verifiedCorrectionPhase(project, registry, worldBible);
+
+    // Calculate final score based on resolution rate
+    const resolutionRate = finalRegistry.totalResolved / finalRegistry.totalDetected;
+    let finalScore = Math.round(10 * resolutionRate);
+    
+    // Penalize for escalated issues
+    if (finalRegistry.totalEscalated > 0) {
+      finalScore = Math.max(1, finalScore - Math.ceil(finalRegistry.totalEscalated / 2));
+    }
+
+    // Update project
+    await storage.updateProject(project.id, {
+      finalScore,
+      status: finalRegistry.totalEscalated === 0 ? "completed" : "paused",
+    });
+
+    return { registry: finalRegistry, finalScore };
   }
 }
