@@ -499,6 +499,22 @@ export default function Dashboard() {
     },
   });
 
+  const cancelCorrectionMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/projects/${id}/cancel-correction`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-statuses"] });
+      toast({ title: "Corrección cancelada", description: "El proceso de corrección ha sido detenido" });
+      addLog("info", "Corrección cancelada por el usuario");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo cancelar la corrección", variant: "destructive" });
+    },
+  });
+
   const forceCompleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const response = await apiRequest("POST", `/api/projects/${id}/force-complete`);
@@ -1422,17 +1438,17 @@ export default function Dashboard() {
                     </>
                   )}
 
-                  {currentProject.status === "final_review_in_progress" && (
+                  {(currentProject.status === "final_review_in_progress" || currentProject.status === "processing") && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setConfirmDialog("cancel")}
-                      disabled={cancelProjectMutation.isPending}
+                      onClick={() => cancelCorrectionMutation.mutate(currentProject.id)}
+                      disabled={cancelCorrectionMutation.isPending}
                       className="text-destructive hover:text-destructive"
-                      data-testid="button-cancel-final-review"
+                      data-testid="button-cancel-correction"
                     >
                       <Ban className="h-4 w-4 mr-2" />
-                      Cancelar
+                      {cancelCorrectionMutation.isPending ? "Cancelando..." : "Cancelar Corrección"}
                     </Button>
                   )}
 

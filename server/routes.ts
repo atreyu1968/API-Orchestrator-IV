@@ -93,9 +93,40 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  // Track active detect-and-fix processes to prevent parallel execution (shared across endpoints)
+  // Unified tracking for ALL correction processes (both detect-fix and legacy)
+  const activeCorrections = new Map<number, { type: 'detect-fix' | 'legacy'; startTime: Date; cancelled: boolean }>();
+  
+  // Helper functions for correction tracking
+  const isAnyCorrectionActive = (projectId: number) => {
+    const correction = activeCorrections.get(projectId);
+    return correction && !correction.cancelled;
+  };
+  const startCorrection = (projectId: number, type: 'detect-fix' | 'legacy') => {
+    activeCorrections.set(projectId, { type, startTime: new Date(), cancelled: false });
+    console.log(`[Corrections] Started ${type} for project ${projectId}`);
+  };
+  const endCorrection = (projectId: number) => {
+    activeCorrections.delete(projectId);
+    console.log(`[Corrections] Ended correction for project ${projectId}`);
+  };
+  const cancelCorrection = (projectId: number) => {
+    const correction = activeCorrections.get(projectId);
+    if (correction) {
+      correction.cancelled = true;
+      console.log(`[Corrections] Marked cancellation for project ${projectId}`);
+    }
+  };
+  const isCorrectionCancelled = (projectId: number) => {
+    const correction = activeCorrections.get(projectId);
+    return correction?.cancelled || false;
+  };
+  
+  // Export for orchestrator to check cancellation
+  (global as any).isCorrectionCancelled = isCorrectionCancelled;
+  
+  // Legacy compatibility
   const activeDetectAndFix = new Set<number>();
-  const isDetectAndFixActive = (projectId: number) => activeDetectAndFix.has(projectId);
+  const isDetectAndFixActive = (projectId: number) => activeDetectAndFix.has(projectId) || isAnyCorrectionActive(projectId);
   
   // Global correction system preference (used by orchestrator for automatic corrections)
   let globalCorrectionSystem: 'detect-fix' | 'legacy' = 'detect-fix';
@@ -122,6 +153,58 @@ export async function registerRoutes(
     } else {
       res.status(400).json({ error: "Invalid correction system. Use 'detect-fix' or 'legacy'" });
     }
+  });
+
+  // Get active correction status for a project
+  app.get("/api/projects/:id/correction-status", (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const correction = activeCorrections.get(id);
+    if (correction && !correction.cancelled) {
+      res.json({ 
+        active: true, 
+        type: correction.type, 
+        startTime: correction.startTime,
+        cancelled: correction.cancelled
+      });
+    } else {
+      res.json({ active: false });
+    }
+  });
+
+  // Cancel active correction for a project
+  app.post("/api/projects/:id/cancel-correction", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const correction = activeCorrections.get(id);
+    
+    if (!correction || correction.cancelled) {
+      return res.status(404).json({ error: "No hay corrección activa para cancelar" });
+    }
+    
+    cancelCorrection(id);
+    
+    // Also update project status to paused
+    try {
+      await storage.updateProject(id, { status: "paused" });
+      await storage.createActivityLog({
+        projectId: id,
+        level: "warning",
+        message: `Corrección ${correction.type} cancelada por el usuario`,
+        agentRole: "system",
+        metadata: { cancelledAt: new Date().toISOString() },
+      });
+    } catch (error) {
+      console.error("[Corrections] Error updating project status:", error);
+    }
+    
+    res.json({ success: true, message: "Corrección marcada para cancelación" });
+  });
+
+  // Get all active corrections
+  app.get("/api/corrections/active", (_req: Request, res: Response) => {
+    const active = Array.from(activeCorrections.entries())
+      .filter(([_, v]) => !v.cancelled)
+      .map(([projectId, data]) => ({ projectId, ...data }));
+    res.json(active);
   });
 
   app.get("/api/projects", async (req: Request, res: Response) => {
@@ -876,11 +959,13 @@ export async function registerRoutes(
         });
       }
 
-      // CRITICAL: Block if detect-and-fix is already running for this project
-      if (activeDetectAndFix.has(id)) {
+      // CRITICAL: Block if ANY correction is already running for this project
+      if (isAnyCorrectionActive(id)) {
+        const correction = activeCorrections.get(id);
         return res.status(409).json({ 
-          error: "Ya hay un proceso de 'Detect & Fix' en ejecución para este proyecto.",
-          hint: "Espera a que termine el proceso actual."
+          error: `Ya hay una corrección '${correction?.type}' en ejecución. Espera a que termine o cancélala primero.`,
+          activeType: correction?.type,
+          startTime: correction?.startTime
         });
       }
 
@@ -893,8 +978,9 @@ export async function registerRoutes(
         });
       }
 
-      // Mark this project as having an active detect-and-fix process
-      activeDetectAndFix.add(id);
+      // Mark this project as having an active correction process (unified tracking)
+      startCorrection(id, 'detect-fix');
+      activeDetectAndFix.add(id); // Legacy compatibility
 
       res.json({ 
         message: "Iniciando estrategia 'Detect All, Then Fix'",
@@ -950,7 +1036,8 @@ export async function registerRoutes(
       orchestrator.detectAndFixStrategy(project).then(async (result) => {
         const { registry, finalScore } = result;
         
-        // CRITICAL: Remove from active set when complete
+        // CRITICAL: Remove from active sets when complete (unified + legacy)
+        endCorrection(id);
         activeDetectAndFix.delete(id);
         
         await storage.updateProject(id, { 
@@ -973,7 +1060,8 @@ export async function registerRoutes(
           "orchestrator-v2"
         );
       }).catch(async (error) => {
-        // CRITICAL: Remove from active set on error
+        // CRITICAL: Remove from active sets on error (unified + legacy)
+        endCorrection(id);
         activeDetectAndFix.delete(id);
         
         console.error("Detect and Fix error:", error);
@@ -983,8 +1071,9 @@ export async function registerRoutes(
       });
 
     } catch (error) {
-      // CRITICAL: Remove from active set on early error
+      // CRITICAL: Remove from active sets on early error (unified + legacy)
       const id = parseInt(req.params.id);
+      endCorrection(id);
       activeDetectAndFix.delete(id);
       
       console.error("Error starting Detect and Fix:", error);
@@ -1390,11 +1479,13 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Project not found" });
       }
 
-      // CRITICAL: Block if detect-and-fix is already running
-      if (isDetectAndFixActive(id)) {
+      // CRITICAL: Block if ANY correction is already running
+      if (isAnyCorrectionActive(id)) {
+        const correction = activeCorrections.get(id);
         return res.status(409).json({ 
-          error: "El proceso 'Detect & Fix' está en ejecución. Usa ese sistema en su lugar o espera a que termine.",
-          hint: "Detect & Fix es el sistema recomendado para correcciones (LitAgents 2.9.4)"
+          error: `Ya hay una corrección '${correction?.type}' en ejecución. Espera a que termine o cancélala primero.`,
+          activeType: correction?.type,
+          startTime: correction?.startTime
         });
       }
 
@@ -1403,6 +1494,9 @@ export async function registerRoutes(
       if (!allowedStatuses.includes(project.status)) {
         return res.status(400).json({ error: "Solo se puede ejecutar la revisión final en proyectos completados o con revisión fallida" });
       }
+
+      // Register this correction in unified tracking
+      startCorrection(id, 'legacy');
 
       // Reset audit flags to allow full re-analysis
       // Use 'final_review_in_progress' to prevent auto-recovery from treating this as a normal generation
@@ -1441,10 +1535,12 @@ export async function registerRoutes(
         },
         onSceneComplete: () => {},
         onProjectComplete: () => {
+          endCorrection(id); // Clean up tracking
           sendToStreams({ type: "project_complete" });
           persistActivityLog(id, "success", "Revisión final completada", "smart-editor");
         },
         onError: (error) => {
+          endCorrection(id); // Clean up tracking on error
           sendToStreams({ type: "error", error });
           persistActivityLog(id, "error", error, "smart-editor");
         },
@@ -1453,7 +1549,9 @@ export async function registerRoutes(
         },
       });
 
-      orchestratorV2.runFinalReviewOnly(project);
+      orchestratorV2.runFinalReviewOnly(project).finally(() => {
+        endCorrection(id); // Ensure cleanup
+      });
       
       console.log(`[FinalReview] Started final review for project ${id} (v2 pipeline)`);
 
