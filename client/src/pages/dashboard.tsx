@@ -160,8 +160,16 @@ export default function Dashboard() {
   const [sceneProgress, setSceneProgress] = useState<{chapterNumber: number; sceneNumber: number; totalScenes: number; wordCount: number} | null>(null);
   const [chaptersBeingCorrected, setChaptersBeingCorrected] = useState<{chapterNumbers: number[]; revisionCycle: number} | null>(null);
   const [detectAndFixProgress, setDetectAndFixProgress] = useState<DetectAndFixProgress | null>(null);
-  const [correctionSystem, setCorrectionSystem] = useState<'detect-fix' | 'legacy'>('detect-fix');
+  const [correctionSystem, setCorrectionSystem] = useState<'detect-fix' | 'legacy'>(() => {
+    const saved = localStorage.getItem('litagents-correction-system');
+    return (saved === 'legacy' ? 'legacy' : 'detect-fix') as 'detect-fix' | 'legacy';
+  });
   const { projects, currentProject, setSelectedProjectId } = useProject();
+  
+  // Persist correction system preference
+  useEffect(() => {
+    localStorage.setItem('litagents-correction-system', correctionSystem);
+  }, [correctionSystem]);
 
   const handleExportData = async () => {
     setIsExporting(true);
@@ -737,12 +745,26 @@ export default function Dashboard() {
             Orquestación de agentes literarios autónomos
           </p>
         </div>
-        {activeProject && (
-          <Badge className="bg-green-500/20 text-green-600 dark:text-green-400 text-sm px-3 py-1">
-            <div className="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse" />
-            Generando: {activeProject.title}
-          </Badge>
-        )}
+        <div className="flex items-center gap-4">
+          {activeProject && (
+            <Badge className="bg-green-500/20 text-green-600 dark:text-green-400 text-sm px-3 py-1">
+              <div className="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse" />
+              Generando: {activeProject.title}
+            </Badge>
+          )}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-card">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Sistema de Corrección:</span>
+            <Select value={correctionSystem} onValueChange={(v) => setCorrectionSystem(v as 'detect-fix' | 'legacy')}>
+              <SelectTrigger className="w-[200px] h-8" data-testid="select-correction-system-global">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="detect-fix">Detect & Fix (v2.9.4)</SelectItem>
+                <SelectItem value="legacy">Revisión Clásica</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </div>
 
       {/* Agentes v2 - Pipeline por escenas */}
@@ -907,39 +929,28 @@ export default function Dashboard() {
                         <BookOpen className="h-4 w-4 mr-2" />
                         {critiqueMutation.isPending ? "Analizando..." : "Criticar"}
                       </Button>
-                      <div className="flex items-center gap-2">
-                        <Select value={correctionSystem} onValueChange={(v) => setCorrectionSystem(v as 'detect-fix' | 'legacy')}>
-                          <SelectTrigger className="w-[180px] h-8" data-testid="select-correction-system">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="detect-fix">Detect & Fix (v2.9.4)</SelectItem>
-                            <SelectItem value="legacy">Revisión Clásica</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            if (correctionSystem === 'detect-fix') {
-                              detectAndFixMutation.mutate(currentProject.id);
-                            } else {
-                              finalReviewMutation.mutate(currentProject.id);
-                            }
-                          }}
-                          disabled={finalReviewMutation.isPending || detectAndFixMutation.isPending}
-                          data-testid="button-run-correction"
-                        >
-                          {correctionSystem === 'detect-fix' ? (
-                            <Crosshair className="h-4 w-4 mr-2" />
-                          ) : (
-                            <ClipboardCheck className="h-4 w-4 mr-2" />
-                          )}
-                          {(finalReviewMutation.isPending || detectAndFixMutation.isPending) 
-                            ? "Procesando..." 
-                            : "Ejecutar"}
-                        </Button>
-                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (correctionSystem === 'detect-fix') {
+                            detectAndFixMutation.mutate(currentProject.id);
+                          } else {
+                            finalReviewMutation.mutate(currentProject.id);
+                          }
+                        }}
+                        disabled={finalReviewMutation.isPending || detectAndFixMutation.isPending}
+                        data-testid="button-run-correction"
+                      >
+                        {correctionSystem === 'detect-fix' ? (
+                          <Crosshair className="h-4 w-4 mr-2" />
+                        ) : (
+                          <ClipboardCheck className="h-4 w-4 mr-2" />
+                        )}
+                        {(finalReviewMutation.isPending || detectAndFixMutation.isPending) 
+                          ? "Procesando..." 
+                          : correctionSystem === 'detect-fix' ? "Detect & Fix" : "Revisión Final"}
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -1371,39 +1382,28 @@ export default function Dashboard() {
                         <RefreshCw className="h-4 w-4 mr-2" />
                         Reiniciar Correcciones
                       </Button>
-                      <div className="flex items-center gap-2">
-                        <Select value={correctionSystem} onValueChange={(v) => setCorrectionSystem(v as 'detect-fix' | 'legacy')}>
-                          <SelectTrigger className="w-[180px] h-8" data-testid="select-correction-system-paused">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="detect-fix">Detect & Fix (v2.9.4)</SelectItem>
-                            <SelectItem value="legacy">Revisión Clásica</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            if (correctionSystem === 'detect-fix') {
-                              detectAndFixMutation.mutate(currentProject.id);
-                            } else {
-                              finalReviewMutation.mutate(currentProject.id);
-                            }
-                          }}
-                          disabled={finalReviewMutation.isPending || detectAndFixMutation.isPending}
-                          data-testid="button-run-correction-paused"
-                        >
-                          {correctionSystem === 'detect-fix' ? (
-                            <Crosshair className="h-4 w-4 mr-2" />
-                          ) : (
-                            <ClipboardCheck className="h-4 w-4 mr-2" />
-                          )}
-                          {(finalReviewMutation.isPending || detectAndFixMutation.isPending) 
-                            ? "Procesando..." 
-                            : "Ejecutar Corrección"}
-                        </Button>
-                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (correctionSystem === 'detect-fix') {
+                            detectAndFixMutation.mutate(currentProject.id);
+                          } else {
+                            finalReviewMutation.mutate(currentProject.id);
+                          }
+                        }}
+                        disabled={finalReviewMutation.isPending || detectAndFixMutation.isPending}
+                        data-testid="button-run-correction-paused"
+                      >
+                        {correctionSystem === 'detect-fix' ? (
+                          <Crosshair className="h-4 w-4 mr-2" />
+                        ) : (
+                          <ClipboardCheck className="h-4 w-4 mr-2" />
+                        )}
+                        {(finalReviewMutation.isPending || detectAndFixMutation.isPending) 
+                          ? "Procesando..." 
+                          : correctionSystem === 'detect-fix' ? "Detect & Fix" : "Revisión Final"}
+                      </Button>
                     </>
                   )}
 
