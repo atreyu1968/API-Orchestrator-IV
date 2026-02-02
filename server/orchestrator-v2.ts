@@ -2064,11 +2064,169 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
         parts.push(thoughtContext);
       }
       
+      // 7. LitAgents 2.9.2: Add CANONICAL ELEMENTS section - explicit preservation instructions
+      const canonicalSection = this.buildCanonicalElementsSection(worldBible, context.entities, chapterNumber);
+      if (canonicalSection) {
+        parts.push(canonicalSection);
+      }
+      
     } catch (err) {
       console.error(`[OrchestratorV2] Error building correction context:`, err);
     }
     
     return parts.join("\n\n");
+  }
+  
+  /**
+   * LitAgents 2.9.2: Build explicit list of canonical elements that MUST NOT be changed
+   * This prevents corrections from introducing new consistency errors
+   */
+  private buildCanonicalElementsSection(worldBible: any, entities: any[], chapterNumber: number): string {
+    const canonicalItems: string[] = [];
+    
+    // 1. Physical traits of main characters (most common source of regression)
+    const characters = worldBible?.characters || worldBible?.personajes || [];
+    for (const char of characters.slice(0, 10)) {
+      const name = char.name || char.nombre;
+      const eyeColor = char.eyeColor || char.ojos || char.physical_traits?.eyes;
+      const hairColor = char.hairColor || char.cabello || char.physical_traits?.hair;
+      const age = char.age || char.edad;
+      const status = char.status || char.estado;
+      
+      if (name) {
+        let traits = [];
+        if (eyeColor) traits.push(`ojos: ${eyeColor}`);
+        if (hairColor) traits.push(`cabello: ${hairColor}`);
+        if (age) traits.push(`edad: ${age}`);
+        if (status === 'dead' || status === 'muerto' || status === 'deceased') {
+          traits.push('MUERTO - NO PUEDE ACTUAR');
+        }
+        if (traits.length > 0) {
+          canonicalItems.push(`• ${name}: ${traits.join(', ')}`);
+        }
+      }
+    }
+    
+    // 2. Key locations established in the chapter
+    const locations = worldBible?.locations || worldBible?.ubicaciones || [];
+    for (const loc of locations.slice(0, 5)) {
+      const name = loc.name || loc.nombre;
+      if (name) {
+        canonicalItems.push(`• Ubicación "${name}": NO cambiar nombre ni descripción física`);
+      }
+    }
+    
+    // 3. Timeline events that cannot be contradicted
+    const timeline = worldBible?.timeline || [];
+    const relevantEvents = timeline.filter((e: any) => 
+      e.chapter === chapterNumber || e.chapter === chapterNumber - 1
+    ).slice(0, 5);
+    for (const event of relevantEvents) {
+      const desc = event.event || event.evento || event.description;
+      if (desc) {
+        canonicalItems.push(`• Evento establecido: "${desc.substring(0, 100)}"`);
+      }
+    }
+    
+    // 4. Items/objects already established (Chekhov's gun principle)
+    const items = entities.filter(e => e.type === 'PERSONAL_ITEM' || e.type === 'item' || e.type === 'object');
+    for (const item of items.slice(0, 5)) {
+      canonicalItems.push(`• Objeto "${item.name}": NO eliminar si ya fue mencionado`);
+    }
+    
+    if (canonicalItems.length === 0) {
+      return '';
+    }
+    
+    return `=== ⛔ ELEMENTOS CANÓNICOS INTOCABLES (NO MODIFICAR BAJO NINGÚN CONCEPTO) ===
+Las correcciones NO deben alterar estos elementos establecidos. Si el problema reportado contradice estos elementos, el problema es del REPORTE, no del texto:
+
+${canonicalItems.join('\n')}
+
+⚠️ REGLA CRÍTICA: Al corregir, PRESERVAR todos los elementos canónicos. Solo modificar el texto específico que causa el problema reportado. Si una corrección requiere cambiar un elemento canónico, NO aplicarla.`;
+  }
+  
+  /**
+   * LitAgents 2.9.2: Validate that a correction didn't introduce new consistency errors
+   * Returns validation result with any detected regressions
+   */
+  private async validateCorrectionConsistency(
+    originalContent: string,
+    correctedContent: string,
+    worldBible: any,
+    chapterNumber: number
+  ): Promise<{ valid: boolean; regressions: string[] }> {
+    const regressions: string[] = [];
+    
+    try {
+      // 1. Check character physical traits weren't changed incorrectly
+      const characters = worldBible?.characters || worldBible?.personajes || [];
+      for (const char of characters.slice(0, 10)) {
+        const name = char.name || char.nombre;
+        if (!name) continue;
+        
+        const eyeColor = char.eyeColor || char.ojos || char.physical_traits?.eyes;
+        const hairColor = char.hairColor || char.cabello || char.physical_traits?.hair;
+        
+        // Check if character traits were changed in a way that contradicts World Bible
+        if (eyeColor) {
+          const eyeRegex = new RegExp(`${name}[^.]*ojos[^.]*(?:azules?|verdes?|marrones?|grises?|negros?|claros?|oscuros?)`, 'gi');
+          const originalEyeMentions = originalContent.match(eyeRegex) || [];
+          const correctedEyeMentions = correctedContent.match(eyeRegex) || [];
+          
+          // If correction added new eye color mentions, check they match World Bible
+          if (correctedEyeMentions.length > originalEyeMentions.length) {
+            const eyeColorNorm = eyeColor.toLowerCase();
+            for (const mention of correctedEyeMentions) {
+              if (!mention.toLowerCase().includes(eyeColorNorm.substring(0, 4))) {
+                regressions.push(`Posible cambio de color de ojos de ${name}: "${mention}" (World Bible: ${eyeColor})`);
+              }
+            }
+          }
+        }
+      }
+      
+      // 2. Check dead characters weren't resurrected
+      const deadChars = characters.filter((c: any) => 
+        c.status === 'dead' || c.status === 'muerto' || c.status === 'deceased'
+      );
+      for (const deadChar of deadChars) {
+        const name = deadChar.name || deadChar.nombre;
+        if (!name) continue;
+        
+        // Check for new active verbs for dead characters
+        const activeVerbsRegex = new RegExp(`${name}[^.]{0,30}(?:dijo|respondió|caminó|corrió|miró|sonrió|gritó|susurró)`, 'gi');
+        const originalActions = originalContent.match(activeVerbsRegex) || [];
+        const correctedActions = correctedContent.match(activeVerbsRegex) || [];
+        
+        if (correctedActions.length > originalActions.length) {
+          regressions.push(`Personaje muerto ${name} aparece activo en la corrección (posible resurrección)`);
+        }
+      }
+      
+      // 3. Check location names weren't changed
+      const locations = worldBible?.locations || worldBible?.ubicaciones || [];
+      for (const loc of locations.slice(0, 8)) {
+        const name = loc.name || loc.nombre;
+        if (!name || name.length < 3) continue;
+        
+        const originalMentions = (originalContent.match(new RegExp(name, 'gi')) || []).length;
+        const correctedMentions = (correctedContent.match(new RegExp(name, 'gi')) || []).length;
+        
+        // If a location was removed entirely, that might be a regression
+        if (originalMentions > 0 && correctedMentions === 0) {
+          regressions.push(`Ubicación "${name}" eliminada de la corrección (estaba ${originalMentions} veces)`);
+        }
+      }
+      
+    } catch (err) {
+      console.error(`[OrchestratorV2] Error validating correction consistency:`, err);
+    }
+    
+    return {
+      valid: regressions.length === 0,
+      regressions
+    };
   }
 
   /**
@@ -5755,6 +5913,28 @@ ${issuesDescription}`;
 
             // Update chapter if we have corrected content
             if (correctedContent && correctedContent !== chapter.content) {
+              // LitAgents 2.9.2: Validate correction before saving
+              const validationResult = await this.validateCorrectionConsistency(
+                chapter.content || '',
+                correctedContent,
+                worldBibleData,
+                chapNum
+              );
+              
+              if (!validationResult.valid) {
+                console.warn(`[OrchestratorV2] ⚠️ Correction validation detected ${validationResult.regressions.length} potential regressions for Chapter ${chapNum}:`);
+                for (const reg of validationResult.regressions) {
+                  console.warn(`  - ${reg}`);
+                }
+                
+                await storage.createActivityLog({
+                  projectId: project.id,
+                  level: "warn",
+                  message: `⚠️ Validación detectó posibles regresiones en Cap ${chapNum}: ${validationResult.regressions.slice(0, 3).join('; ')}. Guardando de todas formas pero revisar manualmente.`,
+                  agentRole: "smart-editor",
+                });
+              }
+              
               const wordCount = correctedContent.split(/\s+/).length;
               await storage.updateChapter(chapter.id, {
                 content: correctedContent,
@@ -5762,8 +5942,8 @@ ${issuesDescription}`;
                 qualityScore: 8, // Assume improvement
               });
               
-              console.log(`[OrchestratorV2] Successfully updated Chapter ${chapNum} (${wordCount} words)`);
-              this.callbacks.onAgentStatus("smart-editor", "active", `Capitulo ${chapNum} corregido (${wordCount} palabras)`);
+              console.log(`[OrchestratorV2] Successfully updated Chapter ${chapNum} (${wordCount} words)${validationResult.valid ? '' : ' [WITH WARNINGS]'}`);
+              this.callbacks.onAgentStatus("smart-editor", "active", `Capitulo ${chapNum} corregido (${wordCount} palabras)${validationResult.valid ? '' : ' ⚠️'}`);
               this.callbacks.onChapterComplete(
                 chapter.chapterNumber,
                 wordCount,
