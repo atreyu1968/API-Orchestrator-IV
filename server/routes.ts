@@ -93,6 +93,10 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  // Track active detect-and-fix processes to prevent parallel execution (shared across endpoints)
+  const activeDetectAndFix = new Set<number>();
+  const isDetectAndFixActive = (projectId: number) => activeDetectAndFix.has(projectId);
+
   // Setup cookie parser and authentication
   app.use(cookieParser());
   setupAuthRoutes(app);
@@ -832,9 +836,6 @@ export async function registerRoutes(
   // LitAgents 2.9.4 - Detect All, Then Fix Strategy
   // ============================================
   
-  // Track active detect-and-fix processes to prevent parallel execution
-  const activeDetectAndFix = new Set<number>();
-  
   app.post("/api/projects/:id/detect-and-fix", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
@@ -927,6 +928,9 @@ export async function registerRoutes(
       orchestrator.detectAndFixStrategy(project).then(async (result) => {
         const { registry, finalScore } = result;
         
+        // CRITICAL: Remove from active set when complete
+        activeDetectAndFix.delete(id);
+        
         await storage.updateProject(id, { 
           finalScore,
           status: registry.totalEscalated === 0 ? "completed" : "paused"
@@ -947,6 +951,9 @@ export async function registerRoutes(
           "orchestrator-v2"
         );
       }).catch(async (error) => {
+        // CRITICAL: Remove from active set on error
+        activeDetectAndFix.delete(id);
+        
         console.error("Detect and Fix error:", error);
         await storage.updateProject(id, { status: "paused" });
         sendToStreams({ type: "error", message: error.message || "Error en Detect & Fix" });
@@ -954,6 +961,10 @@ export async function registerRoutes(
       });
 
     } catch (error) {
+      // CRITICAL: Remove from active set on early error
+      const id = parseInt(req.params.id);
+      activeDetectAndFix.delete(id);
+      
       console.error("Error starting Detect and Fix:", error);
       res.status(500).json({ error: "Failed to start Detect and Fix strategy" });
     }
@@ -1355,6 +1366,14 @@ export async function registerRoutes(
       
       if (!project) {
         return res.status(404).json({ error: "Project not found" });
+      }
+
+      // CRITICAL: Block if detect-and-fix is already running
+      if (isDetectAndFixActive(id)) {
+        return res.status(409).json({ 
+          error: "El proceso 'Detect & Fix' está en ejecución. Usa ese sistema en su lugar o espera a que termine.",
+          hint: "Detect & Fix es el sistema recomendado para correcciones (LitAgents 2.9.4)"
+        });
       }
 
       // Allow re-running final review on completed, awaiting, or failed projects
