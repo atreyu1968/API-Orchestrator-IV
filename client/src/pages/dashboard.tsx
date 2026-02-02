@@ -124,6 +124,24 @@ Precios promedio ponderados: Input $0.36/M, Output $0.95/M, Thinking $0.55/M`;
 
 type ConfirmType = "cancel" | "forceComplete" | "resume" | "delete" | null;
 
+interface DetectAndFixProgress {
+  phase: 'detection' | 'correction';
+  subPhase?: string;
+  current: number;
+  total: number;
+  details?: {
+    reviewNumber?: number;
+    issuesFoundThisReview?: number;
+    totalUniqueIssues?: number;
+    issueIndex?: number;
+    issueType?: string;
+    issueChapter?: number;
+    issueSeverity?: string;
+    resolved?: number;
+    escalated?: number;
+  };
+}
+
 export default function Dashboard() {
   const { toast } = useToast();
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -140,6 +158,7 @@ export default function Dashboard() {
   const [useV2Pipeline, setUseV2Pipeline] = useState(true);
   const [sceneProgress, setSceneProgress] = useState<{chapterNumber: number; sceneNumber: number; totalScenes: number; wordCount: number} | null>(null);
   const [chaptersBeingCorrected, setChaptersBeingCorrected] = useState<{chapterNumbers: number[]; revisionCycle: number} | null>(null);
+  const [detectAndFixProgress, setDetectAndFixProgress] = useState<DetectAndFixProgress | null>(null);
   const { projects, currentProject, setSelectedProjectId } = useProject();
 
   const handleExportData = async () => {
@@ -257,6 +276,7 @@ export default function Dashboard() {
     setCompletedStages([]);
     setSceneProgress(null);
     setChaptersBeingCorrected(null);
+    setDetectAndFixProgress(null);
     
     // Update ref with current project ID
     currentProjectIdRef.current = currentProject?.id ?? null;
@@ -645,6 +665,21 @@ export default function Dashboard() {
             } else {
               setChaptersBeingCorrected(null);
             }
+          } else if (data.type === "detect_and_fix_progress") {
+            setDetectAndFixProgress({
+              phase: data.phase,
+              subPhase: data.subPhase,
+              current: data.current,
+              total: data.total,
+              details: data.details
+            });
+          } else if (data.type === "detect_and_fix_complete") {
+            setDetectAndFixProgress(null);
+            queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+            toast({
+              title: "Detección y Corrección completada",
+              description: `Resueltos: ${data.totalResolved}/${data.totalDetected}, Escalados: ${data.totalEscalated}`,
+            });
           }
         } catch (e) {
           console.error("Error parsing SSE:", e);
@@ -804,6 +839,59 @@ export default function Dashboard() {
                     <Badge variant="outline" className="animate-pulse border-orange-500 text-orange-600 dark:text-orange-400" data-testid="badge-chapters-correcting">
                       Corrigiendo Cap. {chaptersBeingCorrected.chapterNumbers.join(', ')} (Ciclo {chaptersBeingCorrected.revisionCycle})
                     </Badge>
+                  )}
+                  {detectAndFixProgress && (
+                    <div className="flex flex-col gap-2 mt-2 p-3 rounded-lg bg-muted/50 border" data-testid="detect-and-fix-progress">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Crosshair className={`h-4 w-4 ${detectAndFixProgress.phase === 'detection' ? 'text-blue-500' : 'text-green-500'}`} />
+                          <span className="font-medium text-sm">
+                            {detectAndFixProgress.phase === 'detection' ? 'Fase 1: Detección' : 'Fase 2: Corrección'}
+                          </span>
+                        </div>
+                        <Badge variant={detectAndFixProgress.phase === 'detection' ? 'default' : 'secondary'}>
+                          {detectAndFixProgress.current}/{detectAndFixProgress.total}
+                        </Badge>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all duration-300 ${detectAndFixProgress.phase === 'detection' ? 'bg-blue-500' : 'bg-green-500'}`}
+                          style={{ width: `${(detectAndFixProgress.current / detectAndFixProgress.total) * 100}%` }}
+                        />
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {detectAndFixProgress.phase === 'detection' ? (
+                          <>
+                            {detectAndFixProgress.subPhase === 'reviewing' && `Revisión ${detectAndFixProgress.details?.reviewNumber}/3 en progreso...`}
+                            {detectAndFixProgress.subPhase === 'review_complete' && `Revisión ${detectAndFixProgress.details?.reviewNumber} completada: ${detectAndFixProgress.details?.issuesFoundThisReview} nuevos issues (${detectAndFixProgress.details?.totalUniqueIssues} únicos)`}
+                            {detectAndFixProgress.subPhase === 'complete' && `Detección completa: ${detectAndFixProgress.details?.totalUniqueIssues} issues únicos encontrados`}
+                            {detectAndFixProgress.subPhase === 'starting' && 'Iniciando 3 revisiones exhaustivas...'}
+                          </>
+                        ) : (
+                          <>
+                            {detectAndFixProgress.subPhase === 'fixing' && (
+                              <span className="flex items-center gap-1">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Cap {detectAndFixProgress.details?.issueChapter}: {detectAndFixProgress.details?.issueType}
+                                <Badge variant="outline" className="text-xs ml-1">
+                                  {detectAndFixProgress.details?.issueSeverity}
+                                </Badge>
+                              </span>
+                            )}
+                            {detectAndFixProgress.subPhase === 'issue_resolved' && `Issue resuelto - Cap ${detectAndFixProgress.details?.issueChapter}`}
+                            {detectAndFixProgress.subPhase === 'issue_escalated' && `Issue escalado - Cap ${detectAndFixProgress.details?.issueChapter}`}
+                            {detectAndFixProgress.subPhase === 'complete' && `Completado: ${detectAndFixProgress.details?.resolved} resueltos, ${detectAndFixProgress.details?.escalated} escalados`}
+                            {detectAndFixProgress.subPhase === 'starting' && `Iniciando corrección de ${detectAndFixProgress.total} issues...`}
+                          </>
+                        )}
+                      </div>
+                      {detectAndFixProgress.phase === 'correction' && detectAndFixProgress.details && (
+                        <div className="flex gap-2 text-xs">
+                          <span className="text-green-600 dark:text-green-400">Resueltos: {detectAndFixProgress.details.resolved || 0}</span>
+                          <span className="text-yellow-600 dark:text-yellow-400">Escalados: {detectAndFixProgress.details.escalated || 0}</span>
+                        </div>
+                      )}
+                    </div>
                   )}
                   {(currentProject.status === "completed" || currentProject.status === "awaiting_final_review") && (
                     <>
