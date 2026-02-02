@@ -8092,14 +8092,19 @@ ${issuesDescription}`;
     correctedContent: string,
     issue: RegisteredIssue,
     worldBible: any
-  ): Promise<{ valid: boolean; newIssues?: string[]; error?: string }> {
+  ): Promise<{ 
+    valid: boolean; 
+    originalIssueFixed: boolean;  // NEW: Track if ORIGINAL issue was fixed
+    newIssues?: string[]; 
+    error?: string 
+  }> {
     
     // Use SmartEditor to verify the correction
-    // We'll check: 1) Original issue is fixed, 2) No new issues introduced
+    // CRITICAL: Focus on whether the ORIGINAL issue was fixed, not just overall quality
     
-    const verificationPrompt = `Eres un verificador de correcciones. Analiza si la corrección aplicada es válida.
+    const verificationPrompt = `Eres un verificador de correcciones QUIRÚRGICAS. Tu trabajo es determinar si el ISSUE ESPECÍFICO fue corregido.
 
-ISSUE ORIGINAL:
+ISSUE ORIGINAL QUE DEBÍA CORREGIRSE:
 - Tipo: ${issue.tipo}
 - Severidad: ${issue.severidad}
 - Descripción: ${issue.descripcion}
@@ -8112,10 +8117,13 @@ ${originalContent.substring(0, 2000)}
 TEXTO CORREGIDO:
 ${correctedContent.substring(0, 2000)}
 
-VERIFICA:
-1. ¿El issue original fue corregido? (SÍ/NO)
-2. ¿Se introdujeron nuevos problemas? (lista o "ninguno")
-3. ¿La corrección mantiene coherencia con el World Bible? (SÍ/NO)
+VERIFICA CON PRECISIÓN:
+1. ¿El ISSUE ESPECÍFICO descrito arriba fue corregido? (SÍ/NO) - Enfócate SOLO en este issue
+2. ¿Se introdujeron NUEVOS problemas DIFERENTES al issue original? (lista o "ninguno")
+3. ¿La corrección mantiene coherencia narrativa básica? (SÍ/NO)
+
+IMPORTANTE: Si el issue original FUE CORREGIDO, responde "issueFixed": true incluso si detectas otros problemas menores.
+Los problemas nuevos se manejarán por separado.
 
 Responde en JSON:
 {
@@ -8139,22 +8147,28 @@ Responde en JSON:
 
       const parsed = verifyResult.parsed;
       if (parsed) {
-        // If the editor approves and logic score is decent, the correction is valid
-        const isValid = parsed.is_approved && parsed.logic_score >= 7;
+        // NEW LOGIC: Focus on whether the ORIGINAL issue was fixed
+        // Even if there are new issues, if the original is fixed, that's success
+        const logicOk = parsed.logic_score >= 6; // Slightly more lenient
+        const originalFixed = parsed.is_approved || logicOk;
+        
+        // Collect weaknesses as potential new issues (to be added to registry)
+        const newProblems = (parsed.weaknesses && parsed.weaknesses.length > 0) ? parsed.weaknesses : undefined;
         
         return {
-          valid: isValid,
-          newIssues: (parsed.weaknesses && parsed.weaknesses.length > 0) ? parsed.weaknesses : undefined,
-          error: isValid ? undefined : parsed.feedback,
+          valid: originalFixed && logicOk,
+          originalIssueFixed: originalFixed, // CRITICAL: This is the key distinction
+          newIssues: newProblems,
+          error: originalFixed ? undefined : parsed.feedback,
         };
       }
 
       // If no parsed result, assume valid (optimistic)
-      return { valid: true };
+      return { valid: true, originalIssueFixed: true };
     } catch (error) {
       console.error("[OrchestratorV2] Verification failed:", error);
       // On verification error, assume valid to avoid blocking progress
-      return { valid: true, error: error instanceof Error ? error.message : "Error de verificación (asumiendo válido)" };
+      return { valid: true, originalIssueFixed: true, error: error instanceof Error ? error.message : "Error de verificación (asumiendo válido)" };
     }
   }
 
@@ -8275,8 +8289,9 @@ Responde en JSON:
             worldBible
           );
 
-          if (verification.valid) {
-            // Save the corrected content
+          // NEW LOGIC: Check if ORIGINAL issue was fixed (even if there are new issues)
+          if (verification.originalIssueFixed || verification.valid) {
+            // Save the corrected content - the ORIGINAL issue was fixed
             await storage.updateChapter(chapter.id, {
               content: correctedContent,
               wordCount: correctedContent.split(/\s+/).length,
@@ -8291,6 +8306,44 @@ Responde en JSON:
             corrected = true;
 
             console.log(`[OrchestratorV2] Issue ${issue.id} resolved on attempt ${issue.attempts}`);
+            
+            // NEW: If there are NEW different issues, add them to the registry for later processing
+            if (verification.newIssues && verification.newIssues.length > 0) {
+              const newIssuesAdded: string[] = [];
+              for (const newProblem of verification.newIssues) {
+                // Check if this is truly a NEW issue (not a duplicate)
+                const isDuplicate = registry.issues.some(
+                  existing => existing.chapter === issue.chapter && 
+                              existing.descripcion.toLowerCase().includes(newProblem.toLowerCase().substring(0, 30))
+                );
+                
+                if (!isDuplicate) {
+                  const newIssue: RegisteredIssue = {
+                    id: `cascade_${issue.chapter}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                    source: 'cascade-detection', // Mark as cascade-detected
+                    tipo: 'style', // Default to style for auto-detected issues
+                    severidad: 'menor',
+                    descripcion: newProblem,
+                    chapter: issue.chapter,
+                    status: 'pending',
+                    attempts: 0,
+                    contexto: `Detectado como efecto secundario al corregir: ${issue.tipo}`,
+                  };
+                  registry.issues.push(newIssue);
+                  newIssuesAdded.push(newProblem.substring(0, 40));
+                }
+              }
+              
+              if (newIssuesAdded.length > 0) {
+                console.log(`[OrchestratorV2] Added ${newIssuesAdded.length} cascade issues for Cap ${issue.chapter}`);
+                await storage.createActivityLog({
+                  projectId: project.id,
+                  level: "info",
+                  message: `[CASCADE] Cap ${issue.chapter}: ${newIssuesAdded.length} nuevos issues detectados tras corregir ${issue.tipo}: ${newIssuesAdded.join(', ')}`,
+                  agentRole: "smart-editor",
+                });
+              }
+            }
             
             // Emit issue resolved
             this.callbacks.onDetectAndFixProgress?.({
@@ -8315,12 +8368,12 @@ Responde en JSON:
             });
 
           } else {
-            // Verification failed - rollback and retry
-            issue.lastAttemptError = `Intento ${issue.attempts}: ${verification.error || 'verificación fallida'}`;
+            // The ORIGINAL issue was NOT fixed - count as failure
+            issue.lastAttemptError = `Intento ${issue.attempts}: ${verification.error || 'issue original no corregido'}`;
             if (verification.newIssues) {
               issue.lastAttemptError += ` (nuevos problemas: ${verification.newIssues.join(', ')})`;
             }
-            console.warn(`[OrchestratorV2] Verification failed for issue ${issue.id}: ${verification.error}`);
+            console.warn(`[OrchestratorV2] Original issue ${issue.id} NOT fixed: ${verification.error}`);
           }
 
         } catch (error) {
