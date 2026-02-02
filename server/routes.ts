@@ -828,6 +828,111 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // LitAgents 2.9.4 - Detect All, Then Fix Strategy
+  // ============================================
+  
+  app.post("/api/projects/:id/detect-and-fix", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Must have chapters to review
+      const chapters = await storage.getChaptersByProject(id);
+      if (chapters.length === 0) {
+        return res.status(400).json({ 
+          error: "El proyecto no tiene capítulos. Primero genera la novela.",
+          hint: "Usa el endpoint /api/projects/:id/start-v2 para generar la novela."
+        });
+      }
+
+      res.json({ 
+        message: "Iniciando estrategia 'Detect All, Then Fix'",
+        strategy: "Fase 1: 3 revisiones exhaustivas → Fase 2: Corrección verificada issue por issue"
+      });
+
+      // Get SSE streams
+      const projectStreams = activeStreams.get(id);
+      const sendToStreams = (data: any) => {
+        if (projectStreams && projectStreams.size > 0) {
+          const message = `data: ${JSON.stringify(data)}\n\n`;
+          projectStreams.forEach((streamRes: Response) => streamRes.write(message));
+        }
+      };
+
+      // Helper to persist activity logs
+      const persistActivityLog = async (projectId: number, level: string, message: string, agentRole: string) => {
+        try {
+          await storage.createActivityLog({ projectId, level: level as any, message, agentRole });
+        } catch (e) {
+          console.error("Failed to persist activity log:", e);
+        }
+      };
+
+      // Update project status
+      await storage.updateProject(id, { status: "processing" });
+
+      // Create orchestrator with callbacks
+      const orchestrator = new OrchestratorV2({
+        onAgentStatus: (role, status, message) => {
+          sendToStreams({ type: "agent_status", role, status, message });
+        },
+        onChapterComplete: (chapterNumber, wordCount, chapterTitle) => {
+          sendToStreams({ type: "chapter_complete", chapterNumber, wordCount, chapterTitle });
+        },
+        onSceneComplete: (chapterNumber, sceneNumber, totalScenes, wordCount) => {
+          sendToStreams({ type: "scene_complete", chapterNumber, sceneNumber, totalScenes, wordCount });
+        },
+        onProjectComplete: async () => {
+          sendToStreams({ type: "project_complete" });
+          await persistActivityLog(id, "success", "Estrategia 'Detect All, Then Fix' completada", "orchestrator-v2");
+        },
+        onError: async (error) => {
+          sendToStreams({ type: "error", message: error });
+          await persistActivityLog(id, "error", error, "orchestrator-v2");
+        },
+      });
+
+      // Run the new strategy
+      orchestrator.detectAndFixStrategy(project).then(async (result) => {
+        const { registry, finalScore } = result;
+        
+        await storage.updateProject(id, { 
+          finalScore,
+          status: registry.totalEscalated === 0 ? "completed" : "paused"
+        });
+
+        sendToStreams({ 
+          type: "detect_and_fix_complete",
+          totalDetected: registry.totalDetected,
+          totalResolved: registry.totalResolved,
+          totalEscalated: registry.totalEscalated,
+          finalScore
+        });
+
+        await persistActivityLog(
+          id, 
+          registry.totalEscalated === 0 ? "success" : "warn",
+          `Detect & Fix completado: ${registry.totalResolved}/${registry.totalDetected} resueltos, ${registry.totalEscalated} escalados. Puntuación: ${finalScore}/10`,
+          "orchestrator-v2"
+        );
+      }).catch(async (error) => {
+        console.error("Detect and Fix error:", error);
+        await storage.updateProject(id, { status: "paused" });
+        sendToStreams({ type: "error", message: error.message || "Error en Detect & Fix" });
+        await persistActivityLog(id, "error", `Error: ${error.message || 'Unknown error'}`, "orchestrator-v2");
+      });
+
+    } catch (error) {
+      console.error("Error starting Detect and Fix:", error);
+      res.status(500).json({ error: "Failed to start Detect and Fix strategy" });
+    }
+  });
+
   // LitAgents 2.0 - Plot Threads API
   app.get("/api/projects/:id/plot-threads", async (req: Request, res: Response) => {
     try {
