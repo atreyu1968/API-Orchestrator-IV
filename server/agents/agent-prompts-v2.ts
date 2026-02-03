@@ -1,5 +1,71 @@
 // LitAgents 2.0 - Prompts optimizados para DeepSeek (V3 y R1)
 
+/**
+ * Extract physical attributes for characters appearing in a scene
+ * This prevents the Ghostwriter from inventing incorrect eye colors, hair, etc.
+ */
+function extractCharacterAttributesForScene(sceneCharacters: string[], worldBible: any): string | null {
+  if (!worldBible || !worldBible.characters || !sceneCharacters || sceneCharacters.length === 0) {
+    return null;
+  }
+  
+  const lines: string[] = [];
+  
+  for (const charName of sceneCharacters) {
+    // Find matching character in World Bible (fuzzy match on name)
+    const charNameLower = charName.toLowerCase().trim();
+    const wbChar = worldBible.characters.find((c: any) => {
+      const wbName = (c.name || '').toLowerCase().trim();
+      // Match if name contains or is contained
+      return wbName.includes(charNameLower) || charNameLower.includes(wbName) || 
+             wbName.split(' ')[0] === charNameLower.split(' ')[0];
+    });
+    
+    if (wbChar) {
+      const attrs: string[] = [];
+      
+      // Extract physical attributes from various possible fields
+      if (wbChar.eyeColor) attrs.push(`Ojos: ${wbChar.eyeColor}`);
+      if (wbChar.hairColor) attrs.push(`Cabello: ${wbChar.hairColor}`);
+      if (wbChar.age) attrs.push(`Edad: ${wbChar.age}`);
+      if (wbChar.height) attrs.push(`Altura: ${wbChar.height}`);
+      if (wbChar.physicalTraits) attrs.push(`Rasgos: ${wbChar.physicalTraits}`);
+      
+      // Also check traits array for physical descriptions
+      if (wbChar.traits && Array.isArray(wbChar.traits)) {
+        const physicalTraits = wbChar.traits.filter((t: string) => 
+          /ojo|cabello|pelo|altura|cicatriz|tatuaje|físic/i.test(t)
+        );
+        if (physicalTraits.length > 0) {
+          attrs.push(...physicalTraits.map((t: string) => `  - ${t}`));
+        }
+      }
+      
+      // Check description for "INMUTABLE" markers
+      if (wbChar.description) {
+        const inmutableMatch = wbChar.description.match(/\(INMUTABLE[^)]*\)/gi);
+        if (inmutableMatch) {
+          attrs.push(`⚠️ ${inmutableMatch.join(', ')}`);
+        }
+        // Also extract eye/hair from description if not already found
+        if (!wbChar.eyeColor) {
+          const eyeMatch = wbChar.description.match(/ojos?\s+([\w\s]+?)(?:\s*\(|,|\.)/i);
+          if (eyeMatch) attrs.push(`Ojos: ${eyeMatch[1].trim()}`);
+        }
+      }
+      
+      if (attrs.length > 0) {
+        lines.push(`    📌 ${wbChar.name}:`);
+        for (const attr of attrs) {
+          lines.push(`       ${attr}`);
+        }
+      }
+    }
+  }
+  
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
 export const AGENT_MODELS_V2 = {
   REASONER: "deepseek-reasoner", // R1: Para planificación y razonamiento profundo
   WRITER: "deepseek-chat",       // V3: Para escritura creativa
@@ -368,9 +434,22 @@ export const PROMPTS_V2 = {
     rollingSummary: string,
     worldBible: any,
     guiaEstilo: string
-  ) => `
+  ) => {
+    // Extract physical attributes for characters in this scene
+    const characterAttributes = extractCharacterAttributesForScene(scenePlan.characters, worldBible);
+    
+    return `
     Eres un Novelista Fantasma de élite. Estás escribiendo UNA ESCENA de una novela mayor.
     
+${characterAttributes ? `
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║ ⚠️  ATRIBUTOS FÍSICOS CANÓNICOS - OBLIGATORIO RESPETAR           ║
+    ╚══════════════════════════════════════════════════════════════════╝
+${characterAttributes}
+    ⚠️ Si describes físicamente a estos personajes, USA EXACTAMENTE estos atributos.
+    ⚠️ NO inventes colores de ojos, cabello u otros rasgos físicos.
+
+` : ''}
     ═══════════════════════════════════════════════════════════════════
     CONTEXTO MEMORIA (Lo que pasó antes en la novela):
     ═══════════════════════════════════════════════════════════════════
@@ -552,7 +631,8 @@ export const PROMPTS_V2 = {
     +------------------------------------------------------------------+
     
     SALIDA: Solo el texto de la narrativa. Sin comentarios, sin marcadores.
-  `,
+  `;
+  },
 
   // 4. SMART EDITOR (V3) - Evalúa y genera parches
   SMART_EDITOR: (chapterContent: string, sceneBreakdown: any, worldBible: any) => `
