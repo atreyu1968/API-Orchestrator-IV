@@ -1,4 +1,4 @@
-import { BaseAgent } from "./base-agent";
+import { BaseAgent, AgentResponse } from "./base-agent";
 
 const STYLE_GUIDE_PROMPT = `Eres un experto en análisis literario y estilística. Tu trabajo es generar una GUÍA DE ESTILO completa para un seudónimo, basándote en el estilo de un autor conocido.
 
@@ -285,7 +285,11 @@ Genera ahora la GUÍA DE ESTILO COMPLETA siguiendo exactamente la estructura del
 `;
 
     const response = await this.generateContent(prompt);
-    return response;
+    return response.content;
+  }
+  
+  async execute(_input: string): Promise<AgentResponse> {
+    throw new Error("Use generateStyleGuide method instead");
   }
 }
 

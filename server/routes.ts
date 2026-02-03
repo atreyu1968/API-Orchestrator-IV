@@ -9639,7 +9639,6 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
           workType: params.seriesId ? "series" : "standalone",
           seriesId: params.seriesId || null,
           seriesOrder: params.seriesOrder || null,
-          status: "idle",
           kindleUnlimitedOptimized: params.kindleUnlimited,
           pipelineVersion: "v2",
         });
@@ -9671,6 +9670,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
   // =============================================
   
   app.post("/api/generate-series-guide", async (req: Request, res: Response) => {
+    console.log("[SeriesGuideGenerator] Endpoint hit, body:", JSON.stringify(req.body).substring(0, 200));
     try {
       const { seriesGuideGeneratorAgent } = await import("./agents/series-guide-generator");
       
@@ -9744,20 +9744,56 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         if (params.autoGenerateBookGuides && series) {
           const { guideGeneratorAgent } = await import("./agents/guide-generator");
           
-          // Parse volumes from the series guide
-          const volumeRegex = /### Volumen (\d+): ([^\n]+)\n- \*\*Argumento:\*\* ([^\n]+(?:\n[^-][^\n]*)*)/g;
+          // Parse volumes from the series guide - try multiple patterns
           const volumes: Array<{number: number, title: string, argument: string}> = [];
+          
+          // Pattern 1: ### Volumen N: Título
+          const volumeRegex1 = /###\s*Volumen\s*(\d+):\s*([^\n]+)\n(?:.*?\n)*?-\s*\*\*Argumento:\*\*\s*([^\n]+(?:\n(?![-#])[^\n]*)*)/gi;
+          // Pattern 2: ## Volumen N: Título (alternative format)
+          const volumeRegex2 = /##\s*Volumen\s*(\d+)[:\s]+([^\n]+)\n(?:.*?\n)*?(?:\*\*)?Argumento(?:\*\*)?:\s*([^\n]+(?:\n(?![-#*])[^\n]*)*)/gi;
+          // Pattern 3: More relaxed pattern for "Arquitectura de la Serie" section
+          const volumeRegex3 = /###\s*Volumen\s*(\d+):\s*(.+?)(?:\n|\r\n)[\s\S]*?-\s*\*\*Argumento:\*\*\s*(.+?)(?=\n-\s*\*\*|\n###|\n##|$)/gi;
+          
           let match;
           
-          while ((match = volumeRegex.exec(guideContent)) !== null) {
+          // Try Pattern 1 first
+          while ((match = volumeRegex1.exec(guideContent)) !== null) {
             volumes.push({
               number: parseInt(match[1]),
               title: match[2].trim(),
-              argument: match[3].trim().replace(/\n/g, ' ')
+              argument: match[3].trim().replace(/\n/g, ' ').substring(0, 1000)
             });
           }
           
+          // If no matches, try Pattern 3 (more specific for the expected format)
+          if (volumes.length === 0) {
+            while ((match = volumeRegex3.exec(guideContent)) !== null) {
+              volumes.push({
+                number: parseInt(match[1]),
+                title: match[2].trim(),
+                argument: match[3].trim().replace(/\n/g, ' ').substring(0, 1000)
+              });
+            }
+          }
+          
+          // If still no matches, create placeholder volumes based on bookCount
+          if (volumes.length === 0) {
+            console.log(`[SeriesGuideGenerator] No volumes found in guide, creating placeholders for ${params.bookCount} books`);
+            for (let i = 1; i <= params.bookCount; i++) {
+              volumes.push({
+                number: i,
+                title: `${params.seriesTitle} - Volumen ${i}`,
+                argument: `Volumen ${i} de la serie "${params.seriesTitle}". ${params.concept.substring(0, 500)}`
+              });
+            }
+          }
+          
           console.log(`[SeriesGuideGenerator] Found ${volumes.length} volumes to generate guides for`);
+          
+          // Log first volume for debugging
+          if (volumes.length > 0) {
+            console.log(`[SeriesGuideGenerator] First volume: "${volumes[0].title}" - Argument: ${volumes[0].argument.substring(0, 100)}...`);
+          }
           
           // Get style guide content if provided
           let styleGuideContent: string | undefined;
@@ -9809,10 +9845,9 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
               // Create extended guide
               const extendedGuide = await storage.createExtendedGuide({
                 title: `Guía de Escritura: ${volume.title}`,
+                originalFileName: `guia_${volume.title.toLowerCase().replace(/\s+/g, '_')}.md`,
                 description: `Guía para Volumen ${volume.number} de la serie "${params.seriesTitle}"`,
                 content: bookGuideContent,
-                genre: params.genre,
-                tone: params.tone,
               });
               
               // Create project
@@ -9831,7 +9866,6 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
                 workType: "series",
                 seriesId: series.id,
                 seriesOrder: volume.number,
-                status: "pending",
               });
               
               generatedBooks.push({ title: volume.title, projectId: project.id });
@@ -9896,14 +9930,12 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
       console.log(`[StyleGuideGenerator] Generating guide based on "${params.referenceAuthor}" for "${params.pseudonymName}"...`);
       
       // Generate the style guide
-      const guideResponse = await styleGuideGeneratorAgent.generateStyleGuide({
+      const guideContent = await styleGuideGeneratorAgent.generateStyleGuide({
         referenceAuthor: params.referenceAuthor,
         pseudonymName: params.pseudonymName,
         genre: params.genre,
         additionalNotes: params.additionalNotes,
       });
-      
-      const guideContent = guideResponse.content;
       console.log(`[StyleGuideGenerator] Guide generated (${guideContent.length} chars)`);
       
       let pseudonymId = params.pseudonymId;

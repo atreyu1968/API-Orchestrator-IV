@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
@@ -12,8 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Library, FileText, CheckCircle, BookMarked } from "lucide-react";
+import { Loader2, Library, FileText, CheckCircle, BookMarked, Save } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+
+const FORM_STORAGE_KEY = "series-guide-form-draft";
 
 interface Pseudonym {
   id: number;
@@ -46,10 +48,26 @@ export default function GenerateSeriesGuidePage() {
   
   const [generatedGuide, setGeneratedGuide] = useState<string | null>(null);
   const [createdSeriesId, setCreatedSeriesId] = useState<number | null>(null);
+  const [savedIndicator, setSavedIndicator] = useState(false);
+
+  // Load saved form data from localStorage
+  const loadSavedFormData = useCallback(() => {
+    try {
+      const saved = localStorage.getItem(FORM_STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error("Error loading saved form data:", e);
+    }
+    return null;
+  }, []);
+
+  const savedData = loadSavedFormData();
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
+    defaultValues: savedData || {
       seriesTitle: "",
       concept: "",
       genre: "thriller",
@@ -65,6 +83,21 @@ export default function GenerateSeriesGuidePage() {
       styleGuideId: "",
     },
   });
+
+  // Save form data to localStorage on changes
+  const watchedValues = form.watch();
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      try {
+        localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(watchedValues));
+        setSavedIndicator(true);
+        setTimeout(() => setSavedIndicator(false), 1500);
+      } catch (e) {
+        console.error("Error saving form data:", e);
+      }
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [watchedValues]);
 
   const { data: pseudonyms = [] } = useQuery<Pseudonym[]>({
     queryKey: ["/api/pseudonyms"],
@@ -87,10 +120,18 @@ export default function GenerateSeriesGuidePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/series"] });
       if (data.generatedBooks?.length > 0) {
         queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/extended-guides"] });
       }
+      // Clear saved form data on success
+      localStorage.removeItem(FORM_STORAGE_KEY);
+      
+      const booksCount = data.generatedBooks?.length || 0;
       toast({
-        title: "Guía de serie generada",
-        description: data.message,
+        title: "Guía de serie generada exitosamente",
+        description: booksCount > 0 
+          ? `${data.message}. Se crearon ${booksCount} guías de libros.`
+          : data.message,
+        duration: 10000,
       });
     },
     onError: (error: Error) => {
@@ -122,7 +163,22 @@ export default function GenerateSeriesGuidePage() {
   const resetForm = () => {
     setGeneratedGuide(null);
     setCreatedSeriesId(null);
-    form.reset();
+    localStorage.removeItem(FORM_STORAGE_KEY);
+    form.reset({
+      seriesTitle: "",
+      concept: "",
+      genre: "thriller",
+      tone: "tenso",
+      bookCount: 3,
+      workType: "trilogy",
+      pseudonymId: "",
+      createSeries: true,
+      autoGenerateBookGuides: false,
+      chapterCountPerBook: 30,
+      hasPrologue: true,
+      hasEpilogue: true,
+      styleGuideId: "",
+    });
   };
 
   const conceptLength = form.watch("concept")?.length || 0;
@@ -131,12 +187,23 @@ export default function GenerateSeriesGuidePage() {
   return (
     <div className="container mx-auto px-6 py-6 max-w-4xl">
       <div className="mb-6" data-testid="page-header">
-        <h1 className="text-3xl font-bold flex items-center gap-2" data-testid="text-page-title">
-          <Library className="h-8 w-8 text-primary" />
-          Generador de Guías de Serie
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold flex items-center gap-2" data-testid="text-page-title">
+            <Library className="h-8 w-8 text-primary" />
+            Generador de Guías de Serie
+          </h1>
+          {savedIndicator && (
+            <span className="text-sm text-muted-foreground flex items-center gap-1" data-testid="text-saved-indicator">
+              <Save className="h-3 w-3" />
+              Borrador guardado
+            </span>
+          )}
+        </div>
         <p className="text-muted-foreground mt-2" data-testid="text-page-description">
           Genera automáticamente una guía editorial completa para una serie de novelas
+          {savedData && !generatedGuide && (
+            <span className="ml-2 text-sm text-primary">(Tienes un borrador guardado)</span>
+          )}
         </p>
       </div>
 
