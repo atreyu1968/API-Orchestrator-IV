@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import ReactMarkdown from "react-markdown";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -678,14 +679,27 @@ export default function StyleGuidesPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Vista previa</CardTitle>
+                  <CardTitle>Contenido de la Guía</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="prose prose-sm dark:prose-invert max-w-none max-h-[500px] overflow-y-auto">
-                    <pre className="whitespace-pre-wrap text-sm font-mono bg-muted p-4 rounded-lg">
-                      {generatedGuide}
-                    </pre>
-                  </div>
+                  <Tabs defaultValue="preview" className="w-full">
+                    <TabsList className="mb-4">
+                      <TabsTrigger value="preview">Vista Previa</TabsTrigger>
+                      <TabsTrigger value="code">Código Markdown</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="preview">
+                      <div className="prose prose-sm dark:prose-invert max-w-none max-h-[500px] overflow-y-auto bg-muted/30 p-4 rounded-lg">
+                        <ReactMarkdown>{generatedGuide || ""}</ReactMarkdown>
+                      </div>
+                    </TabsContent>
+                    <TabsContent value="code">
+                      <div className="max-h-[500px] overflow-y-auto">
+                        <pre className="whitespace-pre-wrap text-sm font-mono bg-muted p-4 rounded-lg">
+                          {generatedGuide}
+                        </pre>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
                 </CardContent>
               </Card>
             </div>
