@@ -66,21 +66,50 @@ DEBES generar una guía que siga EXACTAMENTE esta estructura:
 - **Antagonista final:** [Quién está detrás de todo]
 - **Resolución definitiva:** [Cómo termina la serie]
 
-## 7. ARQUITECTURA DE LA SERIE
+## 7. HITOS DE LA SERIE (OBLIGATORIO)
+
+Estos son los eventos clave que DEBEN cumplirse en cada novela para avanzar el hilo conductor:
+
+### HITOS DEL VOLUMEN 1:
+- **Hito de trama:** [Qué pista/evento del misterio central se revela]
+- **Hito de personaje:** [Qué aprende/descubre el protagonista sobre sí mismo]
+- **Hito de mundo:** [Qué elemento del universo se establece]
+- **Objeto/pista introducida:** [Chekhov's Gun para libros posteriores]
+
+### HITOS DEL VOLUMEN 2:
+- **Hito de trama:** [Qué pista/evento del misterio central se revela]
+- **Hito de personaje:** [Qué aprende/descubre el protagonista]
+- **Hito de mundo:** [Qué elemento del universo se expande]
+- **Conexión con Vol. 1:** [Referencia explícita que debe hacerse]
+
+[Repetir para TODOS los volúmenes]
+
+### HITOS FINALES (Último volumen):
+- **Revelación del antagonista:** [Cómo se descubre]
+- **Confrontación final:** [Tipo de enfrentamiento]
+- **Resolución del trauma del protagonista:** [Cómo supera su herida emocional]
+- **Cierre de arcos secundarios:** [Lista de arcos que deben cerrarse]
+
+## 8. ARQUITECTURA DE LA SERIE
 
 ### Volumen 1: [Título]
 - **Argumento:** [Sinopsis de 3-4 líneas]
 - **La pieza del puzzle:** [Qué pista del hilo conductor se revela]
 - **Desarrollo del protagonista:** [Qué aprende/cambia]
+- **Hitos a cumplir:** [Lista de los hitos del Vol. 1 de la sección 7]
+- **Preparación para Vol. 2:** [Qué se siembra para el siguiente]
 
 ### Volumen 2: [Título]
 - **Argumento:** [Sinopsis de 3-4 líneas]
 - **La pieza del puzzle:** [Qué pista se revela]
 - **Desarrollo del protagonista:** [Qué aprende/cambia]
+- **Hitos a cumplir:** [Lista de los hitos del Vol. 2]
+- **Referencias a Vol. 1:** [Qué elementos previos se mencionan]
+- **Preparación para Vol. 3:** [Qué se siembra]
 
-[Repetir para TODOS los volúmenes planificados]
+[Repetir para TODOS los volúmenes planificados, incluyendo SIEMPRE los hitos específicos de cada uno]
 
-## 8. PERSONAJES RECURRENTES
+## 9. PERSONAJES RECURRENTES
 
 ### Aliado Principal
 - **Nombre:**
@@ -97,25 +126,25 @@ DEBES generar una guía que siga EXACTAMENTE esta estructura:
 - [Nombre]: [Rol y función en la serie]
 - [Nombre]: [Rol y función en la serie]
 
-## 9. REGLAS DEL MUNDO
+## 10. REGLAS DEL MUNDO
 - **Tecnología/Época:**
 - **Sistema legal/social:**
 - **Limitaciones del protagonista:**
 - **Qué puede y qué NO puede hacer:**
 
-## 10. ESTRATEGIA DE CONTINUIDAD
+## 11. ESTRATEGIA DE CONTINUIDAD
 - **Qué se mantiene igual:** [Elementos constantes]
 - **Qué evoluciona:** [Elementos que cambian gradualmente]
 - **Referencias cruzadas:** [Cómo mencionar eventos de libros anteriores]
 - **Nuevos lectores:** [Cómo hacer cada libro accesible sin leer los anteriores]
 
-## 11. PREVENCIÓN DE ERRORES DE CONTINUIDAD
+## 12. PREVENCIÓN DE ERRORES DE CONTINUIDAD
 - **Registro de heridas/cicatrices:**
 - **Registro de relaciones:**
 - **Línea temporal de la serie:**
 - **Personajes muertos:** [Para no resucitarlos]
 
-## 12. DISEÑO DE PORTADAS (Branding)
+## 13. DISEÑO DE PORTADAS (Branding)
 - **Concepto visual:**
 - **Paleta de colores:**
 - **Tipografía:**

@@ -254,7 +254,16 @@ IMPORTANTE: Respeta el estilo, voz y preferencias descritas en la guía de estil
 ## CONTEXTO DE LA SERIE:
 ${params.seriesContext}
 
-IMPORTANTE: Esta novela es parte de una serie. Mantén coherencia con los elementos establecidos y prepara hilos para futuras entregas.
+INSTRUCCIONES CRÍTICAS PARA NOVELA DE SERIE:
+1. Esta novela es parte de una serie. Mantén coherencia con los elementos establecidos.
+2. Si la guía de la serie incluye HITOS para este volumen, DEBES cumplirlos TODOS en tu guía:
+   - Los hitos de trama deben aparecer en capítulos específicos
+   - Los hitos de personaje deben reflejarse en el desarrollo del protagonista
+   - Los hitos de mundo deben establecerse/expandirse según corresponda
+   - Los objetos/pistas (Chekhov's Gun) deben introducirse explícitamente
+3. Incluye referencias explícitas a eventos de libros anteriores si los hay.
+4. Prepara hilos para futuras entregas según los hitos del siguiente volumen.
+5. En la sección "Registro de Chekhov's Gun" incluye los objetos/pistas de la serie.
 `;
     }
 
