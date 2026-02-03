@@ -203,12 +203,16 @@ Genera la guía COMPLETA en español. Sé específico y detallado. No uses place
 
 export class GuideGeneratorAgent extends BaseAgent {
   constructor() {
-    super(
-      "guide-generator",
-      GUIDE_GENERATOR_PROMPT,
-      "deepseek-chat",
-      { temperature: 0.9 }
-    );
+    super({
+      name: "guide-generator",
+      role: "Generador de guías de escritura",
+      systemPrompt: GUIDE_GENERATOR_PROMPT,
+      model: "deepseek-chat",
+    });
+  }
+
+  async execute(): Promise<AgentResponse> {
+    throw new Error("Use generateWritingGuide() instead");
   }
 
   async generateWritingGuide(params: {

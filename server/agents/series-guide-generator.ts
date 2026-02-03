@@ -165,12 +165,16 @@ Genera la guía COMPLETA en español. Sé específico y detallado.`;
 
 export class SeriesGuideGeneratorAgent extends BaseAgent {
   constructor() {
-    super(
-      "series-guide-generator",
-      SERIES_GUIDE_PROMPT,
-      "deepseek-chat",
-      { temperature: 0.9 }
-    );
+    super({
+      name: "series-guide-generator",
+      role: "Generador de guías de series literarias",
+      systemPrompt: SERIES_GUIDE_PROMPT,
+      model: "deepseek-chat",
+    });
+  }
+
+  async execute(): Promise<AgentResponse> {
+    throw new Error("Use generateSeriesGuide() instead");
   }
 
   async generateSeriesGuide(params: {
