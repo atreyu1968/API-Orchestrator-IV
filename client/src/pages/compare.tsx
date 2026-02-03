@@ -19,7 +19,9 @@ import {
   PlusCircle,
   ArrowRight,
   BarChart3,
+  Download,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import * as Diff from "diff";
 
 interface Project {
@@ -149,10 +151,24 @@ function ChapterStats({ stats }: { stats: DiffStats }) {
   );
 }
 
+function downloadMarkdown(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function ComparePage() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [selectedChapterIndex, setSelectedChapterIndex] = useState(0);
   const [viewMode, setViewMode] = useState<"unified" | "side-by-side">("unified");
+  const [isDownloading, setIsDownloading] = useState<"original" | "corrected" | null>(null);
+  const { toast } = useToast();
   
   const { data: projects, isLoading: loadingProjects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -166,6 +182,36 @@ export default function ComparePage() {
   const completedProjects = projects?.filter(p => 
     p.status === "completed" || p.status === "paused"
   ) || [];
+  
+  const selectedProject = completedProjects.find(p => p.id === selectedProjectId);
+  
+  const handleDownload = async (version: "original" | "corrected") => {
+    if (!selectedProjectId) return;
+    setIsDownloading(version);
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}/export-markdown?version=${version}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Error al descargar");
+      }
+      const data = await response.json();
+      const safeFilename = data.title.replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g, "").replace(/\s+/g, "_");
+      const versionSuffix = version === "original" ? "_ORIGINAL" : "_CORREGIDO";
+      downloadMarkdown(`${safeFilename}${versionSuffix}.md`, data.markdown);
+      toast({
+        title: "Descargado",
+        description: `${data.versionLabel}: ${data.chapterCount} capítulos`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(null);
+    }
+  };
   
   const chaptersWithDiff = useMemo(() => {
     if (!chapters) return [];
@@ -298,10 +344,41 @@ export default function ComparePage() {
       {globalStats && chaptersWithDiff.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Resumen Global de Correcciones
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Resumen Global de Correcciones
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownload("original")}
+                  disabled={isDownloading !== null}
+                  data-testid="button-download-original"
+                >
+                  {isDownloading === "original" ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  Original
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleDownload("corrected")}
+                  disabled={isDownloading !== null}
+                  data-testid="button-download-corrected"
+                >
+                  {isDownloading === "corrected" ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  Corregido
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
