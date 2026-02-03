@@ -303,6 +303,155 @@ function extractWatchpoints(worldBible: any): string | null {
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
+/**
+ * Extract central themes of the novel
+ */
+function extractCentralThemes(worldBible: any): string | null {
+  const themes = worldBible?.temas_centrales || worldBible?.centralThemes || worldBible?.themes || [];
+  if (!themes || themes.length === 0) return null;
+  
+  const themeList = themes.slice(0, 5).map((t: any) => {
+    if (typeof t === 'string') return t;
+    return t.name || t.nombre || t.theme || t.tema || '';
+  }).filter(Boolean);
+  
+  return themeList.length > 0 ? themeList.join(', ') : null;
+}
+
+/**
+ * Extract literary motifs
+ */
+function extractLiteraryMotifs(worldBible: any): string | null {
+  const motifs = worldBible?.motivos_literarios || worldBible?.literaryMotifs || worldBible?.motifs || [];
+  if (!motifs || motifs.length === 0) return null;
+  
+  const motifList = motifs.slice(0, 5).map((m: any) => {
+    if (typeof m === 'string') return m;
+    return m.name || m.nombre || m.motif || m.motivo || '';
+  }).filter(Boolean);
+  
+  return motifList.length > 0 ? motifList.join(', ') : null;
+}
+
+/**
+ * Extract global sensory palette (characteristic colors, sounds, smells)
+ */
+function extractSensoryPalette(worldBible: any): string | null {
+  const palette = worldBible?.paleta_sensorial_global || worldBible?.sensoryPalette || worldBible?.palette || {};
+  if (!palette || Object.keys(palette).length === 0) return null;
+  
+  const lines: string[] = [];
+  
+  if (palette.colores || palette.colors) {
+    lines.push(`    🎨 Colores: ${Array.isArray(palette.colores || palette.colors) ? (palette.colores || palette.colors).join(', ') : palette.colores || palette.colors}`);
+  }
+  if (palette.sonidos || palette.sounds) {
+    lines.push(`    🔊 Sonidos: ${Array.isArray(palette.sonidos || palette.sounds) ? (palette.sonidos || palette.sounds).join(', ') : palette.sonidos || palette.sounds}`);
+  }
+  if (palette.olores || palette.smells) {
+    lines.push(`    👃 Olores: ${Array.isArray(palette.olores || palette.smells) ? (palette.olores || palette.smells).join(', ') : palette.olores || palette.smells}`);
+  }
+  if (palette.texturas || palette.textures) {
+    lines.push(`    ✋ Texturas: ${Array.isArray(palette.texturas || palette.textures) ? (palette.texturas || palette.textures).join(', ') : palette.texturas || palette.textures}`);
+  }
+  if (palette.atmosfera || palette.atmosphere) {
+    lines.push(`    🌫️ Atmósfera: ${palette.atmosfera || palette.atmosphere}`);
+  }
+  
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * Extract character voice/speech patterns for characters in the scene
+ */
+function extractCharacterVoices(sceneCharacters: string[], worldBible: any): string | null {
+  const lines: string[] = [];
+  
+  for (const charName of sceneCharacters) {
+    const wbChar = findCharacterInWorldBible(charName, worldBible);
+    if (!wbChar) continue;
+    
+    const voice = wbChar.voice || wbChar.voz || wbChar.speechPattern || wbChar.patron_habla || '';
+    const dialect = wbChar.dialect || wbChar.dialecto || '';
+    const catchphrases = wbChar.catchphrases || wbChar.muletillas || [];
+    
+    const voiceInfo: string[] = [];
+    if (voice) voiceInfo.push(voice);
+    if (dialect) voiceInfo.push(`Dialecto: ${dialect}`);
+    if (Array.isArray(catchphrases) && catchphrases.length > 0) {
+      voiceInfo.push(`Muletillas: "${catchphrases.slice(0, 3).join('", "')}"`);
+    }
+    
+    if (voiceInfo.length > 0) {
+      lines.push(`    🗣️ ${wbChar.name || wbChar.nombre}: ${voiceInfo.join(' | ')}`);
+    }
+  }
+  
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * Extract character arcs and current state in story
+ */
+function extractCharacterArcs(sceneCharacters: string[], worldBible: any): string | null {
+  const lines: string[] = [];
+  
+  for (const charName of sceneCharacters) {
+    const wbChar = findCharacterInWorldBible(charName, worldBible);
+    if (!wbChar) continue;
+    
+    const arc = wbChar.arc || wbChar.arco || wbChar.characterArc || wbChar.arco_personaje || '';
+    const currentState = wbChar.currentState || wbChar.estado_actual || '';
+    const motivation = wbChar.motivation || wbChar.motivacion || '';
+    const fear = wbChar.fear || wbChar.miedo || wbChar.greatestFear || '';
+    
+    const arcInfo: string[] = [];
+    if (arc) arcInfo.push(`Arco: ${arc}`);
+    if (currentState) arcInfo.push(`Estado: ${currentState}`);
+    if (motivation) arcInfo.push(`Motivación: ${motivation}`);
+    if (fear) arcInfo.push(`Miedo: ${fear}`);
+    
+    if (arcInfo.length > 0) {
+      lines.push(`    📈 ${wbChar.name || wbChar.nombre}:`);
+      for (const info of arcInfo) {
+        lines.push(`       ${info}`);
+      }
+    }
+  }
+  
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * Extract the premise of the novel (short summary)
+ */
+function extractPremise(worldBible: any): string | null {
+  const premise = worldBible?.premisa || worldBible?.premise || '';
+  if (!premise) return null;
+  
+  // Limit to first 200 characters to save tokens
+  if (premise.length > 200) {
+    return premise.substring(0, 200) + '...';
+  }
+  return premise;
+}
+
+/**
+ * Extract timeline/era constraints
+ */
+function extractTimelineConstraints(worldBible: any): string | null {
+  const era = worldBible?.era || worldBible?.epoca || worldBible?.timePeriod || '';
+  const year = worldBible?.year || worldBible?.año || '';
+  const technology = worldBible?.technology || worldBible?.tecnologia || '';
+  
+  const lines: string[] = [];
+  if (era) lines.push(`    📅 Época: ${era}`);
+  if (year) lines.push(`    📅 Año: ${year}`);
+  if (technology) lines.push(`    💻 Tecnología: ${technology}`);
+  
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
 export const AGENT_MODELS_V2 = {
   REASONER: "deepseek-reasoner", // R1: Para planificación y razonamiento profundo
   WRITER: "deepseek-chat",       // V3: Para escritura creativa
@@ -682,24 +831,46 @@ export const PROMPTS_V2 = {
     const activeInjuries = extractActiveInjuries(scenePlan.characters, worldBible);
     const establishedObjects = extractEstablishedObjects(worldBible);
     const watchpoints = extractWatchpoints(worldBible);
+    // New extractions
+    const centralThemes = extractCentralThemes(worldBible);
+    const literaryMotifs = extractLiteraryMotifs(worldBible);
+    const sensoryPalette = extractSensoryPalette(worldBible);
+    const characterVoices = extractCharacterVoices(scenePlan.characters, worldBible);
+    const characterArcs = extractCharacterArcs(scenePlan.characters, worldBible);
+    const premise = extractPremise(worldBible);
+    const timelineConstraints = extractTimelineConstraints(worldBible);
     
     // Build the World Bible injection section
     let worldBibleSection = '';
     
     const hasAnyInfo = characterAttributes || characterRelationships || locationInfo || 
-                       worldRules || deadCharacters || activeInjuries || establishedObjects || watchpoints;
+                       worldRules || deadCharacters || activeInjuries || establishedObjects || watchpoints ||
+                       centralThemes || literaryMotifs || sensoryPalette || characterVoices || characterArcs ||
+                       premise || timelineConstraints;
     
     if (hasAnyInfo) {
       worldBibleSection = `
     ╔══════════════════════════════════════════════════════════════════╗
     ║ 📖 INFORMACIÓN CANÓNICA DEL WORLD BIBLE - OBLIGATORIO RESPETAR  ║
     ╚══════════════════════════════════════════════════════════════════╝
-${characterAttributes ? `
+${premise ? `
+    ▓▓▓ PREMISA DE LA NOVELA ▓▓▓
+    ${premise}
+` : ''}${timelineConstraints ? `
+    ▓▓▓ CONTEXTO TEMPORAL ▓▓▓
+${timelineConstraints}
+` : ''}${characterAttributes ? `
     ▓▓▓ ATRIBUTOS FÍSICOS (NO INVENTAR OTROS) ▓▓▓
 ${characterAttributes}
 ` : ''}${characterRelationships ? `
     ▓▓▓ RELACIONES ENTRE PERSONAJES ▓▓▓
 ${characterRelationships}
+` : ''}${characterVoices ? `
+    ▓▓▓ VOZ Y FORMA DE HABLAR ▓▓▓
+${characterVoices}
+` : ''}${characterArcs ? `
+    ▓▓▓ ARCOS DE PERSONAJE ▓▓▓
+${characterArcs}
 ` : ''}${activeInjuries ? `
     ▓▓▓ LESIONES ACTIVAS (LIMITAN ACCIONES) ▓▓▓
 ${activeInjuries}
@@ -718,6 +889,15 @@ ${establishedObjects}
 ` : ''}${worldRules ? `
     ▓▓▓ REGLAS DEL MUNDO ▓▓▓
 ${worldRules}
+` : ''}${centralThemes ? `
+    ▓▓▓ TEMAS CENTRALES ▓▓▓
+    ${centralThemes}
+` : ''}${literaryMotifs ? `
+    ▓▓▓ MOTIVOS LITERARIOS RECURRENTES ▓▓▓
+    ${literaryMotifs}
+` : ''}${sensoryPalette ? `
+    ▓▓▓ PALETA SENSORIAL GLOBAL ▓▓▓
+${sensoryPalette}
 ` : ''}${watchpoints ? `
     ▓▓▓ PUNTOS CRÍTICOS DE CONTINUIDAD ▓▓▓
 ${watchpoints}
