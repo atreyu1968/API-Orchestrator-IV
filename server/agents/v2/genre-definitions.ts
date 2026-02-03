@@ -146,6 +146,6 @@ export const GENRE_TRACKING_CONFIG: Record<string, GenreTrackingConfig> = {
 };
 
 export function getGenreConfig(genre: string): GenreTrackingConfig {
-  const normalized = genre.toLowerCase().replace(/_/g, "_");
+  const normalized = (genre || 'mystery').toLowerCase().replace(/_/g, "_");
   return GENRE_TRACKING_CONFIG[normalized] || GENRE_TRACKING_CONFIG["mystery"];
 }

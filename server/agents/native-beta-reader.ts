@@ -231,7 +231,8 @@ export class NativeBetaReaderAgent {
   private getGenreExpectations(targetLang: string, genre: string): string {
     const langCode = targetLang.substring(0, 2).toLowerCase();
     const langExpectations = GENRE_EXPECTATIONS[langCode] || GENRE_EXPECTATIONS['en'];
-    return langExpectations[genre.toLowerCase()] || langExpectations['default'];
+    const normalizedGenre = genre?.toLowerCase() || 'default';
+    return langExpectations[normalizedGenre] || langExpectations['default'];
   }
 
   private getNativeRules(targetLang: string): string {
