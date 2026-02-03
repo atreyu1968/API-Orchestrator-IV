@@ -34,7 +34,8 @@ import {
   Edit3,
   Zap,
   Sparkles,
-  DollarSign
+  DollarSign,
+  GitCompare,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -49,6 +50,7 @@ const mainNavItems = [
 const translationsNavItems = [
   { title: "Importar Libros", url: "/translations", icon: Upload },
   { title: "Exportar y Traducir", url: "/export", icon: Download },
+  { title: "Comparar Versiones", url: "/compare", icon: GitCompare },
   { title: "Reeditar Manuscrito", url: "/reedit", icon: Edit3 },
 ];
 
