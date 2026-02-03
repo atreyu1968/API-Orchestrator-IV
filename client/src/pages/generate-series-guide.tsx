@@ -16,6 +16,7 @@ import { Loader2, Library, FileText, CheckCircle, BookMarked, Save } from "lucid
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const FORM_STORAGE_KEY = "series-guide-form-draft";
+const RESULT_STORAGE_KEY = "series-guide-result";
 
 interface Pseudonym {
   id: number;
@@ -46,11 +47,9 @@ export default function GenerateSeriesGuidePage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   
-  const [generatedGuide, setGeneratedGuide] = useState<string | null>(null);
-  const [createdSeriesId, setCreatedSeriesId] = useState<number | null>(null);
   const [savedIndicator, setSavedIndicator] = useState(false);
 
-  // Load saved form data from localStorage
+  // Load saved form data and result from localStorage
   const loadSavedFormData = useCallback(() => {
     try {
       const saved = localStorage.getItem(FORM_STORAGE_KEY);
@@ -63,7 +62,23 @@ export default function GenerateSeriesGuidePage() {
     return null;
   }, []);
 
+  const loadSavedResult = useCallback(() => {
+    try {
+      const saved = localStorage.getItem(RESULT_STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error("Error loading saved result:", e);
+    }
+    return null;
+  }, []);
+
   const savedData = loadSavedFormData();
+  const savedResult = loadSavedResult();
+
+  const [generatedGuide, setGeneratedGuide] = useState<string | null>(savedResult?.guide || null);
+  const [createdSeriesId, setCreatedSeriesId] = useState<number | null>(savedResult?.seriesId || null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -122,8 +137,13 @@ export default function GenerateSeriesGuidePage() {
         queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
         queryClient.invalidateQueries({ queryKey: ["/api/extended-guides"] });
       }
-      // Clear saved form data on success
+      // Clear saved form data on success and save result
       localStorage.removeItem(FORM_STORAGE_KEY);
+      localStorage.setItem(RESULT_STORAGE_KEY, JSON.stringify({
+        guide: data.guideContent,
+        seriesId: data.seriesId,
+        generatedBooks: data.generatedBooks,
+      }));
       
       const booksCount = data.generatedBooks?.length || 0;
       toast({
@@ -164,6 +184,7 @@ export default function GenerateSeriesGuidePage() {
     setGeneratedGuide(null);
     setCreatedSeriesId(null);
     localStorage.removeItem(FORM_STORAGE_KEY);
+    localStorage.removeItem(RESULT_STORAGE_KEY);
     form.reset({
       seriesTitle: "",
       concept: "",
