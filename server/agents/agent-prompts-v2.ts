@@ -192,6 +192,117 @@ function extractProhibitedVocabulary(worldBible: any): string | null {
   return vocab.slice(0, 20).join(', '); // Limit to 20 words
 }
 
+/**
+ * Extract dead characters to prevent resurrections
+ */
+function extractDeadCharacters(worldBible: any): string | null {
+  const characters = worldBible?.characters || worldBible?.personajes || [];
+  const deadChars: string[] = [];
+  
+  for (const char of characters) {
+    const status = (char.status || char.estado || '').toLowerCase();
+    const isDead = status.includes('muerto') || status.includes('dead') || 
+                   status.includes('fallecido') || status.includes('deceased');
+    
+    // Also check description for death markers
+    const desc = (char.description || char.descripcion || '').toLowerCase();
+    const descDead = desc.includes('murió') || desc.includes('falleció') || 
+                     desc.includes('fue asesinado') || desc.includes('(muerto)');
+    
+    if (isDead || descDead) {
+      const name = char.name || char.nombre;
+      const deathChapter = char.deathChapter || char.capitulo_muerte || '';
+      deadChars.push(deathChapter ? `${name} (murió en cap. ${deathChapter})` : name);
+    }
+  }
+  
+  return deadChars.length > 0 ? deadChars.join(', ') : null;
+}
+
+/**
+ * Extract active injuries for characters in the scene
+ */
+function extractActiveInjuries(sceneCharacters: string[], worldBible: any): string | null {
+  const lines: string[] = [];
+  
+  for (const charName of sceneCharacters) {
+    const wbChar = findCharacterInWorldBible(charName, worldBible);
+    if (!wbChar) continue;
+    
+    const injuries = wbChar.injuries || wbChar.lesiones || wbChar.activeInjuries || [];
+    const physicalState = wbChar.physicalState || wbChar.estadoFisico || '';
+    
+    const charInjuries: string[] = [];
+    
+    if (Array.isArray(injuries) && injuries.length > 0) {
+      charInjuries.push(...injuries.map((i: any) => typeof i === 'string' ? i : i.description || i.descripcion));
+    }
+    
+    if (physicalState) {
+      charInjuries.push(physicalState);
+    }
+    
+    // Check description for injury markers
+    const desc = (wbChar.description || wbChar.descripcion || '');
+    const injuryMatch = desc.match(/\(LESIÓN[^)]*\)|\(HERIDA[^)]*\)|\(INJURY[^)]*\)/gi);
+    if (injuryMatch) {
+      charInjuries.push(...injuryMatch);
+    }
+    
+    if (charInjuries.length > 0) {
+      lines.push(`    🏥 ${wbChar.name || wbChar.nombre}: ${charInjuries.join(', ')}`);
+    }
+  }
+  
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * Extract established objects (Chekhov's Gun) that have been mentioned
+ */
+function extractEstablishedObjects(worldBible: any): string | null {
+  const objects = worldBible?.objects || worldBible?.objetos || worldBible?.establishedItems || [];
+  if (!objects || objects.length === 0) return null;
+  
+  const lines: string[] = [];
+  for (const obj of objects.slice(0, 10)) { // Limit to 10 objects
+    if (typeof obj === 'string') {
+      lines.push(`    • ${obj}`);
+    } else {
+      const name = obj.name || obj.nombre || '';
+      const owner = obj.owner || obj.propietario || '';
+      const chapter = obj.establishedIn || obj.capitulo || '';
+      if (name) {
+        let line = `    • ${name}`;
+        if (owner) line += ` (de ${owner})`;
+        if (chapter) line += ` [cap. ${chapter}]`;
+        lines.push(line);
+      }
+    }
+  }
+  
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * Extract continuity watchpoints (critical points to watch)
+ */
+function extractWatchpoints(worldBible: any): string | null {
+  const watchpoints = worldBible?.watchpoints_continuidad || worldBible?.watchpoints || [];
+  if (!watchpoints || watchpoints.length === 0) return null;
+  
+  const lines: string[] = [];
+  for (const wp of watchpoints.slice(0, 5)) { // Limit to 5 watchpoints
+    if (typeof wp === 'string') {
+      lines.push(`    ⚠️ ${wp}`);
+    } else {
+      lines.push(`    ⚠️ ${wp.description || wp.descripcion || JSON.stringify(wp)}`);
+    }
+  }
+  
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
 export const AGENT_MODELS_V2 = {
   REASONER: "deepseek-reasoner", // R1: Para planificación y razonamiento profundo
   WRITER: "deepseek-chat",       // V3: Para escritura creativa
@@ -567,11 +678,18 @@ export const PROMPTS_V2 = {
     const locationInfo = extractLocationForScene(scenePlan.setting, worldBible);
     const worldRules = extractWorldRules(worldBible);
     const prohibitedVocab = extractProhibitedVocabulary(worldBible);
+    const deadCharacters = extractDeadCharacters(worldBible);
+    const activeInjuries = extractActiveInjuries(scenePlan.characters, worldBible);
+    const establishedObjects = extractEstablishedObjects(worldBible);
+    const watchpoints = extractWatchpoints(worldBible);
     
     // Build the World Bible injection section
     let worldBibleSection = '';
     
-    if (characterAttributes || characterRelationships || locationInfo || worldRules) {
+    const hasAnyInfo = characterAttributes || characterRelationships || locationInfo || 
+                       worldRules || deadCharacters || activeInjuries || establishedObjects || watchpoints;
+    
+    if (hasAnyInfo) {
       worldBibleSection = `
     ╔══════════════════════════════════════════════════════════════════╗
     ║ 📖 INFORMACIÓN CANÓNICA DEL WORLD BIBLE - OBLIGATORIO RESPETAR  ║
@@ -582,12 +700,27 @@ ${characterAttributes}
 ` : ''}${characterRelationships ? `
     ▓▓▓ RELACIONES ENTRE PERSONAJES ▓▓▓
 ${characterRelationships}
+` : ''}${activeInjuries ? `
+    ▓▓▓ LESIONES ACTIVAS (LIMITAN ACCIONES) ▓▓▓
+${activeInjuries}
+    → Personajes heridos NO pueden realizar acciones que requieran la parte lesionada.
+` : ''}${deadCharacters ? `
+    ▓▓▓ ☠️ PERSONAJES MUERTOS (NO PUEDEN APARECER VIVOS) ▓▓▓
+    ${deadCharacters}
+    → PROHIBIDO: resucitar, mencionar como vivos, o hacer que actúen.
 ` : ''}${locationInfo ? `
     ▓▓▓ UBICACIÓN CANÓNICA ▓▓▓
 ${locationInfo}
+` : ''}${establishedObjects ? `
+    ▓▓▓ OBJETOS ESTABLECIDOS (Chekhov's Gun) ▓▓▓
+${establishedObjects}
+    → Solo puedes usar objetos ya mencionados. NO inventes objetos nuevos convenientes.
 ` : ''}${worldRules ? `
     ▓▓▓ REGLAS DEL MUNDO ▓▓▓
 ${worldRules}
+` : ''}${watchpoints ? `
+    ▓▓▓ PUNTOS CRÍTICOS DE CONTINUIDAD ▓▓▓
+${watchpoints}
 ` : ''}
     ⚠️ USA esta información EXACTAMENTE. NO inventes detalles que contradigan lo anterior.
 
