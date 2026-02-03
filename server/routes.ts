@@ -9713,6 +9713,21 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
   });
 
   // =============================================
+  // GENERATION STATUS - Check if any generation is in progress
+  // =============================================
+  
+  app.get("/api/generation-status", async (req: Request, res: Response) => {
+    const activeGen = getActiveGeneration();
+    res.json({
+      isGenerating: !!activeGen,
+      activeGeneration: activeGen,
+      message: activeGen 
+        ? `Generación en curso: ${activeGen.type} "${activeGen.title}" (iniciado: ${activeGen.startedAt.toISOString()})`
+        : "No hay generación en curso"
+    });
+  });
+
+  // =============================================
   // SERIES GUIDE GENERATOR - Auto-create series guides
   // =============================================
   
