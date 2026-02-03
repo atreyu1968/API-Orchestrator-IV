@@ -187,6 +187,8 @@ export class SeriesGuideGeneratorAgent extends BaseAgent {
     pseudonymName?: string;
     pseudonymStyleGuide?: string;
   }): Promise<AgentResponse> {
+    console.log(`[SeriesGuideGeneratorAgent] Starting generation for "${params.seriesTitle}" (${params.bookCount} books)...`);
+    
     let prompt = `Genera una guía de serie completa para la siguiente saga:
 
 ## CONCEPTO DE LA SERIE:
@@ -223,7 +225,9 @@ Incluye sinopsis detalladas para TODOS los ${params.bookCount} libros planificad
 El hilo conductor debe estar bien desarrollado y las pistas distribuidas entre todos los volúmenes.
 `;
 
+    console.log(`[SeriesGuideGeneratorAgent] Calling DeepSeek API...`);
     const response = await this.generateContent(prompt);
+    console.log(`[SeriesGuideGeneratorAgent] Generation complete (${response.content?.length || 0} chars)`);
     return response;
   }
 }
