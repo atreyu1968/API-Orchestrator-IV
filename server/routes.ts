@@ -9645,6 +9645,11 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         workType: z.enum(["series", "trilogy"]).default("trilogy"),
         pseudonymId: z.number().optional(),
         createSeries: z.boolean().default(true),
+        autoGenerateBookGuides: z.boolean().default(false),
+        chapterCountPerBook: z.number().min(10).max(50).default(30),
+        hasPrologue: z.boolean().default(true),
+        hasEpilogue: z.boolean().default(true),
+        styleGuideId: z.number().optional(),
       });
       
       const params = schema.parse(req.body);
@@ -9696,6 +9701,120 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         });
         
         console.log(`[SeriesGuideGenerator] Series created (ID: ${series.id})`);
+        
+        // Auto-generate book guides if requested
+        if (params.autoGenerateBookGuides && series) {
+          const { guideGeneratorAgent } = await import("./agents/guide-generator");
+          
+          // Parse volumes from the series guide
+          const volumeRegex = /### Volumen (\d+): ([^\n]+)\n- \*\*Argumento:\*\* ([^\n]+(?:\n[^-][^\n]*)*)/g;
+          const volumes: Array<{number: number, title: string, argument: string}> = [];
+          let match;
+          
+          while ((match = volumeRegex.exec(guideContent)) !== null) {
+            volumes.push({
+              number: parseInt(match[1]),
+              title: match[2].trim(),
+              argument: match[3].trim().replace(/\n/g, ' ')
+            });
+          }
+          
+          console.log(`[SeriesGuideGenerator] Found ${volumes.length} volumes to generate guides for`);
+          
+          // Get style guide content if provided
+          let styleGuideContent: string | undefined;
+          if (params.styleGuideId) {
+            const styleGuide = await storage.getStyleGuide(params.styleGuideId);
+            if (styleGuide) {
+              styleGuideContent = styleGuide.content;
+            }
+          } else if (pseudonymStyleGuide) {
+            styleGuideContent = pseudonymStyleGuide;
+          }
+          
+          // Generate guides for each volume (sequentially to avoid rate limits)
+          const generatedBooks: Array<{title: string, projectId: number}> = [];
+          
+          for (const volume of volumes) {
+            try {
+              console.log(`[SeriesGuideGenerator] Generating guide for Volume ${volume.number}: "${volume.title}"...`);
+              
+              // Build series context for this book
+              const seriesContext = `
+## Contexto de la Serie: ${params.seriesTitle}
+
+Este es el **Volumen ${volume.number}** de ${params.bookCount} en la serie.
+
+### Información de la Serie:
+${guideContent.substring(0, 3000)}
+
+### Hitos específicos de este volumen:
+Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.number}.
+              `.trim();
+              
+              const bookGuideResponse = await guideGeneratorAgent.generateWritingGuide({
+                argument: volume.argument,
+                title: volume.title,
+                genre: params.genre,
+                tone: params.tone,
+                chapterCount: params.chapterCountPerBook,
+                hasPrologue: params.hasPrologue,
+                hasEpilogue: params.hasEpilogue,
+                styleGuideContent,
+                seriesContext,
+                kindleUnlimited: false,
+              });
+              
+              const bookGuideContent = bookGuideResponse.content;
+              console.log(`[SeriesGuideGenerator] Book guide generated for "${volume.title}" (${bookGuideContent.length} chars)`);
+              
+              // Create extended guide
+              const extendedGuide = await storage.createExtendedGuide({
+                title: `Guía de Escritura: ${volume.title}`,
+                description: `Guía para Volumen ${volume.number} de la serie "${params.seriesTitle}"`,
+                content: bookGuideContent,
+                genre: params.genre,
+                tone: params.tone,
+              });
+              
+              // Create project
+              const project = await storage.createProject({
+                title: volume.title,
+                premise: volume.argument,
+                genre: params.genre,
+                tone: params.tone,
+                chapterCount: params.chapterCountPerBook,
+                hasPrologue: params.hasPrologue,
+                hasEpilogue: params.hasEpilogue,
+                hasAuthorNote: false,
+                pseudonymId: params.pseudonymId || null,
+                styleGuideId: params.styleGuideId || null,
+                extendedGuideId: extendedGuide.id,
+                workType: "series",
+                seriesId: series.id,
+                seriesOrder: volume.number,
+                status: "pending",
+              });
+              
+              generatedBooks.push({ title: volume.title, projectId: project.id });
+              console.log(`[SeriesGuideGenerator] Created project for "${volume.title}" (ID: ${project.id})`);
+              
+            } catch (bookError: any) {
+              console.error(`[SeriesGuideGenerator] Error generating guide for Volume ${volume.number}:`, bookError.message);
+            }
+          }
+          
+          console.log(`[SeriesGuideGenerator] Successfully generated ${generatedBooks.length} book guides`);
+          
+          res.json({
+            success: true,
+            guideContent,
+            seriesId: series.id,
+            generatedBooks,
+            message: `Serie "${params.seriesTitle}" creada con ${generatedBooks.length} libros generados automáticamente`,
+          });
+          return;
+        }
       }
       
       res.json({

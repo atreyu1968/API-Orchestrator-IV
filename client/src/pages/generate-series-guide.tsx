@@ -31,6 +31,11 @@ const formSchema = z.object({
   workType: z.enum(["series", "trilogy"]).default("trilogy"),
   pseudonymId: z.string().optional(),
   createSeries: z.boolean().default(true),
+  autoGenerateBookGuides: z.boolean().default(false),
+  chapterCountPerBook: z.number().min(10).max(50).default(30),
+  hasPrologue: z.boolean().default(true),
+  hasEpilogue: z.boolean().default(true),
+  styleGuideId: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -53,6 +58,11 @@ export default function GenerateSeriesGuidePage() {
       workType: "trilogy",
       pseudonymId: "",
       createSeries: true,
+      autoGenerateBookGuides: false,
+      chapterCountPerBook: 30,
+      hasPrologue: true,
+      hasEpilogue: true,
+      styleGuideId: "",
     },
   });
 
@@ -65,6 +75,7 @@ export default function GenerateSeriesGuidePage() {
       const response = await apiRequest("POST", "/api/generate-series-guide", {
         ...data,
         pseudonymId: data.pseudonymId && data.pseudonymId !== "none" ? parseInt(data.pseudonymId) : undefined,
+        styleGuideId: data.styleGuideId && data.styleGuideId !== "none" ? parseInt(data.styleGuideId) : undefined,
       });
       return response.json();
     },
@@ -72,6 +83,9 @@ export default function GenerateSeriesGuidePage() {
       setGeneratedGuide(data.guideContent);
       setCreatedSeriesId(data.seriesId);
       queryClient.invalidateQueries({ queryKey: ["/api/series"] });
+      if (data.generatedBooks?.length > 0) {
+        queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      }
       toast({
         title: "Guía de serie generada",
         description: data.message,
@@ -361,6 +375,91 @@ export default function GenerateSeriesGuidePage() {
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name="autoGenerateBookGuides"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center space-x-2 pt-2">
+                      <FormControl>
+                        <Switch
+                          data-testid="switch-auto-generate-books"
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          disabled={!form.watch("createSeries")}
+                        />
+                      </FormControl>
+                      <FormLabel className="!mt-0">
+                        Generar guías de todos los libros automáticamente
+                      </FormLabel>
+                      <FormDescription className="text-xs">
+                        Crea automáticamente las guías y proyectos para cada volumen de la serie
+                      </FormDescription>
+                    </FormItem>
+                  )}
+                />
+
+                {form.watch("autoGenerateBookGuides") && (
+                  <div className="space-y-4 pt-4 border-t mt-4">
+                    <p className="text-sm font-medium text-muted-foreground">Configuración de libros</p>
+                    
+                    <FormField
+                      control={form.control}
+                      name="chapterCountPerBook"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Capítulos por libro</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min={10}
+                              max={50}
+                              data-testid="input-chapters-per-book"
+                              {...field}
+                              onChange={(e) => field.onChange(parseInt(e.target.value) || 30)}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="flex gap-6">
+                      <FormField
+                        control={form.control}
+                        name="hasPrologue"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center space-x-2">
+                            <FormControl>
+                              <Switch
+                                data-testid="switch-prologue"
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                            <FormLabel className="!mt-0">Prólogo</FormLabel>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="hasEpilogue"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center space-x-2">
+                            <FormControl>
+                              <Switch
+                                data-testid="switch-epilogue"
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                            <FormLabel className="!mt-0">Epílogo</FormLabel>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
