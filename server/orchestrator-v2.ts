@@ -477,24 +477,91 @@ export class OrchestratorV2 {
   }
 
   /**
+   * LitAgents 2.9.5: Extract plot threads from extended guide
+   * Looks for common patterns: "Trama principal:", "Subtramas:", chapter-by-chapter breakdowns
+   */
+  private extractPlotsFromGuide(guide: string): Array<{ name: string; description?: string; goal: string }> {
+    const threads: Array<{ name: string; description?: string; goal: string }> = [];
+    
+    // Pattern 1: Look for explicit "Trama" or "Subtrama" sections
+    const tramaPattern = /(?:trama\s*(?:principal)?|subtrama)\s*(?:\d+)?[\s:]+([^\n]+)/gi;
+    let match;
+    while ((match = tramaPattern.exec(guide)) !== null) {
+      const name = match[1].trim();
+      if (name.length > 5 && name.length < 200) {
+        threads.push({ name, goal: name });
+      }
+    }
+    
+    // Pattern 2: Look for "Arco de [personaje]" patterns
+    const arcoPattern = /arco\s+(?:de\s+)?([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)?)[:\s]+([^\n]+)/gi;
+    while ((match = arcoPattern.exec(guide)) !== null) {
+      const charName = match[1].trim();
+      const arcDesc = match[2].trim();
+      threads.push({ 
+        name: `Arco de ${charName}`, 
+        description: arcDesc, 
+        goal: arcDesc 
+      });
+    }
+    
+    // Pattern 3: Look for numbered plot points "1. [Plot]", "2. [Plot]"
+    const numberedPattern = /^\s*\d+\.\s*(?:trama|conflicto|historia|arco)[:\s]+([^\n]+)/gim;
+    while ((match = numberedPattern.exec(guide)) !== null) {
+      const name = match[1].trim();
+      if (name.length > 5 && !threads.some(t => t.name.toLowerCase() === name.toLowerCase())) {
+        threads.push({ name, goal: name });
+      }
+    }
+    
+    // Pattern 4: Look for "Conflicto principal/secundario" 
+    const conflictPattern = /conflicto\s+(?:principal|secundario|central)\s*[:\s]+([^\n]+)/gi;
+    while ((match = conflictPattern.exec(guide)) !== null) {
+      const name = match[1].trim();
+      if (name.length > 5 && !threads.some(t => t.name.toLowerCase() === name.toLowerCase())) {
+        threads.push({ name: `Conflicto: ${name}`, goal: name });
+      }
+    }
+    
+    // Deduplicate and limit to 10 threads
+    const uniqueThreads = threads.filter((t, i, arr) => 
+      arr.findIndex(x => x.name.toLowerCase() === t.name.toLowerCase()) === i
+    );
+    
+    return uniqueThreads.slice(0, 10);
+  }
+
+  /**
    * LitAgents 2.9.5: Validate plot coherence to prevent orphaned/weak storylines
    * Returns validation result with issues that need fixing
    */
   private validatePlotCoherence(
     outline: Array<{ chapter_num: number; title: string; summary: string; key_event: string; emotional_arc?: string }> | undefined | null,
     plotThreads: Array<{ name: string; description?: string; goal: string }> | undefined | null,
-    worldBible: any
+    worldBible: any,
+    extendedGuide?: string
   ): { isValid: boolean; criticalIssues: string[]; warnings: string[] } {
     const criticalIssues: string[] = [];
     const warnings: string[] = [];
     
     // Guard: If outline or plotThreads are missing/empty, skip validation (assume valid)
     const safeOutline = outline || [];
-    const safePlotThreads = plotThreads || [];
+    let safePlotThreads = plotThreads || [];
     
     if (safeOutline.length === 0) {
       console.warn('[OrchestratorV2] validatePlotCoherence: Empty outline, skipping validation');
       return { isValid: true, criticalIssues: [], warnings: ['Outline vacío - validación omitida'] };
+    }
+    
+    // LitAgents 2.9.5: Extract plot threads from extended guide if not provided by Global Architect
+    // The extended guide often contains well-defined plots/subplots with chapter development
+    if (safePlotThreads.length === 0 && extendedGuide) {
+      console.log('[OrchestratorV2] No plot_threads from GA - extracting from extended guide...');
+      const extractedThreads = this.extractPlotsFromGuide(extendedGuide);
+      if (extractedThreads.length > 0) {
+        safePlotThreads = extractedThreads;
+        console.log(`[OrchestratorV2] Extracted ${extractedThreads.length} plot threads from extended guide`);
+      }
     }
     
     if (safePlotThreads.length === 0) {
@@ -3688,11 +3755,12 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           this.addTokenUsage(globalResult.tokenUsage);
           await this.logAiUsage(project.id, "global-architect", "deepseek-reasoner", globalResult.tokenUsage);
           
-          // LitAgents 2.9.5: Validate plot coherence
+          // LitAgents 2.9.5: Validate plot coherence (also uses extended guide for thread extraction)
           plotValidation = this.validatePlotCoherence(
             globalResult.parsed.outline,
             globalResult.parsed.plot_threads,
-            globalResult.parsed.world_bible
+            globalResult.parsed.world_bible,
+            extendedGuideContent
           );
           
           if (!plotValidation.isValid) {
