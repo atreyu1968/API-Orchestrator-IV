@@ -27,6 +27,7 @@ import ReeditPage from "@/pages/reedit";
 import CostsHistoryPage from "@/pages/costs-history";
 import ComparePage from "@/pages/compare";
 import GenerateGuidePage from "@/pages/generate-guide";
+import GenerateSeriesGuidePage from "@/pages/generate-series-guide";
 import asdLogo from "@assets/ASD_1766442257801.png";
 
 interface AuthStatus {
@@ -51,6 +52,7 @@ function Router() {
       <Route path="/compare" component={ComparePage} />
       <Route path="/costs-history" component={CostsHistoryPage} />
       <Route path="/generate-guide" component={GenerateGuidePage} />
+      <Route path="/generate-series-guide" component={GenerateSeriesGuidePage} />
       <Route path="/config" component={ConfigPage} />
       <Route component={NotFound} />
     </Switch>

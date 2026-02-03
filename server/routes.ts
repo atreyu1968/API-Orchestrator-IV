@@ -9611,6 +9611,93 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     }
   });
 
+  // =============================================
+  // SERIES GUIDE GENERATOR - Auto-create series guides
+  // =============================================
+  
+  app.post("/api/generate-series-guide", async (req: Request, res: Response) => {
+    try {
+      const { seriesGuideGeneratorAgent } = await import("./agents/series-guide-generator");
+      
+      const schema = z.object({
+        concept: z.string().min(50, "El concepto debe tener al menos 50 caracteres"),
+        seriesTitle: z.string().min(1, "El título de la serie es requerido"),
+        genre: z.string().default("thriller"),
+        tone: z.string().default("tenso"),
+        bookCount: z.number().min(2).max(20).default(3),
+        workType: z.enum(["series", "trilogy"]).default("trilogy"),
+        pseudonymId: z.number().optional(),
+        createSeries: z.boolean().default(true),
+      });
+      
+      const params = schema.parse(req.body);
+      
+      // Get pseudonym info and style guide
+      let pseudonymName: string | undefined;
+      let pseudonymStyleGuide: string | undefined;
+      if (params.pseudonymId) {
+        const pseudonym = await storage.getPseudonym(params.pseudonymId);
+        if (pseudonym) {
+          pseudonymName = pseudonym.name;
+        }
+        const guides = await storage.getStyleGuidesByPseudonym(params.pseudonymId);
+        const activeGuide = guides.find(g => g.isActive);
+        if (activeGuide) {
+          pseudonymStyleGuide = activeGuide.content;
+        }
+      }
+      
+      console.log(`[SeriesGuideGenerator] Generating guide for series "${params.seriesTitle}"...`);
+      
+      // Generate the series guide
+      const guideContent = await seriesGuideGeneratorAgent.generateSeriesGuide({
+        concept: params.concept,
+        seriesTitle: params.seriesTitle,
+        genre: params.genre,
+        tone: params.tone,
+        bookCount: params.bookCount,
+        workType: params.workType,
+        pseudonymName,
+        pseudonymStyleGuide,
+      });
+      
+      console.log(`[SeriesGuideGenerator] Guide generated (${guideContent.length} chars)`);
+      
+      let series = null;
+      
+      if (params.createSeries) {
+        // Create series with the guide
+        series = await storage.createSeries({
+          title: params.seriesTitle,
+          description: params.concept.substring(0, 500),
+          workType: params.workType,
+          totalPlannedBooks: params.bookCount,
+          pseudonymId: params.pseudonymId || null,
+          seriesGuide: guideContent,
+          seriesGuideFileName: `guia_serie_${params.seriesTitle.toLowerCase().replace(/\s+/g, '_')}.md`,
+        });
+        
+        console.log(`[SeriesGuideGenerator] Series created (ID: ${series.id})`);
+      }
+      
+      res.json({
+        success: true,
+        guideContent,
+        seriesId: series?.id,
+        message: series 
+          ? `Guía generada y serie "${params.seriesTitle}" creada exitosamente`
+          : "Guía de serie generada exitosamente",
+      });
+      
+    } catch (error: any) {
+      console.error("[SeriesGuideGenerator] Error:", error);
+      res.status(500).json({ 
+        error: error.message || "Error al generar la guía de serie",
+        details: error.errors || undefined
+      });
+    }
+  });
+
   return httpServer;
 }
 
