@@ -9714,6 +9714,83 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     }
   });
 
+  // =============================================
+  // STYLE GUIDE GENERATOR - Auto-create style guides based on known authors
+  // =============================================
+  
+  app.post("/api/generate-style-guide", async (req: Request, res: Response) => {
+    try {
+      const { styleGuideGeneratorAgent } = await import("./agents/style-guide-generator");
+      
+      const schema = z.object({
+        referenceAuthor: z.string().min(1, "El autor de referencia es requerido"),
+        pseudonymName: z.string().min(1, "El nombre del seudónimo es requerido"),
+        genre: z.string().optional(),
+        additionalNotes: z.string().optional(),
+        pseudonymId: z.number().optional(),
+        createPseudonym: z.boolean().default(false),
+        saveGuide: z.boolean().default(true),
+      });
+      
+      const params = schema.parse(req.body);
+      
+      console.log(`[StyleGuideGenerator] Generating guide based on "${params.referenceAuthor}" for "${params.pseudonymName}"...`);
+      
+      // Generate the style guide
+      const guideContent = await styleGuideGeneratorAgent.generateStyleGuide({
+        referenceAuthor: params.referenceAuthor,
+        pseudonymName: params.pseudonymName,
+        genre: params.genre,
+        additionalNotes: params.additionalNotes,
+      });
+      
+      console.log(`[StyleGuideGenerator] Guide generated (${guideContent.length} chars)`);
+      
+      let pseudonymId = params.pseudonymId;
+      let styleGuide = null;
+      
+      if (params.saveGuide) {
+        // Create pseudonym if needed
+        if (params.createPseudonym && !pseudonymId) {
+          const newPseudonym = await storage.createPseudonym({
+            name: params.pseudonymName,
+            bio: `Seudónimo con estilo inspirado en ${params.referenceAuthor}`,
+          });
+          pseudonymId = newPseudonym.id;
+          console.log(`[StyleGuideGenerator] Pseudonym created (ID: ${pseudonymId})`);
+        }
+        
+        if (pseudonymId) {
+          // Create style guide
+          styleGuide = await storage.createStyleGuide({
+            pseudonymId,
+            title: `Estilo ${params.referenceAuthor}`,
+            content: guideContent,
+            isActive: true,
+          });
+          console.log(`[StyleGuideGenerator] Style guide created (ID: ${styleGuide.id})`);
+        }
+      }
+      
+      res.json({
+        success: true,
+        guideContent,
+        pseudonymId,
+        styleGuideId: styleGuide?.id,
+        message: styleGuide 
+          ? `Guía de estilo generada y guardada exitosamente`
+          : "Guía de estilo generada exitosamente",
+      });
+      
+    } catch (error: any) {
+      console.error("[StyleGuideGenerator] Error:", error);
+      res.status(500).json({ 
+        error: error.message || "Error al generar la guía de estilo",
+        details: error.errors || undefined
+      });
+    }
+  });
+
   return httpServer;
 }
 

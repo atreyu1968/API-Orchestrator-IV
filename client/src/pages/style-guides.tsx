@@ -15,7 +15,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Palette, Plus, FileText, User, Check, Trash2, Download, Copy, Edit2, Eye } from "lucide-react";
+import { Palette, Plus, FileText, User, Check, Trash2, Download, Copy, Edit2, Eye, Sparkles, Loader2 } from "lucide-react";
 import type { Pseudonym, StyleGuide } from "@shared/schema";
 
 const STYLE_GUIDE_TEMPLATE = `# GUÍA DE ESTILO: [NOMBRE DEL SEUDÓNIMO]
@@ -185,11 +185,24 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
+const generateFormSchema = z.object({
+  referenceAuthor: z.string().min(1, "El autor de referencia es requerido"),
+  pseudonymName: z.string().min(1, "El nombre del seudónimo es requerido"),
+  genre: z.string().optional(),
+  additionalNotes: z.string().optional(),
+  pseudonymId: z.string().optional(),
+  createPseudonym: z.boolean().default(true),
+  saveGuide: z.boolean().default(true),
+});
+
+type GenerateFormData = z.infer<typeof generateFormSchema>;
+
 export default function StyleGuidesPage() {
   const { toast } = useToast();
   const [selectedGuide, setSelectedGuide] = useState<StyleGuide | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [generatedGuide, setGeneratedGuide] = useState<string | null>(null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -203,7 +216,21 @@ export default function StyleGuidesPage() {
     },
   });
 
+  const generateForm = useForm<GenerateFormData>({
+    resolver: zodResolver(generateFormSchema),
+    defaultValues: {
+      referenceAuthor: "",
+      pseudonymName: "",
+      genre: "",
+      additionalNotes: "",
+      pseudonymId: "",
+      createPseudonym: true,
+      saveGuide: true,
+    },
+  });
+
   const createNewPseudonym = form.watch("createNewPseudonym");
+  const generateCreatePseudonym = generateForm.watch("createPseudonym");
 
   const { data: pseudonyms = [] } = useQuery<Pseudonym[]>({
     queryKey: ["/api/pseudonyms"],
@@ -274,6 +301,25 @@ export default function StyleGuidesPage() {
     },
   });
 
+  const generateStyleGuideMutation = useMutation({
+    mutationFn: async (data: GenerateFormData) => {
+      const response = await apiRequest("POST", "/api/generate-style-guide", {
+        ...data,
+        pseudonymId: data.pseudonymId && data.pseudonymId !== "none" ? parseInt(data.pseudonymId) : undefined,
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setGeneratedGuide(data.guideContent);
+      queryClient.invalidateQueries({ queryKey: ["/api/all-style-guides"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pseudonyms"] });
+      toast({ title: "Guía generada", description: data.message });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const onSubmit = async (data: FormData) => {
     let pseudonymId: number;
 
@@ -312,6 +358,15 @@ export default function StyleGuidesPage() {
   const handleUseTemplate = () => {
     form.setValue("content", STYLE_GUIDE_TEMPLATE);
     toast({ title: "Plantilla cargada", description: "Rellena los campos marcados con [corchetes]" });
+  };
+
+  const onGenerateSubmit = (data: GenerateFormData) => {
+    generateStyleGuideMutation.mutate(data);
+  };
+
+  const resetGenerateForm = () => {
+    setGeneratedGuide(null);
+    generateForm.reset();
   };
 
   const handleEditGuide = (guide: StyleGuide) => {
@@ -358,17 +413,264 @@ export default function StyleGuidesPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="create" className="space-y-6">
+      <Tabs defaultValue="generate" className="space-y-6">
         <TabsList data-testid="tabs-list">
+          <TabsTrigger value="generate" data-testid="tab-generate">
+            <Sparkles className="h-4 w-4 mr-2" />
+            Generar con IA
+          </TabsTrigger>
           <TabsTrigger value="create" data-testid="tab-create">
             <Plus className="h-4 w-4 mr-2" />
-            {isEditing ? "Editar Guía" : "Crear Guía"}
+            {isEditing ? "Editar Guía" : "Crear Manual"}
           </TabsTrigger>
           <TabsTrigger value="list" data-testid="tab-list">
             <FileText className="h-4 w-4 mr-2" />
-            Guías Existentes ({allStyleGuides.length})
+            Guías ({allStyleGuides.length})
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="generate">
+          {!generatedGuide ? (
+            <Form {...generateForm}>
+              <form onSubmit={generateForm.handleSubmit(onGenerateSubmit)} className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Sparkles className="h-5 w-5" />
+                      Generar Guía de Estilo con IA
+                    </CardTitle>
+                    <CardDescription>
+                      Genera automáticamente una guía de estilo basada en el estilo de un autor conocido
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <FormField
+                      control={generateForm.control}
+                      name="referenceAuthor"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Autor de referencia</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              data-testid="input-reference-author"
+                              placeholder="Ej: Stephen King, Gillian Flynn, Paula Hawkins..."
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            El estilo de este autor servirá como base para la guía
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={generateForm.control}
+                      name="pseudonymName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Nombre del seudónimo</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              data-testid="input-pseudonym-name"
+                              placeholder="Ej: Elena Blackwood"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={generateForm.control}
+                      name="genre"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Género objetivo (opcional)</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-genre">
+                                <SelectValue placeholder="Selecciona un género" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="none">Sin especificar</SelectItem>
+                              <SelectItem value="thriller">Thriller</SelectItem>
+                              <SelectItem value="romance">Romance</SelectItem>
+                              <SelectItem value="fantasy">Fantasía</SelectItem>
+                              <SelectItem value="sci-fi">Ciencia Ficción</SelectItem>
+                              <SelectItem value="horror">Terror</SelectItem>
+                              <SelectItem value="mystery">Misterio</SelectItem>
+                              <SelectItem value="historical">Histórico</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={generateForm.control}
+                      name="additionalNotes"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Notas adicionales (opcional)</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              {...field}
+                              data-testid="input-additional-notes"
+                              placeholder="Instrucciones específicas: qué aspectos enfatizar, qué evitar, preferencias particulares..."
+                              className="min-h-[100px]"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={generateForm.control}
+                      name="createPseudonym"
+                      render={({ field }) => (
+                        <FormItem className="flex items-center space-x-2">
+                          <FormControl>
+                            <Switch
+                              data-testid="switch-create-pseudonym-gen"
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <FormLabel className="!mt-0">Crear nuevo seudónimo automáticamente</FormLabel>
+                        </FormItem>
+                      )}
+                    />
+
+                    {!generateCreatePseudonym && (
+                      <FormField
+                        control={generateForm.control}
+                        name="pseudonymId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Asignar a seudónimo existente</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-pseudonym-gen">
+                                  <SelectValue placeholder="Selecciona un seudónimo" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="none">Selecciona un seudónimo</SelectItem>
+                                {pseudonyms.map((p) => (
+                                  <SelectItem key={p.id} value={p.id.toString()}>
+                                    {p.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    <FormField
+                      control={generateForm.control}
+                      name="saveGuide"
+                      render={({ field }) => (
+                        <FormItem className="flex items-center space-x-2">
+                          <FormControl>
+                            <Switch
+                              data-testid="switch-save-guide"
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <FormLabel className="!mt-0">Guardar guía automáticamente</FormLabel>
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full"
+                  data-testid="button-generate-style"
+                  disabled={generateStyleGuideMutation.isPending}
+                >
+                  {generateStyleGuideMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Analizando estilo y generando guía...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-5 w-5" />
+                      Generar Guía de Estilo
+                    </>
+                  )}
+                </Button>
+              </form>
+            </Form>
+          ) : (
+            <div className="space-y-6">
+              <Card className="border-green-500/50 bg-green-500/5">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                    <Check className="h-6 w-6" />
+                    Guía de Estilo Generada
+                  </CardTitle>
+                  <CardDescription>
+                    Basada en el estilo de {generateForm.getValues("referenceAuthor")}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      data-testid="button-download-generated"
+                      onClick={() => {
+                        const blob = new Blob([generatedGuide], { type: "text/markdown" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `guia_estilo_${generateForm.getValues("pseudonymName").toLowerCase().replace(/\s+/g, "_")}.md`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Descargar
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      data-testid="button-new-generation"
+                      onClick={resetGenerateForm}
+                    >
+                      Generar otra guía
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Vista previa</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="prose prose-sm dark:prose-invert max-w-none max-h-[500px] overflow-y-auto">
+                    <pre className="whitespace-pre-wrap text-sm font-mono bg-muted p-4 rounded-lg">
+                      {generatedGuide}
+                    </pre>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
 
         <TabsContent value="create">
           <Form {...form}>
