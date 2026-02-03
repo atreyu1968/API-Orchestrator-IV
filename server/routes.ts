@@ -3220,6 +3220,22 @@ ${series.seriesGuide.substring(0, 50000)}`;
     }
   });
 
+  // Get all style guides across all pseudonyms
+  app.get("/api/all-style-guides", async (req: Request, res: Response) => {
+    try {
+      const pseudonyms = await storage.getAllPseudonyms();
+      const allGuides = [];
+      for (const pseudonym of pseudonyms) {
+        const guides = await storage.getStyleGuidesByPseudonym(pseudonym.id);
+        allGuides.push(...guides);
+      }
+      res.json(allGuides);
+    } catch (error) {
+      console.error("Error fetching all style guides:", error);
+      res.status(500).json({ error: "Failed to fetch style guides" });
+    }
+  });
+
   app.get("/api/pseudonyms/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
