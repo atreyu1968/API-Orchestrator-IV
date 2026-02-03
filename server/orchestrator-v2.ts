@@ -8858,6 +8858,30 @@ Responde SOLO en JSON válido (sin markdown):
     const worldBibleRecord = await storage.getWorldBibleByProject(project.id);
     const worldBible = (worldBibleRecord as any)?.content || worldBibleRecord || {};
 
+    // SNAPSHOT: Save original manuscript before any corrections
+    // This allows comparing original vs corrected version to evaluate correction benefit
+    await storage.createActivityLog({
+      projectId: project.id,
+      level: "info",
+      message: `📸 Guardando snapshot del manuscrito original (${chapters.length} capítulos) antes de correcciones...`,
+      agentRole: "orchestrator",
+    });
+    
+    for (const chapter of chapters) {
+      if (chapter.content) {
+        await storage.updateChapter(chapter.id, {
+          originalContent: chapter.content,
+        });
+      }
+    }
+    
+    await storage.createActivityLog({
+      projectId: project.id,
+      level: "success",
+      message: `✅ Snapshot guardado. Podrás comparar original vs corregido en la exportación.`,
+      agentRole: "orchestrator",
+    });
+
     // Phase 1: Exhaustive Detection
     const registry = await this.exhaustiveDetection(project, chapters, worldBible);
 

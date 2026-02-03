@@ -685,20 +685,25 @@ export default function ExportPage() {
   }, [eventSourceRef, toast]);
 
   const exportMutation = useMutation({
-    mutationFn: async ({ projectId, source }: { projectId: number; source: "original" | "reedit" }) => {
-      const endpoint = source === "reedit" 
+    mutationFn: async ({ projectId, source, version }: { projectId: number; source: "original" | "reedit"; version?: "original" | "corrected" }) => {
+      const baseEndpoint = source === "reedit" 
         ? `/api/reedit-projects/${projectId}/export-markdown`
         : `/api/projects/${projectId}/export-markdown`;
+      const endpoint = version ? `${baseEndpoint}?version=${version}` : baseEndpoint;
       const response = await fetch(endpoint);
-      if (!response.ok) throw new Error("Failed to export project");
-      return response.json() as Promise<ExportResult>;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to export project");
+      }
+      return response.json() as Promise<ExportResult & { version?: string; versionLabel?: string }>;
     },
     onSuccess: (data) => {
       const safeFilename = data.title.replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g, "").replace(/\s+/g, "_");
-      downloadMarkdown(`${safeFilename}.md`, data.markdown);
+      const versionSuffix = data.version === "original" ? "_ORIGINAL" : "";
+      downloadMarkdown(`${safeFilename}${versionSuffix}.md`, data.markdown);
       toast({
         title: "Exportado",
-        description: `${data.chapterCount} capítulos exportados (${formatNumber(data.totalWords)} palabras)`,
+        description: `${data.versionLabel || "Manuscrito"}: ${data.chapterCount} capítulos (${formatNumber(data.totalWords)} palabras)`,
       });
     },
     onError: (error: Error) => {
@@ -1006,7 +1011,7 @@ export default function ExportPage() {
                 Exportar Markdown
               </CardTitle>
               <CardDescription>
-                Descarga el manuscrito original en formato Markdown
+                Descarga el manuscrito en formato Markdown. Puedes comparar original vs corregido.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1018,19 +1023,36 @@ export default function ExportPage() {
                       {selectedProject.chapterCount} capítulos - {formatNumber(selectedProject.totalWords)} palabras
                     </p>
                   </div>
-                  <Button
-                    onClick={() => exportMutation.mutate({ projectId: selectedProject.id, source: selectedProject.source })}
-                    disabled={exportMutation.isPending}
-                    className="w-full"
-                    data-testid="button-export-markdown"
-                  >
-                    {exportMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4 mr-2" />
-                    )}
-                    Descargar Markdown
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      onClick={() => exportMutation.mutate({ projectId: selectedProject.id, source: selectedProject.source, version: "corrected" })}
+                      disabled={exportMutation.isPending}
+                      data-testid="button-export-markdown"
+                    >
+                      {exportMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4 mr-2" />
+                      )}
+                      Corregido
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => exportMutation.mutate({ projectId: selectedProject.id, source: selectedProject.source, version: "original" })}
+                      disabled={exportMutation.isPending}
+                      data-testid="button-export-original"
+                    >
+                      {exportMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <FileText className="h-4 w-4 mr-2" />
+                      )}
+                      Original
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center">
+                    El manuscrito "Original" es el snapshot guardado antes de Detect & Fix
+                  </p>
                 </div>
               ) : (
                 <div className="text-center py-6 text-muted-foreground">

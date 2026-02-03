@@ -5597,9 +5597,11 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
   });
 
   // Export completed project chapters as Markdown
+  // Query params: ?version=original (pre-correction) or ?version=corrected (default)
   app.get("/api/projects/:id/export-markdown", async (req: Request, res: Response) => {
     try {
       const projectId = parseInt(req.params.id);
+      const version = (req.query.version as string) || "corrected"; // "original" or "corrected"
       const project = await storage.getProject(projectId);
       
       if (!project) {
@@ -5610,6 +5612,14 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       
       if (chapters.length === 0) {
         return res.status(400).json({ error: "No chapters found in project" });
+      }
+      
+      // Check if original content exists when requesting original version
+      const hasOriginalContent = chapters.some(c => c.originalContent);
+      if (version === "original" && !hasOriginalContent) {
+        return res.status(400).json({ 
+          error: "No hay manuscrito original guardado. El snapshot se crea al ejecutar Detect & Fix." 
+        });
       }
 
       // Check if this is a bookbox project
@@ -5721,7 +5731,12 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       let currentBook: number | null = null;
       
       for (const chapter of sortedChapters) {
-        if (!chapter.content) continue;
+        // Use originalContent for "original" version, content for "corrected"
+        const chapterContent = version === "original" 
+          ? (chapter.originalContent || chapter.content) 
+          : chapter.content;
+        
+        if (!chapterContent) continue;
         
         // For bookbox: add book separator when transitioning to a new book
         if (isBookbox && bookboxStructure?.books) {
@@ -5780,17 +5795,27 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         
         lines.push(`## ${heading}`);
         lines.push("");
-        lines.push(cleanChapterContent(chapter.content));
+        lines.push(cleanChapterContent(chapterContent));
         lines.push("");
       }
       
       const markdown = lines.join("\n");
       
+      // Calculate word count for the exported version
+      const exportedWordCount = sortedChapters.reduce((acc, c) => {
+        const content = version === "original" 
+          ? (c.originalContent || c.content) 
+          : c.content;
+        return acc + (content ? content.split(/\s+/).length : 0);
+      }, 0);
+      
       res.json({
         projectId,
         title: project.title,
-        chapterCount: sortedChapters.filter(c => c.content).length,
-        totalWords: sortedChapters.reduce((acc, c) => acc + (c.wordCount || 0), 0),
+        version, // "original" or "corrected"
+        versionLabel: version === "original" ? "Manuscrito Original (Pre-Corrección)" : "Manuscrito Corregido",
+        chapterCount: sortedChapters.filter(c => version === "original" ? (c.originalContent || c.content) : c.content).length,
+        totalWords: exportedWordCount,
         markdown,
       });
     } catch (error) {
