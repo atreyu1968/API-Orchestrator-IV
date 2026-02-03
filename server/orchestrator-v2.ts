@@ -719,7 +719,7 @@ export class OrchestratorV2 {
     
     let instructions = `
 ╔══════════════════════════════════════════════════════════════════╗
-║ ${severity}: CORRECCIONES OBLIGATORIAS (Intento ${attemptNumber}/3)              ║
+║ ${severity}: CORRECCIONES OBLIGATORIAS (Intento ${attemptNumber}/5)              ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 La estructura anterior fue RECHAZADA por problemas graves. DEBES corregir:
@@ -3637,7 +3637,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
       } else {
         // Phase 1: Global Architecture - create new World Bible
         // LitAgents 2.9.5: Loop with validation to prevent orphaned/weak storylines
-        const MAX_ARCHITECTURE_ATTEMPTS = 3;
+        const MAX_ARCHITECTURE_ATTEMPTS = 5; // LitAgents 2.9.5: Increased from 3 to give AI more chances
         let architectureAttempt = 0;
         let plotValidation: { isValid: boolean; criticalIssues: string[]; warnings: string[] } = { isValid: false, criticalIssues: [], warnings: [] };
         let globalResult: any = null;
