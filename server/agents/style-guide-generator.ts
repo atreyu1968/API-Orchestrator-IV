@@ -235,12 +235,12 @@ DEBES generar una guía que siga EXACTAMENTE esta estructura:
 
 export class StyleGuideGeneratorAgent extends BaseAgent {
   constructor() {
-    super(
-      "style-guide-generator",
-      STYLE_GUIDE_PROMPT,
-      "deepseek-chat",
-      { temperature: 0.8 }
-    );
+    super({
+      name: "Style Guide Generator",
+      role: "style-guide-generator",
+      systemPrompt: STYLE_GUIDE_PROMPT,
+      model: "deepseek-chat",
+    });
   }
 
   async generateStyleGuide(params: {
