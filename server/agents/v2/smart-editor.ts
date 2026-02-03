@@ -132,17 +132,162 @@ export class SmartEditorAgent extends BaseAgent {
   /**
    * Surgical fix for consistency violations - more token-efficient than full rewrite
    */
-  async surgicalFix(input: SurgicalFixInput): Promise<AgentResponse & { patches?: Patch[], fullContent?: string }> {
-    console.log(`[SmartEditor] Surgical fix for consistency error (${input.chapterContent.length} chars)...`);
+  /**
+   * Detect error type from the error description to use specialized prompts
+   */
+  private detectErrorType(errorDescription: string): 'physical_attribute' | 'lexical_repetition' | 'timeline' | 'narrative' | 'generic' {
+    const desc = errorDescription.toLowerCase();
     
-    const surgicalPrompt = `CORRECCIÓN QUIRÚRGICA ULTRA-CONSERVADORA
+    // Physical attribute errors (eye color, hair, height, etc.)
+    if (desc.includes('color de ojos') || desc.includes('ojos') && (desc.includes('inmutable') || desc.includes('físico')) ||
+        desc.includes('cabello') || desc.includes('pelo') || desc.includes('altura') || 
+        desc.includes('atributo físico') || desc.includes('atributo fisico') ||
+        desc.includes('cambio fisico imposible') || desc.includes('cambio físico imposible')) {
+      return 'physical_attribute';
+    }
+    
+    // Lexical repetition
+    if (desc.includes('repetición') || desc.includes('repeticion') || desc.includes('léxica') || 
+        desc.includes('lexica') || desc.includes('palabra repetida') || desc.includes('uso excesivo')) {
+      return 'lexical_repetition';
+    }
+    
+    // Timeline/temporal errors  
+    if (desc.includes('timeline') || desc.includes('temporal') || desc.includes('cronología') ||
+        desc.includes('cronologia') || desc.includes('antes de') || desc.includes('después de') ||
+        desc.includes('ya había') || desc.includes('aún no')) {
+      return 'timeline';
+    }
+    
+    // Narrative/plot errors (more complex)
+    if (desc.includes('trama') || desc.includes('credibilidad') || desc.includes('personaje') ||
+        desc.includes('motivación') || desc.includes('arco narrativo') || desc.includes('incoherencia')) {
+      return 'narrative';
+    }
+    
+    return 'generic';
+  }
+
+  /**
+   * Build specialized prompt based on error type
+   */
+  private buildSpecializedPrompt(input: SurgicalFixInput, errorType: string): string {
+    const baseContext = input.consistencyConstraints 
+      ? `RESTRICCIONES DE CONSISTENCIA (NO VIOLAR):\n${input.consistencyConstraints}\n\n` 
+      : '';
+    
+    // Common JSON response format
+    const jsonFormat = `
+Responde en JSON:
+{
+  "error_analysis": "Análisis breve: qué está mal y dónde EXACTAMENTE",
+  "patches": [
+    {
+      "original_text_snippet": "texto EXACTO a reemplazar (debe existir verbatim en el capítulo)",
+      "replacement_text": "texto corregido",
+      "reason": "motivo del cambio"
+    }
+  ],
+  "words_changed_count": numero,
+  "correction_summary": "Resumen de cambios"
+}`;
+
+    switch (errorType) {
+      case 'physical_attribute':
+        return `CORRECCIÓN DE ATRIBUTO FÍSICO - BÚSQUEDA Y REEMPLAZO SIMPLE
+
+ERROR: ${input.errorDescription}
+
+${baseContext}CONTENIDO DEL CAPÍTULO:
+${input.chapterContent}
+
+INSTRUCCIONES ESPECÍFICAS PARA ATRIBUTOS FÍSICOS:
+Este es un error SIMPLE de atributo físico incorrecto. La solución es:
+1. BUSCAR la descripción incorrecta en el texto (ej: "ojos verdes", "cabello rubio")
+2. REEMPLAZAR con el atributo correcto (ej: "ojos avellana", "cabello castaño")
+3. NADA MÁS - no cambies contexto, no añadas descripciones, no modifiques narrativa
+
+EJEMPLO:
+- Error: "ojos verdes" cuando debería ser "ojos avellana"
+- Parche: {"original_text_snippet": "sus ojos verdes brillaban", "replacement_text": "sus ojos avellana brillaban"}
+
+MÁXIMO 5 palabras cambiadas. Si requiere más, el error no es de atributo físico.
+${jsonFormat}`;
+
+      case 'lexical_repetition':
+        return `CORRECCIÓN DE REPETICIÓN LÉXICA - SINONIMIZACIÓN
+
+ERROR: ${input.errorDescription}
+
+${baseContext}CONTENIDO DEL CAPÍTULO:
+${input.chapterContent}
+
+INSTRUCCIONES ESPECÍFICAS PARA REPETICIONES:
+1. IDENTIFICA la palabra/frase repetida en exceso
+2. MANTÉN la primera o segunda aparición intacta (elige la más importante narrativamente)
+3. REEMPLAZA las demás con SINÓNIMOS naturales que mantengan el significado exacto
+4. NO cambies el significado ni añadas información nueva
+
+EJEMPLO DE SINÓNIMOS:
+- "miró/mirada" → "observó", "contempló", "fijó la vista en"
+- "dijo" → "comentó", "respondió", "murmuró", "susurró"
+- "caminó" → "avanzó", "se dirigió", "anduvo"
+
+Cada parche debe cambiar UNA sola palabra repetida por UN sinónimo apropiado.
+${jsonFormat}`;
+
+      case 'timeline':
+        return `CORRECCIÓN DE CONTINUIDAD TEMPORAL
+
+ERROR: ${input.errorDescription}
+
+${baseContext}CONTENIDO DEL CAPÍTULO:
+${input.chapterContent}
+
+INSTRUCCIONES ESPECÍFICAS PARA ERRORES TEMPORALES:
+1. IDENTIFICA el texto que viola la línea temporal
+2. AJUSTA solo las referencias temporales problemáticas
+3. NO reescribas escenas completas
+4. OPCIONES de corrección:
+   - Cambiar verbo (pasado/presente/futuro)
+   - Cambiar marcador temporal ("antes"→"después", "ya"→"todavía no")
+   - Ajustar referencia a evento ("cuando llegó"→"antes de llegar")
+
+PRESERVA: la acción, los personajes, el diálogo, la atmósfera
+CAMBIA: solo la referencia temporal incorrecta (máximo 10 palabras)
+${jsonFormat}`;
+
+      case 'narrative':
+        return `CORRECCIÓN NARRATIVA - AJUSTE DE COHERENCIA
+
+ERROR: ${input.errorDescription}
+
+${baseContext}CONTENIDO DEL CAPÍTULO:
+${input.chapterContent}
+
+INSTRUCCIONES PARA ERRORES NARRATIVOS:
+Este tipo de error puede requerir cambios ligeramente más amplios, pero:
+1. LIMITA cada parche a UNA oración o frase específica
+2. MANTÉN la misma longitud aproximada (±20% palabras)
+3. PRESERVA el tono, estilo y voz del autor
+4. NO añadas nuevos eventos, personajes o información
+5. NO elimines contenido significativo
+
+ESTRATEGIAS:
+- Reformular la oración problemática
+- Añadir 2-3 palabras de contexto que aclaren
+- Eliminar la oración si es contradictoria y no esencial
+
+MÁXIMO 30 palabras por parche. Si requiere más, divide en múltiples parches pequeños.
+${jsonFormat}`;
+
+      default:
+        return `CORRECCIÓN QUIRÚRGICA ULTRA-CONSERVADORA
 
 ERROR ESPECÍFICO A CORREGIR:
 ${input.errorDescription}
 
-${input.consistencyConstraints ? `RESTRICCIONES DE CONSISTENCIA (NO VIOLAR):\n${input.consistencyConstraints}\n` : ''}
-
-CONTENIDO DEL CAPÍTULO:
+${baseContext}CONTENIDO DEL CAPÍTULO:
 ${input.chapterContent}
 
 REGLAS ABSOLUTAS (VIOLACIÓN = CORRECCIÓN RECHAZADA):
@@ -152,29 +297,18 @@ REGLAS ABSOLUTAS (VIOLACIÓN = CORRECCIÓN RECHAZADA):
 4. NO CAMBIES nombres de personajes, lugares, objetos u otros elementos canónicos
 5. NO MODIFIQUES la línea temporal ni introduzcas nuevos eventos
 6. PRESERVA el estilo, ritmo y voz narrativa exactos del autor
-7. Si el parche requiere cambiar más de 50 palabras, ES DEMASIADO GRANDE - busca una solución más quirúrgica
-8. El campo "original_text_snippet" DEBE ser texto EXACTO del capítulo (copiar-pegar literal)
-
-ANTES DE GENERAR CADA PARCHE, PREGÚNTATE:
-- ¿Este cambio podría romper algo más en la narrativa?
-- ¿Estoy cambiando más de lo estrictamente necesario?
-- ¿Estoy introduciendo información nueva que no existía?
-
-SI LA RESPUESTA A CUALQUIERA ES "SÍ", BUSCA UNA SOLUCIÓN MÁS CONSERVADORA.
-
-Responde en JSON:
-{
-  "error_analysis": "Análisis breve: qué está mal y dónde EXACTAMENTE",
-  "patches": [
-    {
-      "original_text_snippet": "texto EXACTO a reemplazar (debe existir verbatim en el capítulo)",
-      "replacement_text": "texto corregido (mismo número de palabras ±10%)",
-      "reason": "motivo del cambio mínimo"
+7. Si el parche requiere cambiar más de 50 palabras, ES DEMASIADO GRANDE
+8. El campo "original_text_snippet" DEBE ser texto EXACTO del capítulo
+${jsonFormat}`;
     }
-  ],
-  "words_changed_count": 5,
-  "correction_summary": "Resumen de cambios: modificadas X palabras para corregir Y"
-}`;
+  }
+
+  async surgicalFix(input: SurgicalFixInput): Promise<AgentResponse & { patches?: Patch[], fullContent?: string }> {
+    // v2.9.5: Detect error type and use specialized prompt
+    const errorType = this.detectErrorType(input.errorDescription);
+    console.log(`[SmartEditor] Surgical fix for ${errorType} error (${input.chapterContent.length} chars)...`);
+    
+    const surgicalPrompt = this.buildSpecializedPrompt(input, errorType);
 
     const response = await this.generateContent(surgicalPrompt);
     

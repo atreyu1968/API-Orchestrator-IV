@@ -56,7 +56,12 @@ Preferred communication style: Simple, everyday language.
   - **Focused Verification**: Uses a dedicated verification prompt that ONLY checks if the specific issue was fixed, not full chapter evaluation. This prevents pre-existing problems from being counted as "new issues caused by the correction".
   - **Grave-Only Detection**: Only GRAVE problems are reported as new issues: contradictions, resurrections, canonical attribute changes. Minor style issues are ignored.
   - **Simple Logic**: If original issue is fixed AND no grave new problems → ACCEPT. Otherwise → REJECT.
-  - Ultra-conservative surgical prompts: max 50 words per patch, no new content, no canonical changes.
+  - **Specialized Prompts by Error Type**: Each error type now uses a tailored correction prompt:
+    - `physical_attribute`: Ultra-simple search/replace for eye color, hair, etc. (max 5 words)
+    - `lexical_repetition`: Synonym substitution preserving meaning (one word at a time)
+    - `timeline`: Minimal temporal reference adjustment (max 10 words)
+    - `narrative`: Slightly larger scope for plot coherence (max 30 words per patch)
+    - `generic`: Conservative fallback for unknown types
 - **Enhanced Error Recovery**: All orchestrator errors result in a "paused" status for easy resume, preserving state and providing activity logs with context.
 - **Death Tracking & Loop Prevention**: UniversalConsistency tracks character deaths to prevent resurrections. Loop detection system escalates recurring issues, with automatic scope expansion for persistent resurrection errors.
 - **Structural Issue Detection**: Identifies and auto-resolves structural issues (e.g., chapter reordering, renaming) to prevent infinite rewrite loops, notifying the user for manual intervention.
