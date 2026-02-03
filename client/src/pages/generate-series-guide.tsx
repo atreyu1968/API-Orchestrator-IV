@@ -192,15 +192,34 @@ export default function GenerateSeriesGuidePage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="thriller" data-testid="option-genre-thriller">Thriller</SelectItem>
-                            <SelectItem value="police-procedural" data-testid="option-genre-procedural">Procedimental Policial</SelectItem>
-                            <SelectItem value="cozy-mystery" data-testid="option-genre-cozy">Cozy Mystery</SelectItem>
-                            <SelectItem value="romance" data-testid="option-genre-romance">Romance</SelectItem>
-                            <SelectItem value="fantasy" data-testid="option-genre-fantasy">Fantasía</SelectItem>
-                            <SelectItem value="sci-fi" data-testid="option-genre-scifi">Ciencia Ficción</SelectItem>
-                            <SelectItem value="horror" data-testid="option-genre-horror">Terror</SelectItem>
-                            <SelectItem value="historical" data-testid="option-genre-historical">Histórico</SelectItem>
+                            <SelectItem value="thriller" data-testid="option-genre-thriller">Thriller / Suspense</SelectItem>
+                            <SelectItem value="psychological-thriller" data-testid="option-genre-psych-thriller">Thriller Psicológico</SelectItem>
+                            <SelectItem value="police-procedural" data-testid="option-genre-procedural">Thriller Policial</SelectItem>
+                            <SelectItem value="domestic-thriller" data-testid="option-genre-domestic">Thriller Doméstico</SelectItem>
+                            <SelectItem value="romance" data-testid="option-genre-romance">Romance Contemporáneo</SelectItem>
+                            <SelectItem value="historical-romance" data-testid="option-genre-hist-romance">Romance Histórico</SelectItem>
+                            <SelectItem value="dark-romance" data-testid="option-genre-dark-romance">Dark Romance</SelectItem>
+                            <SelectItem value="paranormal-romance" data-testid="option-genre-para-romance">Romance Paranormal</SelectItem>
+                            <SelectItem value="romantasy" data-testid="option-genre-romantasy">Romantasy</SelectItem>
+                            <SelectItem value="mafia-romance" data-testid="option-genre-mafia">Mafia Romance</SelectItem>
+                            <SelectItem value="fantasy" data-testid="option-genre-fantasy">Fantasía Épica</SelectItem>
                             <SelectItem value="urban-fantasy" data-testid="option-genre-urban">Fantasía Urbana</SelectItem>
+                            <SelectItem value="grimdark" data-testid="option-genre-grimdark">Fantasía Oscura (Grimdark)</SelectItem>
+                            <SelectItem value="sci-fi" data-testid="option-genre-scifi">Ciencia Ficción</SelectItem>
+                            <SelectItem value="space-opera" data-testid="option-genre-space">Space Opera</SelectItem>
+                            <SelectItem value="dystopia" data-testid="option-genre-dystopia">Distopía / Post-apocalíptico</SelectItem>
+                            <SelectItem value="horror" data-testid="option-genre-horror">Terror / Horror</SelectItem>
+                            <SelectItem value="psychological-horror" data-testid="option-genre-psych-horror">Terror Psicológico</SelectItem>
+                            <SelectItem value="mystery" data-testid="option-genre-mystery">Misterio</SelectItem>
+                            <SelectItem value="cozy-mystery" data-testid="option-genre-cozy">Cozy Mystery</SelectItem>
+                            <SelectItem value="crime-noir" data-testid="option-genre-noir">Crime Fiction / Noir</SelectItem>
+                            <SelectItem value="historical" data-testid="option-genre-historical">Ficción Histórica</SelectItem>
+                            <SelectItem value="literary" data-testid="option-genre-literary">Literaria</SelectItem>
+                            <SelectItem value="young-adult" data-testid="option-genre-ya">Young Adult (YA)</SelectItem>
+                            <SelectItem value="new-adult" data-testid="option-genre-na">New Adult (NA)</SelectItem>
+                            <SelectItem value="erotic" data-testid="option-genre-erotic">Erótico</SelectItem>
+                            <SelectItem value="litrpg" data-testid="option-genre-litrpg">LitRPG / GameLit</SelectItem>
+                            <SelectItem value="women-fiction" data-testid="option-genre-women">Women's Fiction</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />

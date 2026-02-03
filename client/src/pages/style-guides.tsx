@@ -497,13 +497,33 @@ export default function StyleGuidesPage() {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="none">Sin especificar</SelectItem>
-                              <SelectItem value="thriller">Thriller</SelectItem>
-                              <SelectItem value="romance">Romance</SelectItem>
-                              <SelectItem value="fantasy">Fantasía</SelectItem>
+                              <SelectItem value="thriller">Thriller / Suspense</SelectItem>
+                              <SelectItem value="psychological-thriller">Thriller Psicológico</SelectItem>
+                              <SelectItem value="domestic-thriller">Thriller Doméstico</SelectItem>
+                              <SelectItem value="romance">Romance Contemporáneo</SelectItem>
+                              <SelectItem value="historical-romance">Romance Histórico</SelectItem>
+                              <SelectItem value="dark-romance">Dark Romance</SelectItem>
+                              <SelectItem value="paranormal-romance">Romance Paranormal</SelectItem>
+                              <SelectItem value="romantasy">Romantasy</SelectItem>
+                              <SelectItem value="mafia-romance">Mafia Romance</SelectItem>
+                              <SelectItem value="fantasy">Fantasía Épica</SelectItem>
+                              <SelectItem value="urban-fantasy">Fantasía Urbana</SelectItem>
+                              <SelectItem value="grimdark">Fantasía Oscura (Grimdark)</SelectItem>
                               <SelectItem value="sci-fi">Ciencia Ficción</SelectItem>
-                              <SelectItem value="horror">Terror</SelectItem>
+                              <SelectItem value="space-opera">Space Opera</SelectItem>
+                              <SelectItem value="dystopia">Distopía / Post-apocalíptico</SelectItem>
+                              <SelectItem value="horror">Terror / Horror</SelectItem>
+                              <SelectItem value="psychological-horror">Terror Psicológico</SelectItem>
                               <SelectItem value="mystery">Misterio</SelectItem>
-                              <SelectItem value="historical">Histórico</SelectItem>
+                              <SelectItem value="cozy-mystery">Cozy Mystery</SelectItem>
+                              <SelectItem value="crime-noir">Crime Fiction / Noir</SelectItem>
+                              <SelectItem value="historical">Ficción Histórica</SelectItem>
+                              <SelectItem value="literary">Literaria</SelectItem>
+                              <SelectItem value="young-adult">Young Adult (YA)</SelectItem>
+                              <SelectItem value="new-adult">New Adult (NA)</SelectItem>
+                              <SelectItem value="erotic">Erótico</SelectItem>
+                              <SelectItem value="litrpg">LitRPG / GameLit</SelectItem>
+                              <SelectItem value="women-fiction">Women's Fiction</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
