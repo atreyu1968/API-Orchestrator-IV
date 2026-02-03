@@ -17,6 +17,16 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const FORM_STORAGE_KEY = "series-guide-form-draft";
 const RESULT_STORAGE_KEY = "series-guide-result";
+const GENERATION_STATUS_KEY = "series-guide-generation-status";
+
+interface GenerationStatus {
+  isGenerating: boolean;
+  startedAt: number;
+  seriesTitle: string;
+  bookCount: number;
+  autoGenerateBookGuides: boolean;
+  currentStep: "guide" | "books" | "complete";
+}
 
 interface Pseudonym {
   id: number;
@@ -74,11 +84,48 @@ export default function GenerateSeriesGuidePage() {
     return null;
   }, []);
 
+  const loadGenerationStatus = useCallback((): GenerationStatus | null => {
+    try {
+      const saved = localStorage.getItem(GENERATION_STATUS_KEY);
+      if (saved) {
+        const status = JSON.parse(saved) as GenerationStatus;
+        // Check if generation is stale (more than 10 minutes old without completion)
+        if (status.isGenerating && Date.now() - status.startedAt > 10 * 60 * 1000) {
+          localStorage.removeItem(GENERATION_STATUS_KEY);
+          return null;
+        }
+        return status;
+      }
+    } catch (e) {
+      console.error("Error loading generation status:", e);
+    }
+    return null;
+  }, []);
+
   const savedData = loadSavedFormData();
   const savedResult = loadSavedResult();
+  const initialGenerationStatus = loadGenerationStatus();
 
   const [generatedGuide, setGeneratedGuide] = useState<string | null>(savedResult?.guide || null);
   const [createdSeriesId, setCreatedSeriesId] = useState<number | null>(savedResult?.seriesId || null);
+  const [generationStatus, setGenerationStatus] = useState<GenerationStatus | null>(initialGenerationStatus);
+  const [elapsedTime, setElapsedTime] = useState(0);
+
+  // Update elapsed time during generation
+  useEffect(() => {
+    if (generationStatus?.isGenerating) {
+      const interval = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - generationStatus.startedAt) / 1000));
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [generationStatus?.isGenerating, generationStatus?.startedAt]);
+
+  const formatElapsedTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -120,6 +167,19 @@ export default function GenerateSeriesGuidePage() {
 
   const generateMutation = useMutation({
     mutationFn: async (data: FormData) => {
+      // Set generation status before starting
+      const status: GenerationStatus = {
+        isGenerating: true,
+        startedAt: Date.now(),
+        seriesTitle: data.seriesTitle,
+        bookCount: Number(data.bookCount),
+        autoGenerateBookGuides: data.autoGenerateBookGuides,
+        currentStep: "guide",
+      };
+      localStorage.setItem(GENERATION_STATUS_KEY, JSON.stringify(status));
+      setGenerationStatus(status);
+      setElapsedTime(0);
+
       const response = await apiRequest("POST", "/api/generate-series-guide", {
         ...data,
         bookCount: Number(data.bookCount),
@@ -137,8 +197,10 @@ export default function GenerateSeriesGuidePage() {
         queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
         queryClient.invalidateQueries({ queryKey: ["/api/extended-guides"] });
       }
-      // Clear saved form data on success and save result
+      // Clear generation status and form data, save result
       localStorage.removeItem(FORM_STORAGE_KEY);
+      localStorage.removeItem(GENERATION_STATUS_KEY);
+      setGenerationStatus(null);
       localStorage.setItem(RESULT_STORAGE_KEY, JSON.stringify({
         guide: data.guideContent,
         seriesId: data.seriesId,
@@ -155,6 +217,9 @@ export default function GenerateSeriesGuidePage() {
       });
     },
     onError: (error: Error) => {
+      // Clear generation status on error
+      localStorage.removeItem(GENERATION_STATUS_KEY);
+      setGenerationStatus(null);
       toast({
         title: "Error",
         description: error.message,
@@ -228,7 +293,84 @@ export default function GenerateSeriesGuidePage() {
         </p>
       </div>
 
-      {!generatedGuide ? (
+      {generationStatus?.isGenerating ? (
+        <Card className="border-primary">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              Generando Serie: {generationStatus.seriesTitle}
+            </CardTitle>
+            <CardDescription>
+              Por favor espera mientras se genera la guía de serie y los libros
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Tiempo transcurrido:</span>
+              <span className="font-mono font-bold text-lg">{formatElapsedTime(elapsedTime)}</span>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  generationStatus.currentStep === "guide" 
+                    ? "bg-primary text-primary-foreground animate-pulse" 
+                    : "bg-green-500 text-white"
+                }`}>
+                  {generationStatus.currentStep === "guide" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">1. Generando guía de la serie</p>
+                  <p className="text-sm text-muted-foreground">
+                    Planificación editorial, personajes, tramas y estructura
+                  </p>
+                </div>
+              </div>
+              
+              {generationStatus.autoGenerateBookGuides && (
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    generationStatus.currentStep === "books" 
+                      ? "bg-primary text-primary-foreground animate-pulse" 
+                      : generationStatus.currentStep === "complete"
+                        ? "bg-green-500 text-white"
+                        : "bg-muted text-muted-foreground"
+                  }`}>
+                    {generationStatus.currentStep === "books" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : generationStatus.currentStep === "complete" ? (
+                      <CheckCircle className="h-4 w-4" />
+                    ) : (
+                      <span className="text-sm">2</span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">2. Generando guías de {generationStatus.bookCount} libros</p>
+                    <p className="text-sm text-muted-foreground">
+                      Guías individuales y proyectos para cada volumen
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <p className="text-sm text-muted-foreground text-center">
+                Puedes cambiar de pantalla, el progreso se mantendrá.
+                {generationStatus.autoGenerateBookGuides && (
+                  <span className="block mt-1">
+                    La generación de {generationStatus.bookCount} guías puede tomar varios minutos.
+                  </span>
+                )}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : !generatedGuide ? (
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <Card>
