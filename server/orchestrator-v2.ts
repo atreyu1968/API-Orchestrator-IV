@@ -8315,25 +8315,92 @@ Responde en JSON:
             worldBible
           );
 
-          // v2.9.5: STRICT LOGIC - Reject corrections that introduce ANY new issues
-          // If correction introduces new problems, it's NOT a valid fix
+          // v2.9.5: SPECIALIZED LOGIC by error type
+          // Different error types have different tolerance for new issues
           const hasAnyNewIssues = verification.newIssues && verification.newIssues.length > 0;
+          const newIssueCount = verification.newIssues?.length || 0;
           
-          if (hasAnyNewIssues) {
-            // REJECT: The correction introduced new problems - this is not acceptable
-            issue.lastAttemptError = `Intento ${issue.attempts}: corrección rechazada por introducir ${verification.newIssues!.length} problema(s) nuevo(s)`;
-            console.warn(`[OrchestratorV2] REJECTED correction for ${issue.id}: introduced ${verification.newIssues!.length} new issues`);
+          // Categorize error types by complexity
+          const SIMPLE_ERROR_TYPES = ['repeticion_lexica', 'continuidad_fisica', 'atributo_fisico', 'color_ojos', 'physical_continuity'];
+          const MEDIUM_ERROR_TYPES = ['ritmo', 'style', 'transicion', 'vocabulario', 'timeline'];
+          const COMPLEX_ERROR_TYPES = ['trama', 'credibilidad_narrativa', 'personajes', 'arco_narrativo', 'ubicacion'];
+          
+          const issueTypeNormalized = issue.tipo.toLowerCase().replace(/-/g, '_');
+          const isSimpleError = SIMPLE_ERROR_TYPES.some(t => issueTypeNormalized.includes(t));
+          const isMediumError = MEDIUM_ERROR_TYPES.some(t => issueTypeNormalized.includes(t));
+          const isComplexError = COMPLEX_ERROR_TYPES.some(t => issueTypeNormalized.includes(t));
+          
+          // Determine tolerance based on error type
+          let shouldReject = false;
+          let rejectReason = '';
+          
+          if (isSimpleError) {
+            // Simple errors (word replacements) should NEVER introduce new issues
+            // These are surgical changes that shouldn't have side effects
+            if (hasAnyNewIssues) {
+              shouldReject = true;
+              rejectReason = 'error simple no debe generar problemas nuevos';
+            }
+          } else if (isMediumError) {
+            // Medium errors can tolerate 1 minor new issue if the original was fixed
+            // But reject if there are critical/major new issues or >1 new issues
+            const hasCriticalNew = verification.newIssues?.some(i => 
+              i.toLowerCase().includes('critico') || i.toLowerCase().includes('crítico') ||
+              i.toLowerCase().includes('mayor') || i.toLowerCase().includes('major')
+            );
+            if (hasCriticalNew || newIssueCount > 1) {
+              shouldReject = true;
+              rejectReason = `error medio: ${hasCriticalNew ? 'nuevo problema crítico/mayor' : 'demasiados problemas nuevos'}`;
+            } else if (newIssueCount === 1 && !verification.originalIssueFixed) {
+              shouldReject = true;
+              rejectReason = 'error medio: original no corregido y tiene problema nuevo';
+            }
+            // If only 1 minor new issue AND original was fixed, accept (don't add to cascade)
+          } else if (isComplexError) {
+            // Complex errors are hard to fix without side effects
+            // Allow up to 2 minor new issues if original was definitely fixed
+            const hasCriticalNew = verification.newIssues?.some(i => 
+              i.toLowerCase().includes('critico') || i.toLowerCase().includes('crítico') ||
+              i.toLowerCase().includes('mayor') || i.toLowerCase().includes('major')
+            );
+            if (hasCriticalNew || newIssueCount > 2) {
+              shouldReject = true;
+              rejectReason = `error complejo: ${hasCriticalNew ? 'nuevo problema crítico' : 'demasiados problemas nuevos (>2)'}`;
+            } else if (!verification.originalIssueFixed && hasAnyNewIssues) {
+              shouldReject = true;
+              rejectReason = 'error complejo: original no corregido y genera problemas';
+            }
+          } else {
+            // Unknown error type - be strict (original behavior)
+            if (hasAnyNewIssues) {
+              shouldReject = true;
+              rejectReason = 'tipo desconocido con problemas nuevos';
+            }
+          }
+          
+          if (shouldReject) {
+            issue.lastAttemptError = `Intento ${issue.attempts}: ${rejectReason} (${newIssueCount} nuevo(s))`;
+            console.warn(`[OrchestratorV2] REJECTED correction for ${issue.id} (${issue.tipo}): ${rejectReason}`);
             
             await storage.createActivityLog({
               projectId: project.id,
               level: "warning",
-              message: `[RECHAZADO] Cap ${issue.chapter}: corrección de "${issue.tipo}" rechazada - introdujo ${verification.newIssues!.length} problema(s) nuevo(s)`,
+              message: `[RECHAZADO] Cap ${issue.chapter}: "${issue.tipo}" - ${rejectReason}`,
               agentRole: "smart-editor",
             });
             
-            // DO NOT save the correction, DO NOT add cascade issues
-            // Just continue to next attempt
             continue;
+          }
+          
+          // Log when we accept despite minor new issues (for transparency)
+          if (hasAnyNewIssues && !shouldReject) {
+            console.log(`[OrchestratorV2] ACCEPTED correction for ${issue.id} (${issue.tipo}) with ${newIssueCount} minor side effect(s) - NOT adding to cascade`);
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: "info",
+              message: `[ACEPTADO CON RESERVAS] Cap ${issue.chapter}: "${issue.tipo}" corregido, ${newIssueCount} efecto(s) secundario(s) menor(es) ignorado(s)`,
+              agentRole: "smart-editor",
+            });
           }
           
           // Only save if BOTH: original fixed AND no new issues
