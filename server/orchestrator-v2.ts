@@ -8103,93 +8103,121 @@ ${issuesDescription}`;
     worldBible: any
   ): Promise<{ 
     valid: boolean; 
-    originalIssueFixed: boolean;  // NEW: Track if ORIGINAL issue was fixed
+    originalIssueFixed: boolean;
     newIssues?: string[]; 
     error?: string 
   }> {
     
-    // Use SmartEditor to verify the correction
-    // CRITICAL: Focus on whether the ORIGINAL issue was fixed, not just overall quality
+    // v2.9.5: FOCUSED VERIFICATION - Only check if the specific issue was fixed
+    // Do NOT use full SmartEditor evaluation which detects ALL weaknesses
+    // This was causing ALL corrections to be rejected because it found pre-existing issues
     
-    const verificationPrompt = `Eres un verificador de correcciones QUIRÚRGICAS. Tu trabajo es determinar si el ISSUE ESPECÍFICO fue corregido.
+    const verificationPrompt = `Eres un verificador de correcciones QUIRÚRGICAS. Tu ÚNICA tarea es verificar si el issue ESPECÍFICO fue corregido.
 
 ISSUE ORIGINAL QUE DEBÍA CORREGIRSE:
 - Tipo: ${issue.tipo}
-- Severidad: ${issue.severidad}
+- Severidad: ${issue.severidad}  
 - Descripción: ${issue.descripcion}
-- Contexto: ${issue.contexto || 'N/A'}
+- Contexto: "${issue.contexto || 'N/A'}"
 - Corrección sugerida: ${issue.correccion || issue.instrucciones || 'N/A'}
 
-TEXTO ORIGINAL (fragmento relevante):
-${originalContent.substring(0, 2000)}
+TEXTO ORIGINAL (ANTES):
+${originalContent.substring(0, 3000)}
 
-TEXTO CORREGIDO:
-${correctedContent.substring(0, 2000)}
+TEXTO CORREGIDO (DESPUÉS):
+${correctedContent.substring(0, 3000)}
 
-VERIFICA CON PRECISIÓN:
-1. ¿El ISSUE ESPECÍFICO descrito arriba fue corregido? (SÍ/NO) - Enfócate SOLO en este issue
-2. ¿Se introdujeron NUEVOS problemas DIFERENTES al issue original? (lista o "ninguno")
-3. ¿La corrección mantiene coherencia narrativa básica? (SÍ/NO)
+INSTRUCCIONES PRECISAS:
+1. Busca el texto problemático descrito en el issue original
+2. Verifica si ese texto ESPECÍFICO fue corregido en la versión DESPUÉS
+3. Solo reporta "nuevoProblema" si la corrección INTRODUJO algo que antes NO existía (no problemas pre-existentes)
 
-IMPORTANTE: Si el issue original FUE CORREGIDO, responde "issueFixed": true incluso si detectas otros problemas menores.
-Los problemas nuevos se manejarán por separado.
+CRITERIOS:
+- issueFixed = true si el problema original YA NO existe en el texto corregido
+- Solo cuenta como "nuevosProblemas" si son DIRECTAMENTE causados por el cambio realizado
+- Problemas pre-existentes NO cuentan como "nuevos"
+- Cambios mínimos de estilo NO son problemas
+- Solo reporta problemas GRAVES: contradicciones lógicas, resurrección de personajes, cambios de atributos físicos canónicos
 
-Responde en JSON:
+Responde SOLO en JSON válido (sin markdown):
 {
   "issueFixed": true/false,
-  "newProblems": ["problema1", "problema2"] o [],
-  "coherent": true/false,
-  "verdict": "APROBADO" | "RECHAZADO",
-  "reason": "explicación breve"
+  "evidencia": "cita breve del texto que demuestra que se corrigió (o no)",
+  "nuevosProblemas": ["solo problemas GRAVES causados por el cambio"] o [],
+  "verdict": "APROBADO" | "RECHAZADO"
 }`;
 
     try {
-      // Use SmartEditor to verify - it will check consistency and quality
-      const verifyResult = await this.smartEditor.execute({
-        chapterContent: correctedContent,
-        sceneBreakdown: [], // Not needed for verification
-        worldBible: worldBible,
+      // v2.9.5: Use a FOCUSED verification call, not full SmartEditor
+      // This prevents detecting pre-existing weaknesses as "new problems"
+      const deepseekClient = new OpenAI({
+        baseURL: "https://api.deepseek.com/v1",
+        apiKey: process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_REEDITOR_API_KEY,
+      });
+      
+      const response = await deepseekClient.chat.completions.create({
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: verificationPrompt }],
+        temperature: 0.1, // Low temperature for consistent verification
+        max_tokens: 500,
       });
 
-      this.addTokenUsage(verifyResult.tokenUsage);
-      await this.logAiUsage(project.id, "correction-verifier", "deepseek-chat", verifyResult.tokenUsage, issue.chapter);
+      const content = response.choices[0]?.message?.content || "";
+      
+      // Track token usage
+      const tokenUsage = {
+        inputTokens: response.usage?.prompt_tokens || 0,
+        outputTokens: response.usage?.completion_tokens || 0,
+        thinkingTokens: 0,
+      };
+      this.addTokenUsage(tokenUsage);
+      await this.logAiUsage(project.id, "correction-verifier", "deepseek-chat", tokenUsage, issue.chapter);
 
-      const parsed = verifyResult.parsed;
-      if (parsed) {
-        // STRICT LOGIC: Original issue must be fixed AND no critical new issues
-        const logicOk = parsed.logic_score >= 7; // Stricter threshold
-        const originalFixed = parsed.is_approved || logicOk;
-        
-        // Collect weaknesses as potential new issues
-        const newProblems = (parsed.weaknesses && parsed.weaknesses.length > 0) ? parsed.weaknesses : undefined;
-        
-        // NEW: If new problems are critical (LOGIC issues), reject the correction
-        const hasCriticalNewProblems = newProblems?.some((p: string) => 
-          p.toLowerCase().includes('logic') || 
-          p.toLowerCase().includes('continuidad') ||
-          p.toLowerCase().includes('contradicción') ||
-          p.toLowerCase().includes('inconsistenc')
-        );
-        
-        if (hasCriticalNewProblems) {
-          console.warn(`[OrchestratorV2] Correction REJECTED: introduced critical new problems`);
+      // Parse JSON response
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          
+          const issueFixed = parsed.issueFixed === true;
+          const newProblems = parsed.nuevosProblemas || parsed.newProblems || [];
+          const verdict = parsed.verdict;
+          
+          // v2.9.5: Only count GRAVE new problems, not minor style issues
+          const graveNewProblems = newProblems.filter((p: string) => {
+            const pLower = p.toLowerCase();
+            return pLower.includes('contradicción') || 
+                   pLower.includes('contradiccion') ||
+                   pLower.includes('resurrección') ||
+                   pLower.includes('resurreccion') ||
+                   pLower.includes('personaje muerto') ||
+                   pLower.includes('atributo físico') ||
+                   pLower.includes('atributo fisico') ||
+                   pLower.includes('color de ojos') ||
+                   pLower.includes('incoherencia grave') ||
+                   pLower.includes('error lógico') ||
+                   pLower.includes('error logico');
+          });
+          
+          console.log(`[OrchestratorV2] Verification result: issueFixed=${issueFixed}, newProblems=${newProblems.length}, graveProblems=${graveNewProblems.length}`);
+          
           return {
-            valid: false,
-            originalIssueFixed: false,
-            newIssues: newProblems,
-            error: "La corrección introdujo nuevos problemas críticos. Rechazada."
+            valid: issueFixed && graveNewProblems.length === 0,
+            originalIssueFixed: issueFixed,
+            newIssues: graveNewProblems.length > 0 ? graveNewProblems : undefined,
+            error: !issueFixed ? "Issue original no corregido" : undefined,
           };
+        } catch (e) {
+          console.warn("[OrchestratorV2] Failed to parse verification JSON, assuming fixed");
         }
-        
-        return {
-          valid: originalFixed && logicOk,
-          originalIssueFixed: originalFixed,
-          newIssues: newProblems,
-          error: originalFixed ? undefined : parsed.feedback,
-        };
       }
 
-      // If no parsed result, assume valid (optimistic)
+      // If parsing fails but content suggests approval, assume valid
+      if (content.toLowerCase().includes('aprobado') || content.toLowerCase().includes('corregido')) {
+        return { valid: true, originalIssueFixed: true };
+      }
+
+      // Default: assume valid to avoid blocking progress
       return { valid: true, originalIssueFixed: true };
     } catch (error) {
       console.error("[OrchestratorV2] Verification failed:", error);
@@ -8315,93 +8343,38 @@ Responde en JSON:
             worldBible
           );
 
-          // v2.9.5: SPECIALIZED LOGIC by error type
-          // Different error types have different tolerance for new issues
-          const hasAnyNewIssues = verification.newIssues && verification.newIssues.length > 0;
-          const newIssueCount = verification.newIssues?.length || 0;
+          // v2.9.5: SIMPLIFIED LOGIC - verifyCorrection now only reports GRAVE problems
+          // The verification prompt explicitly filters for only serious issues like:
+          // - Contradictions, resurrections, canonical attribute changes
+          // So if there are ANY new issues reported, they are serious and we should reject
           
-          // Categorize error types by complexity
-          const SIMPLE_ERROR_TYPES = ['repeticion_lexica', 'continuidad_fisica', 'atributo_fisico', 'color_ojos', 'physical_continuity'];
-          const MEDIUM_ERROR_TYPES = ['ritmo', 'style', 'transicion', 'vocabulario', 'timeline'];
-          const COMPLEX_ERROR_TYPES = ['trama', 'credibilidad_narrativa', 'personajes', 'arco_narrativo', 'ubicacion'];
+          const hasGraveNewIssues = verification.newIssues && verification.newIssues.length > 0;
+          const graveIssueCount = verification.newIssues?.length || 0;
           
-          const issueTypeNormalized = issue.tipo.toLowerCase().replace(/-/g, '_');
-          const isSimpleError = SIMPLE_ERROR_TYPES.some(t => issueTypeNormalized.includes(t));
-          const isMediumError = MEDIUM_ERROR_TYPES.some(t => issueTypeNormalized.includes(t));
-          const isComplexError = COMPLEX_ERROR_TYPES.some(t => issueTypeNormalized.includes(t));
-          
-          // Determine tolerance based on error type
-          let shouldReject = false;
-          let rejectReason = '';
-          
-          if (isSimpleError) {
-            // Simple errors (word replacements) should NEVER introduce new issues
-            // These are surgical changes that shouldn't have side effects
-            if (hasAnyNewIssues) {
-              shouldReject = true;
-              rejectReason = 'error simple no debe generar problemas nuevos';
-            }
-          } else if (isMediumError) {
-            // Medium errors can tolerate 1 minor new issue if the original was fixed
-            // But reject if there are critical/major new issues or >1 new issues
-            const hasCriticalNew = verification.newIssues?.some(i => 
-              i.toLowerCase().includes('critico') || i.toLowerCase().includes('crítico') ||
-              i.toLowerCase().includes('mayor') || i.toLowerCase().includes('major')
-            );
-            if (hasCriticalNew || newIssueCount > 1) {
-              shouldReject = true;
-              rejectReason = `error medio: ${hasCriticalNew ? 'nuevo problema crítico/mayor' : 'demasiados problemas nuevos'}`;
-            } else if (newIssueCount === 1 && !verification.originalIssueFixed) {
-              shouldReject = true;
-              rejectReason = 'error medio: original no corregido y tiene problema nuevo';
-            }
-            // If only 1 minor new issue AND original was fixed, accept (don't add to cascade)
-          } else if (isComplexError) {
-            // Complex errors are hard to fix without side effects
-            // Allow up to 2 minor new issues if original was definitely fixed
-            const hasCriticalNew = verification.newIssues?.some(i => 
-              i.toLowerCase().includes('critico') || i.toLowerCase().includes('crítico') ||
-              i.toLowerCase().includes('mayor') || i.toLowerCase().includes('major')
-            );
-            if (hasCriticalNew || newIssueCount > 2) {
-              shouldReject = true;
-              rejectReason = `error complejo: ${hasCriticalNew ? 'nuevo problema crítico' : 'demasiados problemas nuevos (>2)'}`;
-            } else if (!verification.originalIssueFixed && hasAnyNewIssues) {
-              shouldReject = true;
-              rejectReason = 'error complejo: original no corregido y genera problemas';
-            }
-          } else {
-            // Unknown error type - be strict (original behavior)
-            if (hasAnyNewIssues) {
-              shouldReject = true;
-              rejectReason = 'tipo desconocido con problemas nuevos';
-            }
+          // If original was not fixed, reject
+          if (!verification.originalIssueFixed) {
+            issue.lastAttemptError = `Intento ${issue.attempts}: issue original no corregido`;
+            console.warn(`[OrchestratorV2] Original issue ${issue.id} NOT fixed`);
+            continue;
           }
           
-          if (shouldReject) {
-            issue.lastAttemptError = `Intento ${issue.attempts}: ${rejectReason} (${newIssueCount} nuevo(s))`;
-            console.warn(`[OrchestratorV2] REJECTED correction for ${issue.id} (${issue.tipo}): ${rejectReason}`);
+          // If correction introduced GRAVE new issues, reject
+          if (hasGraveNewIssues) {
+            issue.lastAttemptError = `Intento ${issue.attempts}: corrección introdujo ${graveIssueCount} problema(s) grave(s): ${verification.newIssues!.slice(0, 2).join(', ')}`;
+            console.warn(`[OrchestratorV2] REJECTED correction for ${issue.id}: introduced ${graveIssueCount} GRAVE new issue(s)`);
             
             await storage.createActivityLog({
               projectId: project.id,
               level: "warning",
-              message: `[RECHAZADO] Cap ${issue.chapter}: "${issue.tipo}" - ${rejectReason}`,
+              message: `[RECHAZADO] Cap ${issue.chapter}: "${issue.tipo}" - introdujo problema(s) grave(s)`,
               agentRole: "smart-editor",
             });
             
             continue;
           }
           
-          // Log when we accept despite minor new issues (for transparency)
-          if (hasAnyNewIssues && !shouldReject) {
-            console.log(`[OrchestratorV2] ACCEPTED correction for ${issue.id} (${issue.tipo}) with ${newIssueCount} minor side effect(s) - NOT adding to cascade`);
-            await storage.createActivityLog({
-              projectId: project.id,
-              level: "info",
-              message: `[ACEPTADO CON RESERVAS] Cap ${issue.chapter}: "${issue.tipo}" corregido, ${newIssueCount} efecto(s) secundario(s) menor(es) ignorado(s)`,
-              agentRole: "smart-editor",
-            });
-          }
+          // If we get here: original was fixed AND no grave new issues
+          console.log(`[OrchestratorV2] ACCEPTED correction for ${issue.id} (${issue.tipo}) - clean fix`);
           
           // Only save if BOTH: original fixed AND no new issues
           if (verification.originalIssueFixed || verification.valid) {
