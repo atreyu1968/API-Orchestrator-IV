@@ -1096,7 +1096,7 @@ export default function Dashboard() {
                   )}
                 </div>
                 
-                {currentProject.status === "completed" && currentProject.finalScore && (
+                {currentProject.finalScore && (
                   <div className="mt-4 p-4 rounded-md border border-border" 
                     style={{ 
                       backgroundColor: currentProject.finalScore >= 9 
