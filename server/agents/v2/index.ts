@@ -9,5 +9,17 @@ export { NarrativeDirectorAgent, type NarrativeDirectorInput, type NarrativeDire
 
 export { SeriesWorldBibleExtractor, type ExtractedWorldBibleData } from './series-world-bible-extractor';
 
+// Pattern Tracker for anti-repetition
+export { 
+  PatternTracker, 
+  getPatternTracker, 
+  clearPatternTracker,
+  type ChapterPattern,
+  type PatternAnalysis,
+  type SceneType,
+  type ChapterOpening,
+  type ChapterClosing
+} from './pattern-tracker';
+
 // Re-export prompts
 export { PROMPTS_V2, AGENT_MODELS_V2 } from '../agent-prompts-v2';
