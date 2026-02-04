@@ -2035,6 +2035,12 @@ export class ReeditOrchestrator {
             wordCount,
           });
           
+          // LitAgents 2.9.6: Update in-memory array so subsequent chapters get fresh adjacentContext
+          const chapterIdx = validChapters.findIndex((c: any) => c.chapterNumber === chapterNum);
+          if (chapterIdx !== -1) {
+            validChapters[chapterIdx].editedContent = correctionResult.content;
+          }
+          
           // Update correction count for this chapter
           const currentCount = correctionCounts.get(chapterNum) || 0;
           correctionCounts.set(chapterNum, currentCount + 1);
@@ -4818,6 +4824,13 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
                   wordCount,
                 });
                 
+                // LitAgents 2.9.6: Update in-memory array so subsequent chapters get fresh adjacentContext
+                // This ensures each correction builds on the previous one, not on the original
+                const chapterIdx = completedChapters.findIndex(c => c.chapterNumber === chapter.chapterNumber);
+                if (chapterIdx !== -1) {
+                  completedChapters[chapterIdx].editedContent = correctionResult.content;
+                }
+                
                 // Increment correction count for this chapter to prevent infinite loops
                 const currentCount = chapterCorrectionCounts.get(chapter.chapterNumber) || 0;
                 chapterCorrectionCounts.set(chapter.chapterNumber, currentCount + 1);
@@ -5478,6 +5491,12 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
                 editedContent: correctionResult.content,
                 wordCount,
               });
+              
+              // LitAgents 2.9.6: Update in-memory array so subsequent chapters get fresh adjacentContext
+              const chapterIdx = validChapters.findIndex(c => c.chapterNumber === chapter.chapterNumber);
+              if (chapterIdx !== -1) {
+                validChapters[chapterIdx].editedContent = correctionResult.content;
+              }
               
               // Increment correction count for this chapter to prevent infinite loops
               const currentCountFRO = chapterCorrectionCountsFRO.get(chapter.chapterNumber) || 0;
