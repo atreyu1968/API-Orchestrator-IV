@@ -260,7 +260,7 @@ function extractEstablishedObjects(worldBible: any): string | null {
   if (!objects || objects.length === 0) return null;
   
   const lines: string[] = [];
-  for (const obj of objects.slice(0, 10)) { // Limit to 10 objects
+  for (const obj of objects) { // LitAgents 2.9.8: No limit - include ALL objects
     if (typeof obj === 'string') {
       lines.push(`    • ${obj}`);
     } else {
@@ -271,6 +271,86 @@ function extractEstablishedObjects(worldBible: any): string | null {
         let line = `    • ${name}`;
         if (owner) line += ` (de ${owner})`;
         if (chapter) line += ` [cap. ${chapter}]`;
+        lines.push(line);
+      }
+    }
+  }
+  
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * LitAgents 2.9.8: Extract FULL character index from World Bible
+ * Provides complete list of ALL characters for consistency reference
+ */
+function extractFullCharacterIndex(worldBible: any): string | null {
+  const characters = worldBible?.characters || worldBible?.personajes || [];
+  if (!characters || characters.length === 0) return null;
+  
+  const lines: string[] = [];
+  for (const char of characters) {
+    const name = char.name || char.nombre || '';
+    if (!name) continue;
+    
+    const details: string[] = [];
+    if (char.role || char.rol) details.push(char.role || char.rol);
+    if (char.eyeColor) details.push(`ojos ${char.eyeColor}`);
+    if (char.hairColor) details.push(`cabello ${char.hairColor}`);
+    if (char.age) details.push(`${char.age} años`);
+    if (char.occupation || char.ocupacion) details.push(char.occupation || char.ocupacion);
+    if (char.status === 'dead' || char.estado === 'muerto') details.push('☠️ MUERTO');
+    
+    const detailStr = details.length > 0 ? ` — ${details.join(', ')}` : '';
+    lines.push(`    • ${name}${detailStr}`);
+  }
+  
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * LitAgents 2.9.8: Extract FULL location index from World Bible
+ * Provides complete list of ALL locations for consistency reference
+ */
+function extractFullLocationIndex(worldBible: any): string | null {
+  const locations = worldBible?.locations || worldBible?.lugares || worldBible?.settings || [];
+  if (!locations || locations.length === 0) return null;
+  
+  const lines: string[] = [];
+  for (const loc of locations) {
+    const name = loc.name || loc.nombre || '';
+    if (!name) continue;
+    
+    const details: string[] = [];
+    if (loc.type || loc.tipo) details.push(loc.type || loc.tipo);
+    if (loc.region || loc.zona) details.push(loc.region || loc.zona);
+    
+    const detailStr = details.length > 0 ? ` — ${details.join(', ')}` : '';
+    lines.push(`    • ${name}${detailStr}`);
+  }
+  
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * LitAgents 2.9.8: Extract FULL object index from World Bible (no limit)
+ * Provides complete list of ALL significant objects for Chekhov's Gun compliance
+ */
+function extractFullObjectIndex(worldBible: any): string | null {
+  const objects = worldBible?.objects || worldBible?.objetos || worldBible?.establishedItems || [];
+  if (!objects || objects.length === 0) return null;
+  
+  const lines: string[] = [];
+  for (const obj of objects) { // No limit - include ALL objects
+    if (typeof obj === 'string') {
+      lines.push(`    • ${obj}`);
+    } else {
+      const name = obj.name || obj.nombre || '';
+      const owner = obj.owner || obj.propietario || '';
+      const significance = obj.significance || obj.importancia || '';
+      if (name) {
+        let line = `    • ${name}`;
+        if (owner) line += ` (de ${owner})`;
+        if (significance) line += ` — ${significance}`;
         lines.push(line);
       }
     }
@@ -901,13 +981,18 @@ ${worldBibleContext}
     const premise = extractPremise(worldBible);
     const timelineConstraints = extractTimelineConstraints(worldBible);
     
+    // LitAgents 2.9.8: Extract FULL indices for complete context awareness
+    const fullCharacterIndex = extractFullCharacterIndex(worldBible);
+    const fullLocationIndex = extractFullLocationIndex(worldBible);
+    const fullObjectIndex = extractFullObjectIndex(worldBible);
+    
     // Build the World Bible injection section
     let worldBibleSection = '';
     
     const hasAnyInfo = characterAttributes || characterRelationships || locationInfo || 
                        worldRules || deadCharacters || activeInjuries || establishedObjects || watchpoints ||
                        centralThemes || literaryMotifs || sensoryPalette || characterVoices || characterArcs ||
-                       premise || timelineConstraints;
+                       premise || timelineConstraints || fullCharacterIndex || fullLocationIndex || fullObjectIndex;
     
     if (hasAnyInfo) {
       worldBibleSection = `
@@ -963,7 +1048,22 @@ ${sensoryPalette}
     ▓▓▓ PUNTOS CRÍTICOS DE CONTINUIDAD ▓▓▓
 ${watchpoints}
 ` : ''}
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 📋 ÍNDICE COMPLETO DEL WORLD BIBLE (v2.9.8)                      │
+    │ Referencia de TODOS los elementos canónicos de la novela        │
+    └──────────────────────────────────────────────────────────────────┘
+${fullCharacterIndex ? `
+    ▸ TODOS LOS PERSONAJES:
+${fullCharacterIndex}
+` : ''}${fullLocationIndex ? `
+    ▸ TODAS LAS UBICACIONES:
+${fullLocationIndex}
+` : ''}${fullObjectIndex ? `
+    ▸ TODOS LOS OBJETOS SIGNIFICATIVOS:
+${fullObjectIndex}
+` : ''}
     ⚠️ USA esta información EXACTAMENTE. NO inventes detalles que contradigan lo anterior.
+    ⚠️ CONSULTA el índice completo antes de mencionar cualquier personaje, lugar u objeto.
 
 `;
     }
