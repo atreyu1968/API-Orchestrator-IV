@@ -524,6 +524,68 @@ function extractTimelineConstraints(worldBible: any): string | null {
   if (year) lines.push(`    📅 Año: ${year}`);
   if (technology) lines.push(`    💻 Tecnología: ${technology}`);
   
+  // LitAgents 2.9.9: Extract dated events from World Bible
+  const events = worldBible?.events || worldBible?.eventos || 
+                 worldBible?.timeline || worldBible?.linea_temporal ||
+                 worldBible?.keyEvents || worldBible?.eventosClave ||
+                 worldBible?.timeline_master?.key_events || [];
+  
+  if (Array.isArray(events) && events.length > 0) {
+    lines.push(`\n    ⏱️ CRONOLOGÍA DE EVENTOS (OBLIGATORIO RESPETAR):`);
+    const sortedEvents = [...events].sort((a: any, b: any) => {
+      const dateA = a.date || a.fecha || a.day || a.dia || '';
+      const dateB = b.date || b.fecha || b.day || b.dia || '';
+      return String(dateA).localeCompare(String(dateB));
+    });
+    
+    for (const event of sortedEvents) {
+      const date = event.date || event.fecha || event.day || event.dia || '';
+      const description = event.description || event.descripcion || event.event || event.evento || '';
+      const chapter = event.chapter || event.capitulo || '';
+      
+      if (date && description) {
+        let eventLine = `      • ${date}: ${description}`;
+        if (chapter) eventLine += ` [Cap. ${chapter}]`;
+        lines.push(eventLine);
+      }
+    }
+    
+    lines.push(`\n    ⚠️ IMPORTANTE: Las referencias temporales ("hace X días", "ayer", "la semana pasada") DEBEN ser consistentes con esta cronología.`);
+  }
+  
+  // Extract character-related dated events (deaths, injuries, meetings, etc.)
+  const characters = worldBible?.characters || worldBible?.personajes || [];
+  const datedCharacterEvents: string[] = [];
+  
+  for (const char of characters) {
+    const name = char.name || char.nombre || '';
+    const deathDate = char.deathDate || char.fechaMuerte || '';
+    const injuryDate = char.injuryDate || char.fechaLesion || '';
+    const charEvents = char.events || char.eventos || [];
+    
+    if (deathDate) {
+      datedCharacterEvents.push(`      • ${deathDate}: Muerte de ${name}`);
+    }
+    if (injuryDate) {
+      const injury = char.injury || char.lesion || 'lesión';
+      datedCharacterEvents.push(`      • ${injuryDate}: ${name} sufre ${injury}`);
+    }
+    if (Array.isArray(charEvents)) {
+      for (const evt of charEvents) {
+        const evtDate = evt.date || evt.fecha || '';
+        const evtDesc = evt.description || evt.descripcion || '';
+        if (evtDate && evtDesc) {
+          datedCharacterEvents.push(`      • ${evtDate}: ${name} - ${evtDesc}`);
+        }
+      }
+    }
+  }
+  
+  if (datedCharacterEvents.length > 0) {
+    lines.push(`\n    👤 EVENTOS DE PERSONAJES FECHADOS:`);
+    lines.push(...datedCharacterEvents);
+  }
+  
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
@@ -763,6 +825,12 @@ export const PROMPTS_V2 = {
           {"chapter": 1, "day": "Día 1", "time_of_day": "mañana", "duration": "4 horas", "location": "Madrid"},
           {"chapter": 2, "day": "Día 1", "time_of_day": "tarde-noche", "duration": "6 horas", "location": "Madrid"},
           {"chapter": 3, "day": "Día 2", "time_of_day": "mañana", "duration": "3 horas", "location": "En ruta a Barcelona"}
+        ],
+        "key_events": [
+          {"date": "Día 1", "event": "Asesinato de Víctima X", "chapter": 1, "consequences": "Inicia la investigación"},
+          {"date": "Día 3", "event": "Protagonista descubre pista clave", "chapter": 5},
+          {"date": "Día 5", "event": "Confrontación con sospechoso", "chapter": 8, "consequences": "Protagonista resulta herido"},
+          {"date": "Día 7", "event": "Revelación del verdadero culpable", "chapter": 12}
         ],
         "key_temporal_constraints": [
           "Entre Cap 5 y Cap 6: personaje se recupera de herida (mínimo 3 días)",
