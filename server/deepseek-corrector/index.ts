@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { db } from '../db';
 import { correctedManuscripts, manuscriptAudits, projects } from '@shared/schema';
 import { eq } from 'drizzle-orm';
@@ -11,6 +12,9 @@ const deepseek = new OpenAI({
   baseURL: 'https://api.deepseek.com',
   apiKey: process.env.DEEPSEEK_API_KEY
 });
+
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 const SYSTEM_PROMPT = `Eres un Editor Literario Técnico ("Ghostwriter") especializado en corrección invisible.
 Tu objetivo es solucionar inconsistencias lógicas manteniendo la prosa EXACTA del autor original.
@@ -156,6 +160,75 @@ function findAnyAttributeMentionNotMatchingBible(
   return null;
 }
 
+async function aiFlexibleAttributeSearch(
+  chapterContent: string,
+  characterName: string,
+  attribute: string,
+  correctValue: string,
+  chapterTitle: string
+): Promise<{ sentence: string; incorrectValue: string } | null> {
+  if (!GEMINI_API_KEY) {
+    console.log('[AI-Search] No Gemini API key, skipping AI search');
+    return null;
+  }
+  
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    
+    const prompt = `Eres un detector de inconsistencias en manuscritos literarios.
+
+TAREA: Buscar en el siguiente capítulo cualquier mención del atributo "${attribute}" del personaje "${characterName}" que NO coincida con el valor canónico de la Biblia de Personajes.
+
+VALOR CANÓNICO (Biblia de Personajes): ${attribute} = "${correctValue}"
+
+CAPÍTULO A ANALIZAR:
+---
+${chapterTitle}
+${chapterContent.substring(0, 15000)}
+---
+
+INSTRUCCIONES:
+1. Busca CUALQUIER oración que describa el ${attribute} de ${characterName} (o pronombres que se refieran a este personaje)
+2. Si encuentras una descripción que NO coincide con "${correctValue}", devuelve esa oración EXACTA
+3. Considera sinónimos y variaciones: para "ojos" también busca "mirada", "iris", "pupilas"; para "cabello" busca "pelo", "melena", etc.
+4. El personaje puede referirse por nombre, apellido, o pronombres como "él/ella", "su", etc.
+
+FORMATO DE RESPUESTA (JSON estricto):
+Si encuentras inconsistencia:
+{"found": true, "sentence": "La oración exacta del manuscrito que contiene el valor incorrecto", "incorrectValue": "el valor incorrecto mencionado"}
+
+Si NO hay inconsistencia o el atributo no se menciona:
+{"found": false}
+
+IMPORTANTE: Solo devuelve el JSON, sin explicaciones ni markdown.`;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response.text().trim();
+    
+    console.log(`[AI-Search] Response for ${characterName}/${attribute} in ${chapterTitle}:`, response.substring(0, 200));
+    
+    const cleanedResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    
+    try {
+      const parsed = JSON.parse(cleanedResponse);
+      if (parsed.found && parsed.sentence && parsed.incorrectValue) {
+        console.log(`[AI-Search] FOUND inconsistency: "${parsed.incorrectValue}" should be "${correctValue}"`);
+        return {
+          sentence: parsed.sentence,
+          incorrectValue: parsed.incorrectValue
+        };
+      }
+    } catch (parseErr) {
+      console.log('[AI-Search] Failed to parse JSON response:', parseErr);
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('[AI-Search] Error during AI search:', error);
+    return null;
+  }
+}
+
 function findAttributeBySearchingAll(
   content: string,
   characterName: string,
@@ -171,6 +244,33 @@ function findAttributeBySearchingAll(
   }
   
   return result;
+}
+
+async function findAttributeBySearchingAllWithAI(
+  content: string,
+  characterName: string,
+  attribute: string,
+  correctValue: string,
+  incorrectValue: string,
+  chapterTitle: string
+): Promise<{ sentence: string; incorrectValue: string } | null> {
+  let result = findAttributeInChapterContent(content, incorrectValue, attribute);
+  
+  if (result) {
+    return { sentence: result, incorrectValue };
+  }
+  
+  console.log(`[CharacterBible] Regex no encontró valor incorrecto, intentando búsqueda con IA...`);
+  const regexResult = findAnyAttributeMentionNotMatchingBible(content, characterName, attribute, correctValue);
+  
+  if (regexResult) {
+    return { sentence: regexResult, incorrectValue: 'detectado por regex' };
+  }
+  
+  console.log(`[CharacterBible] Regex falló, usando Gemini AI para búsqueda flexible...`);
+  const aiResult = await aiFlexibleAttributeSearch(content, characterName, attribute, correctValue, chapterTitle);
+  
+  return aiResult;
 }
 
 function extractCharacterBibleInfo(description: string): CharacterBibleExtraction | null {
@@ -1196,21 +1296,22 @@ export async function startCorrectionProcess(
           
           const prologueData = extractChapterContent2(correctedContent, 'prólogo');
           if (prologueData) {
-            const foundInPrologue = findAttributeBySearchingAll(
+            const foundResult = await findAttributeBySearchingAllWithAI(
               prologueData.content,
               characterBibleInfo.characterName,
               characterBibleInfo.attribute,
               characterBibleInfo.correctValue,
-              characterBibleInfo.incorrectValue
+              characterBibleInfo.incorrectValue,
+              'Prólogo'
             );
             
-            if (foundInPrologue) {
-              console.log(`[CharacterBible] Prólogo: encontrado "${foundInPrologue.substring(0, 50)}..."`);
+            if (foundResult) {
+              console.log(`[CharacterBible AI] Prólogo: encontrado "${foundResult.sentence.substring(0, 50)}..." (valor: ${foundResult.incorrectValue})`);
               
               const result = await correctSingleIssue({
                 fullChapter: prologueData.content,
-                targetText: foundInPrologue,
-                instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Cambiar "${characterBibleInfo.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
+                targetText: foundResult.sentence,
+                instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Cambiar "${foundResult.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
                 suggestion: `Reemplazar con: "${characterBibleInfo.correctValue}"`
               });
               
@@ -1221,7 +1322,7 @@ export async function startCorrectionProcess(
                 chapterNumber: 0,
                 originalText: result.originalText,
                 correctedText: result.correctedText,
-                instruction: `[CHARACTER-BIBLE] ${characterBibleInfo.attribute}: "${characterBibleInfo.incorrectValue}" → "${characterBibleInfo.correctValue}"`,
+                instruction: `[CHARACTER-BIBLE AI] ${characterBibleInfo.attribute}: "${foundResult.incorrectValue}" → "${characterBibleInfo.correctValue}"`,
                 severity: issue.severity,
                 status: result.success ? 'pending' : 'rejected',
                 diffStats: result.diffStats,
@@ -1260,21 +1361,29 @@ export async function startCorrectionProcess(
             const chapterData = extractChapterContent2(correctedContent, chapterNum);
             
             if (chapterData) {
-              const foundInChapter = findAttributeBySearchingAll(
+              onProgress?.({
+                phase: 'analyzing',
+                current: i + 1,
+                total: allIssues.length,
+                message: `IA buscando "${characterBibleInfo.attribute}" de ${characterBibleInfo.characterName} en ${chapterRef}...`
+              });
+              
+              const foundResult = await findAttributeBySearchingAllWithAI(
                 chapterData.content,
                 characterBibleInfo.characterName,
                 characterBibleInfo.attribute,
                 characterBibleInfo.correctValue,
-                characterBibleInfo.incorrectValue
+                characterBibleInfo.incorrectValue,
+                chapterRef
               );
               
-              if (foundInChapter) {
-                console.log(`[CharacterBible Multi] ${chapterRef}: encontrado "${foundInChapter.substring(0, 50)}..."`);
+              if (foundResult) {
+                console.log(`[CharacterBible AI Multi] ${chapterRef}: encontrado "${foundResult.sentence.substring(0, 50)}..." (valor: ${foundResult.incorrectValue})`);
                 
                 const result = await correctSingleIssue({
                   fullChapter: chapterData.content,
-                  targetText: foundInChapter,
-                  instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Cambiar "${characterBibleInfo.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
+                  targetText: foundResult.sentence,
+                  instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Cambiar "${foundResult.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
                   suggestion: `Reemplazar con: "${characterBibleInfo.correctValue}"`
                 });
                 
@@ -1285,7 +1394,7 @@ export async function startCorrectionProcess(
                   chapterNumber: chapterNum,
                   originalText: result.originalText,
                   correctedText: result.correctedText,
-                  instruction: `[CHARACTER-BIBLE] ${characterBibleInfo.attribute}: "${characterBibleInfo.incorrectValue}" → "${characterBibleInfo.correctValue}"`,
+                  instruction: `[CHARACTER-BIBLE AI] ${characterBibleInfo.attribute}: "${foundResult.incorrectValue}" → "${characterBibleInfo.correctValue}"`,
                   severity: issue.severity,
                   status: result.success ? 'pending' : 'rejected',
                   diffStats: result.diffStats,
@@ -1295,7 +1404,9 @@ export async function startCorrectionProcess(
                 totalOccurrences++;
                 if (result.success) successCount++;
                 
-                await new Promise(resolve => setTimeout(resolve, 300));
+                await new Promise(resolve => setTimeout(resolve, 500));
+              } else {
+                console.log(`[CharacterBible AI Multi] ${chapterRef}: No se encontró inconsistencia`);
               }
             }
           }
@@ -1303,19 +1414,29 @@ export async function startCorrectionProcess(
           if (hasEpilogue) {
             const epilogueData = extractEpilogueContent(correctedContent);
             if (epilogueData) {
-              const foundInEpilogue = findAttributeBySearchingAll(
+              onProgress?.({
+                phase: 'analyzing',
+                current: i + 1,
+                total: allIssues.length,
+                message: `IA buscando "${characterBibleInfo.attribute}" de ${characterBibleInfo.characterName} en Epílogo...`
+              });
+              
+              const foundResult = await findAttributeBySearchingAllWithAI(
                 epilogueData.content,
                 characterBibleInfo.characterName,
                 characterBibleInfo.attribute,
                 characterBibleInfo.correctValue,
-                characterBibleInfo.incorrectValue
+                characterBibleInfo.incorrectValue,
+                'Epílogo'
               );
               
-              if (foundInEpilogue) {
+              if (foundResult) {
+                console.log(`[CharacterBible AI] Epílogo: encontrado "${foundResult.sentence.substring(0, 50)}..." (valor: ${foundResult.incorrectValue})`);
+                
                 const result = await correctSingleIssue({
                   fullChapter: epilogueData.content,
-                  targetText: foundInEpilogue,
-                  instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Cambiar "${characterBibleInfo.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
+                  targetText: foundResult.sentence,
+                  instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Cambiar "${foundResult.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
                   suggestion: `Reemplazar con: "${characterBibleInfo.correctValue}"`
                 });
                 
@@ -1326,7 +1447,7 @@ export async function startCorrectionProcess(
                   chapterNumber: 999,
                   originalText: result.originalText,
                   correctedText: result.correctedText,
-                  instruction: `[CHARACTER-BIBLE] ${characterBibleInfo.attribute}: "${characterBibleInfo.incorrectValue}" → "${characterBibleInfo.correctValue}"`,
+                  instruction: `[CHARACTER-BIBLE AI] ${characterBibleInfo.attribute}: "${foundResult.incorrectValue}" → "${characterBibleInfo.correctValue}"`,
                   severity: issue.severity,
                   status: result.success ? 'pending' : 'rejected',
                   diffStats: result.diffStats,
