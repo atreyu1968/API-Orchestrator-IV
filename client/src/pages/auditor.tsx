@@ -334,6 +334,11 @@ export default function AuditorPage() {
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Analizando...
             </>
+          ) : audits && audits.length > 0 ? (
+            <>
+              <Play className="mr-2 h-4 w-4" />
+              Re-Auditar Manuscrito
+            </>
           ) : (
             <>
               <Play className="mr-2 h-4 w-4" />
