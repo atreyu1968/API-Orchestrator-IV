@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { OrchestratorV2 } from "./orchestrator-v2";
 import { queueManager } from "./queue-manager";
-import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema, consistencyViolations, worldEntities, worldRulesTable, worldBibles, chapterAnnotations, insertChapterAnnotationSchema, chapters as chaptersTable, generationLocks, manuscriptAudits, correctedManuscripts, type AgentReport, type FinalAudit } from "@shared/schema";
+import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema, consistencyViolations, worldEntities, worldRulesTable, worldBibles, chapterAnnotations, insertChapterAnnotationSchema, chapters as chaptersTable, generationLocks, manuscriptAudits, correctedManuscripts, projects, type AgentReport, type FinalAudit } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import multer from "multer";
 import mammoth from "mammoth";
@@ -11231,8 +11231,8 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
   // CORRECTED MANUSCRIPTS - Surgical Correction Module
   // =============================================
 
-  // Start correction process from audit
-  app.post("/api/audits/:id/start-correction", async (req: Request, res: Response) => {
+  // Start correction process from audit (GET for EventSource compatibility)
+  app.get("/api/audits/:id/start-correction", async (req: Request, res: Response) => {
     const auditId = parseInt(req.params.id);
     console.log(`[DeepSeek Corrector] Starting correction for audit ${auditId}`);
     
