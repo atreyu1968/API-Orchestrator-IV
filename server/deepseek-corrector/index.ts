@@ -353,6 +353,135 @@ function isGenericIssue(description: string, location: string): boolean {
   return hasGenericPattern && lacksSpecificChapter;
 }
 
+function hasExplicitChapterList(location: string): boolean {
+  const listPattern = /(?:prólogo|cap\.?\s*\d+)(?:\s*,\s*(?:\d+|prólogo|cap\.?\s*\d+))+/i;
+  return listPattern.test(location);
+}
+
+function extractChapterListFromLocation(location: string): (number | 'prólogo')[] {
+  const chapters: (number | 'prólogo')[] = [];
+  
+  if (/prólogo/i.test(location)) {
+    chapters.push('prólogo');
+  }
+  
+  const numPattern = /(?:cap\.?\s*)?(\d+)/gi;
+  let match;
+  while ((match = numPattern.exec(location)) !== null) {
+    const num = parseInt(match[1]);
+    if (!chapters.includes(num) && num > 0 && num < 200) {
+      chapters.push(num);
+    }
+  }
+  
+  return chapters;
+}
+
+function extractConceptFromDescription(description: string): string | null {
+  const patterns = [
+    /La descripción del?\s+([^.]+?)\s+(?:se repite|aparece|es)/i,
+    /descripción de[l]?\s+([^.]+?)\s+(?:se repite|aparece|es)/i,
+    /([^.]+?)\s+se repite con una frecuencia/i,
+    /([^.]+?)\s+aparece de forma repetitiva/i,
+    /menciones? de[l]?\s+([^.]+?)\s+(?:se|es|son)/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = description.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  return null;
+}
+
+function extractChapterContent2(manuscript: string, chapterRef: number | 'prólogo'): { content: string; title: string } | null {
+  let pattern: RegExp;
+  
+  if (chapterRef === 'prólogo') {
+    pattern = /(?:^|\n)((?:PRÓLOGO|Prólogo)[^\n]*\n)([\s\S]*?)(?=\n(?:Capítulo|CAPÍTULO|CAP\.)\s*\d+|$)/i;
+  } else {
+    pattern = new RegExp(
+      `(?:^|\\n)((?:Capítulo|CAPÍTULO|CAP\\.?)\\s*${chapterRef}[^\\n]*\\n)([\\s\\S]*?)(?=\\n(?:Capítulo|CAPÍTULO|CAP\\.?)\\s*\\d+|$)`,
+      'i'
+    );
+  }
+  
+  const match = manuscript.match(pattern);
+  if (match) {
+    return {
+      title: match[1].trim(),
+      content: match[2].trim()
+    };
+  }
+  return null;
+}
+
+async function findConceptInChapter(
+  chapterContent: string,
+  concept: string,
+  fullDescription: string
+): Promise<{ sentence: string; context: string } | null> {
+  const keywords = concept.split(/\s+/).filter(w => w.length > 3);
+  
+  const sentences = chapterContent.split(/(?<=[.!?])\s+/);
+  
+  for (const sentence of sentences) {
+    const sentenceLower = sentence.toLowerCase();
+    const matchCount = keywords.filter(kw => sentenceLower.includes(kw.toLowerCase())).length;
+    
+    if (matchCount >= Math.min(2, keywords.length)) {
+      const idx = chapterContent.indexOf(sentence);
+      const contextStart = Math.max(0, idx - 200);
+      const contextEnd = Math.min(chapterContent.length, idx + sentence.length + 200);
+      const context = chapterContent.substring(contextStart, contextEnd);
+      
+      return { sentence, context };
+    }
+  }
+  
+  return null;
+}
+
+async function generateVariedAlternative(
+  originalSentence: string,
+  context: string,
+  concept: string,
+  fullDescription: string,
+  chapterRef: number | 'prólogo',
+  variationIndex: number
+): Promise<string> {
+  const prompt = `Eres un editor literario experto. El autor usa descripciones muy similares a lo largo de la novela, causando monotonía.
+
+PROBLEMA:
+${fullDescription}
+
+ORACIÓN A VARIAR (del ${chapterRef === 'prólogo' ? 'Prólogo' : 'Capítulo ' + chapterRef}):
+"${originalSentence}"
+
+CONTEXTO:
+${context}
+
+INSTRUCCIONES:
+1. Reescribe la oración manteniendo el MISMO significado pero con vocabulario y estructura DIFERENTE
+2. Esta es la variación #${variationIndex + 1}, debe ser ÚNICA respecto a otras variaciones
+3. Mantén el tono y estilo del autor
+4. NO cambies los hechos ni los personajes mencionados
+5. Devuelve SOLO la oración reescrita, sin explicaciones
+
+ORACIÓN VARIADA:`;
+
+  const completion = await deepseek.chat.completions.create({
+    model: 'deepseek-chat',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.7 + (variationIndex * 0.1),
+    max_tokens: 500
+  });
+
+  return completion.choices[0]?.message?.content?.trim() || originalSentence;
+}
+
 function extractRepetitivePhrases(description: string): string[] {
   const phrases: string[] = [];
   
@@ -822,6 +951,78 @@ export async function startCorrectionProcess(
             successCount++;
           }
           continue;
+        }
+      }
+
+      if (hasExplicitChapterList(issue.location)) {
+        const chapterList = extractChapterListFromLocation(issue.location);
+        const concept = extractConceptFromDescription(issue.description);
+        
+        if (chapterList.length > 0 && concept) {
+          onProgress?.({
+            phase: 'analyzing',
+            current: i + 1,
+            total: allIssues.length,
+            message: `Múltiples capítulos (${chapterList.length}): buscando "${concept.substring(0, 40)}..." en cada uno...`
+          });
+
+          let foundCount = 0;
+          for (let j = 0; j < chapterList.length; j++) {
+            const chapterRef = chapterList[j];
+            const chapterData = extractChapterContent2(correctedContent, chapterRef);
+            
+            if (chapterData) {
+              const foundConcept = await findConceptInChapter(chapterData.content, concept, issue.description);
+              
+              if (foundConcept) {
+                onProgress?.({
+                  phase: 'correcting',
+                  current: i + 1,
+                  total: allIssues.length,
+                  message: `Generando variación ${j + 1}/${chapterList.length} para ${chapterRef === 'prólogo' ? 'Prólogo' : 'Cap. ' + chapterRef}...`
+                });
+
+                const alternative = await generateVariedAlternative(
+                  foundConcept.sentence,
+                  foundConcept.context,
+                  concept,
+                  issue.description,
+                  chapterRef,
+                  j
+                );
+
+                const chapterNum = chapterRef === 'prólogo' ? 0 : chapterRef;
+                const correctionRecord: CorrectionRecord = {
+                  id: `correction-${Date.now()}-${i}-multi-${j}`,
+                  issueId: `issue-${i}`,
+                  location: chapterRef === 'prólogo' ? 'Prólogo' : `Capítulo ${chapterRef}`,
+                  chapterNumber: chapterNum,
+                  originalText: foundConcept.sentence,
+                  correctedText: alternative,
+                  instruction: `[VARIACIÓN-MÚLTIPLE] ${issue.description}`,
+                  severity: issue.severity,
+                  status: alternative !== foundConcept.sentence ? 'pending' : 'rejected',
+                  diffStats: calculateDiffStats(foundConcept.sentence, alternative),
+                  createdAt: new Date().toISOString()
+                };
+
+                pendingCorrections.push(correctionRecord);
+                
+                if (alternative !== foundConcept.sentence) {
+                  successCount++;
+                  foundCount++;
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 400));
+              }
+            }
+          }
+          
+          totalOccurrences += Math.max(foundCount, 1);
+          
+          if (foundCount > 0) {
+            continue;
+          }
         }
       }
 
