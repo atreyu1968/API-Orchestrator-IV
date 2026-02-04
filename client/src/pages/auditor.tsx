@@ -23,6 +23,7 @@ import {
   FileText,
   Trash2,
   Scissors,
+  X,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
@@ -453,10 +454,19 @@ export default function AuditorPage() {
       )}
 
       {displayAudit && displayAudit.status === "error" && (
-        <Alert variant="destructive" data-testid="alert-error">
+        <Alert variant="destructive" data-testid="alert-error" className="relative">
           <XCircle className="h-4 w-4" />
           <AlertTitle>Error en auditoría</AlertTitle>
           <AlertDescription data-testid="text-error-message">{displayAudit.errorMessage}</AlertDescription>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute top-2 right-2 h-6 w-6 p-0"
+            onClick={() => setDisplayAudit(null)}
+            data-testid="button-dismiss-error"
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </Alert>
       )}
 
