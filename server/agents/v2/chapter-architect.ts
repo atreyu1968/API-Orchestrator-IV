@@ -20,6 +20,7 @@ export interface ChapterArchitectInput {
   consistencyConstraints?: string;
   fullPlotOutline?: ChapterOutline[]; // Complete plot outline for all chapters
   isKindleUnlimited?: boolean; // LitAgents 2.5: Direct KU flag for guaranteed pacing enforcement
+  patternAnalysisContext?: string; // LitAgents 2.9.7: Anti-repetition pattern analysis
 }
 
 export interface ScenePlan {
@@ -182,6 +183,12 @@ export class ChapterArchitectAgent extends BaseAgent {
     if (input.consistencyConstraints) {
       prompt = `${input.consistencyConstraints}\n\n---\n\nAHORA, TENIENDO EN CUENTA LAS RESTRICCIONES DE CONSISTENCIA Y LA TRAMA COMPLETA, diseña las escenas:\n\n${prompt}`;
       console.log(`[ChapterArchitect] Injected consistency constraints (${input.consistencyConstraints.length} chars) - Preventing inconsistent scene planning`);
+    }
+
+    // LitAgents 2.9.7: Inject pattern analysis to prevent structural repetition
+    if (input.patternAnalysisContext) {
+      prompt = `${input.patternAnalysisContext}\n\n---\n\n${prompt}`;
+      console.log(`[ChapterArchitect] Injected pattern analysis context (${input.patternAnalysisContext.length} chars) - Anti-repetition enabled`);
     }
 
     // LitAgents 2.5: Inject KU pacing requirements directly - guaranteed to be present regardless of constraints
