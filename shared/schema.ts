@@ -171,6 +171,31 @@ export const insertEditingQueueSchema = createInsertSchema(editingQueue).omit({ 
 export type InsertEditingQueue = z.infer<typeof insertEditingQueueSchema>;
 export type EditingQueueItem = typeof editingQueue.$inferSelect;
 
+// LitAgents 2.9.6: Chapter Backups for safe merge/delete operations
+export const chapterBackups = pgTable("chapter_backups", {
+  id: serial("id").primaryKey(),
+  originalChapterId: integer("original_chapter_id").notNull(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  chapterNumber: integer("chapter_number").notNull(),
+  title: text("title"),
+  content: text("content"),
+  originalContent: text("original_content"),
+  wordCount: integer("word_count"),
+  status: text("status"),
+  summary: text("summary"),
+  sceneBreakdown: jsonb("scene_breakdown"),
+  editorFeedback: jsonb("editor_feedback"),
+  qualityScore: integer("quality_score"),
+  operation: text("operation").notNull(), // 'merge', 'delete', 'split'
+  operationDetails: text("operation_details"), // JSON with details of the operation
+  restoredAt: timestamp("restored_at"), // null if not restored
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertChapterBackupSchema = createInsertSchema(chapterBackups).omit({ id: true, createdAt: true, restoredAt: true });
+export type InsertChapterBackup = z.infer<typeof insertChapterBackupSchema>;
+export type ChapterBackup = typeof chapterBackups.$inferSelect;
+
 // Manual editing annotations - marks errors to be corrected in chapters
 export const chapterAnnotations = pgTable("chapter_annotations", {
   id: serial("id").primaryKey(),

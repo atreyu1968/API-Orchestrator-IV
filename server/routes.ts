@@ -3891,7 +3891,7 @@ ${series.seriesGuide.substring(0, 50000)}`;
 
   // ============ MANUAL CHAPTER EDITING ENDPOINTS ============
 
-  // Merge two chapters into one
+  // Merge two chapters into one (with backup protection)
   const mergeChaptersSchema = z.object({
     sourceChapterNumber: z.number().int(),
     targetChapterNumber: z.number().int(),
@@ -3913,7 +3913,7 @@ ${series.seriesGuide.substring(0, 50000)}`;
         return res.status(400).json({ error: "Cannot merge a chapter with itself" });
       }
       
-      // Get both chapters
+      // Get ALL chapters FIRST (snapshot before any changes)
       const allChapters = await storage.getChaptersByProject(projectId);
       const sourceChapter = allChapters.find(c => c.chapterNumber === sourceChapterNumber);
       const targetChapter = allChapters.find(c => c.chapterNumber === targetChapterNumber);
@@ -3921,6 +3921,55 @@ ${series.seriesGuide.substring(0, 50000)}`;
       if (!sourceChapter || !targetChapter) {
         return res.status(404).json({ error: "One or both chapters not found" });
       }
+
+      // SAFETY: Create backup of BOTH chapters before any modification
+      console.log(`[Routes] Creating backups before merge: source=${sourceChapter.id}, target=${targetChapter.id}`);
+      
+      const operationDetails = JSON.stringify({
+        operation: 'merge',
+        sourceChapterNumber,
+        targetChapterNumber,
+        timestamp: new Date().toISOString(),
+        totalChaptersBefore: allChapters.length,
+      });
+
+      // Backup source chapter (will be deleted)
+      await storage.createChapterBackup({
+        originalChapterId: sourceChapter.id,
+        projectId,
+        chapterNumber: sourceChapter.chapterNumber,
+        title: sourceChapter.title,
+        content: sourceChapter.content,
+        originalContent: sourceChapter.originalContent,
+        wordCount: sourceChapter.wordCount,
+        status: sourceChapter.status,
+        summary: sourceChapter.summary,
+        sceneBreakdown: sourceChapter.sceneBreakdown,
+        editorFeedback: sourceChapter.editorFeedback,
+        qualityScore: sourceChapter.qualityScore,
+        operation: 'merge',
+        operationDetails,
+      });
+
+      // Backup target chapter (will be modified)
+      await storage.createChapterBackup({
+        originalChapterId: targetChapter.id,
+        projectId,
+        chapterNumber: targetChapter.chapterNumber,
+        title: targetChapter.title,
+        content: targetChapter.content,
+        originalContent: targetChapter.originalContent,
+        wordCount: targetChapter.wordCount,
+        status: targetChapter.status,
+        summary: targetChapter.summary,
+        sceneBreakdown: targetChapter.sceneBreakdown,
+        editorFeedback: targetChapter.editorFeedback,
+        qualityScore: targetChapter.qualityScore,
+        operation: 'merge',
+        operationDetails,
+      });
+
+      console.log(`[Routes] Backups created successfully`);
       
       // Merge content: target content + separator + source content
       const mergedContent = `${targetChapter.content || ""}${separator}${sourceChapter.content || ""}`;
@@ -3938,32 +3987,40 @@ ${series.seriesGuide.substring(0, 50000)}`;
       // Delete source chapter
       await storage.deleteChapter(sourceChapter.id);
       
-      // Renumber remaining chapters if needed (only for regular chapters 1-99)
-      // Special chapters: 0=prologue, 998=epilogue, 999=author note - should not be renumbered
-      const remainingChapters = await storage.getChaptersByProject(projectId);
-      const isSourceSpecialChapter = sourceChapterNumber === 0 || sourceChapterNumber >= 998;
+      // Renumber remaining chapters if needed
+      // Special chapters: 0=prologue, negative=epilogue/author note - should not be renumbered
+      const isSourceSpecialChapter = sourceChapterNumber <= 0;
       
-      let chaptersToRenumber: typeof remainingChapters = [];
-      if (!isSourceSpecialChapter) {
-        // Only renumber regular chapters (1-997) that come after the deleted source
+      let chaptersToRenumber: typeof allChapters = [];
+      if (!isSourceSpecialChapter && sourceChapterNumber > 0) {
+        // Get fresh list of chapters after deletion
+        const remainingChapters = await storage.getChaptersByProject(projectId);
+        
+        // Only renumber regular chapters (>0) that come after the deleted source
         chaptersToRenumber = remainingChapters
-          .filter(c => c.chapterNumber > sourceChapterNumber && c.chapterNumber > 0 && c.chapterNumber < 998)
+          .filter(c => c.chapterNumber > sourceChapterNumber && c.chapterNumber > 0)
           .sort((a, b) => a.chapterNumber - b.chapterNumber);
         
+        // Renumber sequentially to avoid conflicts
         for (const chapter of chaptersToRenumber) {
+          const newNumber = chapter.chapterNumber - 1;
           await storage.updateChapter(chapter.id, {
-            chapterNumber: chapter.chapterNumber - 1,
-            title: chapter.title?.replace(/^(Capítulo|Chapter)\s+\d+/i, `Capítulo ${chapter.chapterNumber - 1}`),
+            chapterNumber: newNumber,
+            title: chapter.title?.replace(/^(Capítulo|Chapter)\s+\d+/i, `Capítulo ${newNumber}`),
           });
         }
       }
+      
+      // Verify final chapter count
+      const finalChapters = await storage.getChaptersByProject(projectId);
+      console.log(`[Routes] Merge complete: ${allChapters.length} -> ${finalChapters.length} chapters`);
       
       // Log the merge
       await storage.createActivityLog({
         projectId,
         level: "info",
         agentRole: "system",
-        message: `Capitulos fusionados: ${sourceChapterNumber} -> ${targetChapterNumber}. ${chaptersToRenumber.length} capitulos renumerados.`,
+        message: `Capitulos fusionados: ${sourceChapterNumber} -> ${targetChapterNumber}. ${chaptersToRenumber.length} capitulos renumerados. Backups creados.`,
       });
       
       res.json({ 
@@ -3971,10 +4028,98 @@ ${series.seriesGuide.substring(0, 50000)}`;
         message: `Capítulo ${sourceChapterNumber} fusionado con ${targetChapterNumber}`,
         newWordCount: wordCount,
         chaptersRenumbered: chaptersToRenumber.length,
+        backupsCreated: 2,
       });
     } catch (error) {
       console.error("[Routes] Error merging chapters:", error);
       res.status(500).json({ error: "Failed to merge chapters" });
+    }
+  });
+
+  // Get chapter backups for a project
+  app.get("/api/projects/:projectId/chapter-backups", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      const backups = await storage.getChapterBackupsByProject(projectId);
+      res.json(backups);
+    } catch (error) {
+      console.error("[Routes] Error getting chapter backups:", error);
+      res.status(500).json({ error: "Failed to get chapter backups" });
+    }
+  });
+
+  // Restore a chapter from backup
+  app.post("/api/chapter-backups/:backupId/restore", async (req: Request, res: Response) => {
+    try {
+      const backupId = parseInt(req.params.backupId);
+      const backup = await storage.getChapterBackup(backupId);
+      
+      if (!backup) {
+        return res.status(404).json({ error: "Backup not found" });
+      }
+      
+      if (backup.restoredAt) {
+        return res.status(400).json({ error: "This backup has already been restored" });
+      }
+      
+      // Check if a chapter with this number already exists
+      const existingChapters = await storage.getChaptersByProject(backup.projectId);
+      const conflictingChapter = existingChapters.find(c => c.chapterNumber === backup.chapterNumber);
+      
+      if (conflictingChapter) {
+        // If conflicting chapter exists, we need to handle it
+        // Option: Update the existing chapter with backup content
+        await storage.updateChapter(conflictingChapter.id, {
+          title: backup.title,
+          content: backup.content,
+          originalContent: backup.originalContent,
+          wordCount: backup.wordCount,
+          status: backup.status || 'completed',
+          summary: backup.summary,
+          sceneBreakdown: backup.sceneBreakdown,
+          editorFeedback: backup.editorFeedback,
+          qualityScore: backup.qualityScore,
+        });
+        
+        console.log(`[Routes] Restored backup ${backupId} to existing chapter ${conflictingChapter.id}`);
+      } else {
+        // Create a new chapter from the backup
+        await storage.createChapter({
+          projectId: backup.projectId,
+          chapterNumber: backup.chapterNumber,
+          title: backup.title,
+          content: backup.content,
+          originalContent: backup.originalContent,
+          wordCount: backup.wordCount ?? 0,
+          status: backup.status || 'completed',
+          summary: backup.summary,
+          sceneBreakdown: backup.sceneBreakdown,
+          editorFeedback: backup.editorFeedback,
+          qualityScore: backup.qualityScore,
+        });
+        
+        console.log(`[Routes] Created new chapter from backup ${backupId}`);
+      }
+      
+      // Mark backup as restored
+      await storage.markBackupRestored(backupId);
+      
+      // Log the restoration
+      await storage.createActivityLog({
+        projectId: backup.projectId,
+        level: "info",
+        agentRole: "system",
+        message: `Capítulo ${backup.chapterNumber} restaurado desde backup (ID: ${backupId})`,
+      });
+      
+      res.json({ 
+        success: true, 
+        message: `Capítulo ${backup.chapterNumber} restaurado exitosamente`,
+        restoredChapterNumber: backup.chapterNumber,
+      });
+    } catch (error) {
+      console.error("[Routes] Error restoring chapter backup:", error);
+      res.status(500).json({ error: "Failed to restore chapter backup" });
     }
   });
 

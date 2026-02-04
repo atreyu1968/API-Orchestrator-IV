@@ -6,7 +6,7 @@ import {
   aiUsageEvents, reeditProjects, reeditChapters, reeditAuditReports, reeditWorldBibles, reeditIssues,
   chatSessions, chatMessages, chatProposals, plotThreads,
   worldEntities, worldRulesTable, entityRelationships, consistencyViolations,
-  chapterVersions, editingQueue, seriesWorldBible,
+  chapterVersions, editingQueue, seriesWorldBible, chapterBackups,
   type Project, type InsertProject, type Chapter, type InsertChapter,
   type WorldBible, type InsertWorldBible, type ThoughtLog, type InsertThoughtLog,
   type AgentStatus, type InsertAgentStatus, type Pseudonym, type InsertPseudonym,
@@ -37,7 +37,8 @@ import {
   type EntityRelationship, type InsertEntityRelationship,
   type ConsistencyViolation, type InsertConsistencyViolation,
   type ChapterVersion, type InsertChapterVersion,
-  type EditingQueueItem, type InsertEditingQueue
+  type EditingQueueItem, type InsertEditingQueue,
+  type ChapterBackup, type InsertChapterBackup
 } from "@shared/schema";
 import { eq, desc, asc, and, lt, isNull, or, sql } from "drizzle-orm";
 
@@ -358,6 +359,26 @@ export class DatabaseStorage implements IStorage {
 
   async deleteChapter(id: number): Promise<void> {
     await db.delete(chapters).where(eq(chapters.id, id));
+  }
+
+  async createChapterBackup(data: InsertChapterBackup): Promise<ChapterBackup> {
+    const [backup] = await db.insert(chapterBackups).values(data).returning();
+    return backup;
+  }
+
+  async getChapterBackupsByProject(projectId: number): Promise<ChapterBackup[]> {
+    return db.select().from(chapterBackups)
+      .where(and(eq(chapterBackups.projectId, projectId), isNull(chapterBackups.restoredAt)))
+      .orderBy(desc(chapterBackups.createdAt));
+  }
+
+  async getChapterBackup(id: number): Promise<ChapterBackup | undefined> {
+    const [backup] = await db.select().from(chapterBackups).where(eq(chapterBackups.id, id));
+    return backup;
+  }
+
+  async markBackupRestored(id: number): Promise<void> {
+    await db.update(chapterBackups).set({ restoredAt: new Date() }).where(eq(chapterBackups.id, id));
   }
 
   async createWorldBible(data: InsertWorldBible): Promise<WorldBible> {
