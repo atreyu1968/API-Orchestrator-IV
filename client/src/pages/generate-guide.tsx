@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, BookOpen, FileText, CheckCircle } from "lucide-react";
+import { Loader2, Sparkles, BookOpen, FileText, CheckCircle, X } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface Pseudonym {
@@ -96,6 +96,26 @@ export default function GenerateGuidePage() {
       toast({
         title: "Guía generada",
         description: data.message,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/cancel-guide-generation");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Cancelado",
+        description: data.message || "Generación de guía cancelada",
       });
     },
     onError: (error: Error) => {
@@ -480,25 +500,43 @@ export default function GenerateGuidePage() {
               </CardContent>
             </Card>
 
-            <Button
-              type="submit"
-              size="lg"
-              className="w-full"
-              data-testid="button-generate"
-              disabled={generateMutation.isPending}
-            >
-              {generateMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Generando guía... (puede tardar 1-2 minutos)
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-5 w-5" />
-                  Generar Guía de Escritura
-                </>
+            <div className="flex gap-2">
+              <Button
+                type="submit"
+                size="lg"
+                className="flex-1"
+                data-testid="button-generate"
+                disabled={generateMutation.isPending}
+              >
+                {generateMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Generando guía... (puede tardar 1-2 minutos)
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-5 w-5" />
+                    Generar Guía de Escritura
+                  </>
+                )}
+              </Button>
+              {generateMutation.isPending && (
+                <Button
+                  type="button"
+                  size="lg"
+                  variant="destructive"
+                  data-testid="button-cancel-generation"
+                  onClick={() => cancelMutation.mutate()}
+                  disabled={cancelMutation.isPending}
+                >
+                  {cancelMutation.isPending ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <X className="h-5 w-5" />
+                  )}
+                </Button>
               )}
-            </Button>
+            </div>
           </form>
         </Form>
       ) : (
