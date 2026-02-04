@@ -43,15 +43,73 @@ interface CharacterBibleExtraction {
 
 function extractChapterNumbersFromLocation(location: string): number[] {
   const numbers: number[] = [];
-  const matches = location.match(/\d+/g);
-  if (matches) {
-    for (const m of matches) {
-      const num = parseInt(m, 10);
-      if (num > 0 && num < 100) {
-        numbers.push(num);
+  
+  const chapterPatterns = [
+    /Cap[íi]tulos?\s*([\d,\s]+(?:y\s*\d+)?)/gi,
+    /Cap[íi]tulo\s*(\d+)/gi,
+    /capítulos\s*(\d+),\s*(\d+),\s*(\d+)/gi,
+    /en los capítulos\s*([\d,\sy]+)/gi
+  ];
+  
+  for (const pattern of chapterPatterns) {
+    let match;
+    while ((match = pattern.exec(location)) !== null) {
+      const numStr = match[1] || match[0];
+      const nums = numStr.match(/\d+/g);
+      if (nums) {
+        for (const n of nums) {
+          const num = parseInt(n, 10);
+          if (num > 0 && num < 100) {
+            numbers.push(num);
+          }
+        }
       }
     }
   }
+  
+  if (numbers.length === 0) {
+    const simpleMatches = location.match(/\d+/g);
+    if (simpleMatches) {
+      for (const m of simpleMatches) {
+        const num = parseInt(m, 10);
+        if (num > 0 && num < 100) {
+          numbers.push(num);
+        }
+      }
+    }
+  }
+  
+  return Array.from(new Set(numbers)).sort((a, b) => a - b);
+}
+
+function extractChapterNumbersFromDescription(description: string): number[] {
+  const numbers: number[] = [];
+  
+  const patterns = [
+    /Cap[íi]tulos?\s*([\d,\s]+(?:y\s*\d+)?)/gi,
+    /en (?:el )?cap[íi]tulo\s*(\d+)/gi,
+    /capítulos\s+(\d+)(?:,\s*(\d+))+/gi
+  ];
+  
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(description)) !== null) {
+      for (let j = 1; j < match.length; j++) {
+        if (match[j]) {
+          const nums = match[j].match(/\d+/g);
+          if (nums) {
+            for (const n of nums) {
+              const num = parseInt(n, 10);
+              if (num > 0 && num < 100) {
+                numbers.push(num);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
   return Array.from(new Set(numbers)).sort((a, b) => a - b);
 }
 
@@ -1557,18 +1615,86 @@ export async function startCorrectionProcess(
         
         if (isMultiChapterBible) {
           console.log('[CharacterBible Multi] Detectado caso multi-capítulo');
-          const chapterNumbers = extractChapterNumbersFromLocation(issue.location || issue.description);
-          const hasEpilogue = issue.location?.toLowerCase().includes('epílogo') || 
-                              issue.location?.toLowerCase().includes('epilogo');
+          console.log(`[CharacterBible Multi] Location: "${issue.location}"`);
+          console.log(`[CharacterBible Multi] Description: "${issue.description.substring(0, 200)}..."`);
           
-          console.log(`[CharacterBible Multi] Capítulos: ${chapterNumbers.join(', ')}, Epílogo: ${hasEpilogue}`);
+          let chapterNumbers = extractChapterNumbersFromLocation(issue.location || '');
+          if (chapterNumbers.length === 0) {
+            chapterNumbers = extractChapterNumbersFromDescription(issue.description);
+          }
+          if (chapterNumbers.length === 0) {
+            chapterNumbers = extractChapterNumbersFromLocation(issue.description);
+          }
+          
+          const hasEpilogue = issue.location?.toLowerCase().includes('epílogo') || 
+                              issue.location?.toLowerCase().includes('epilogo') ||
+                              issue.description.toLowerCase().includes('epílogo');
+          const hasPrologue = issue.location?.toLowerCase().includes('prólogo') ||
+                              issue.description.toLowerCase().includes('prólogo');
+          
+          console.log(`[CharacterBible Multi] Capítulos extraídos: [${chapterNumbers.join(', ')}], Prólogo: ${hasPrologue}, Epílogo: ${hasEpilogue}`);
+          
+          const totalParts = chapterNumbers.length + (hasPrologue ? 1 : 0) + (hasEpilogue ? 1 : 0);
           
           onProgress?.({
             phase: 'analyzing',
             current: i + 1,
             total: allIssues.length,
-            message: `Character Bible multi-capítulo: buscando "${characterBibleInfo.incorrectValue}" en ${chapterNumbers.length} capítulos...`
+            message: `Character Bible multi-capítulo: buscando en ${totalParts} partes (${hasPrologue ? 'Prólogo, ' : ''}${chapterNumbers.length} capítulos${hasEpilogue ? ', Epílogo' : ''})...`
           });
+          
+          if (hasPrologue) {
+            const prologueData = extractChapterContent2(correctedContent, 'prólogo');
+            if (prologueData) {
+              onProgress?.({
+                phase: 'analyzing',
+                current: i + 1,
+                total: allIssues.length,
+                message: `IA buscando "${characterBibleInfo.attribute}" de ${characterBibleInfo.characterName} en Prólogo...`
+              });
+              
+              const foundResult = await findAttributeBySearchingAllWithAI(
+                prologueData.content,
+                characterBibleInfo.characterName,
+                characterBibleInfo.attribute,
+                characterBibleInfo.correctValue,
+                characterBibleInfo.incorrectValue,
+                'Prólogo'
+              );
+              
+              if (foundResult) {
+                console.log(`[CharacterBible AI Multi] Prólogo: encontrado "${foundResult.sentence.substring(0, 50)}..." (valor: ${foundResult.incorrectValue})`);
+                
+                const result = await correctSingleIssue({
+                  fullChapter: prologueData.content,
+                  targetText: foundResult.sentence,
+                  instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Cambiar "${foundResult.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
+                  suggestion: `Reemplazar con: "${characterBibleInfo.correctValue}"`
+                });
+                
+                pendingCorrections.push({
+                  id: `correction-${Date.now()}-${i}-prologue-multi`,
+                  issueId: `issue-${i}`,
+                  location: 'Prólogo',
+                  chapterNumber: 0,
+                  originalText: result.originalText,
+                  correctedText: result.correctedText,
+                  instruction: `[CHARACTER-BIBLE AI] ${characterBibleInfo.attribute}: "${foundResult.incorrectValue}" → "${characterBibleInfo.correctValue}"`,
+                  severity: issue.severity,
+                  status: result.success ? 'pending' : 'rejected',
+                  diffStats: result.diffStats,
+                  createdAt: new Date().toISOString()
+                });
+                
+                totalOccurrences++;
+                if (result.success) successCount++;
+                
+                await new Promise(resolve => setTimeout(resolve, 500));
+              } else {
+                console.log(`[CharacterBible AI Multi] Prólogo: No se encontró inconsistencia`);
+              }
+            }
+          }
           
           for (const chapterNum of chapterNumbers) {
             const chapterRef = `Capítulo ${chapterNum}`;
