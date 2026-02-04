@@ -162,6 +162,7 @@ export default function AuditorPage() {
   const [currentAuditId, setCurrentAuditId] = useState<number | null>(null);
   const [dismissedErrorId, setDismissedErrorId] = useState<number | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const hasReconnected = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -280,6 +281,17 @@ export default function AuditorPage() {
       eventSourceRef.current = null;
     };
   };
+
+  useEffect(() => {
+    if (audits && audits.length > 0 && !hasReconnected.current) {
+      const runningAudit = audits.find(a => a.status === "running");
+      if (runningAudit && !eventSourceRef.current) {
+        hasReconnected.current = true;
+        setCurrentAuditId(runningAudit.id);
+        runAudit(runningAudit.id);
+      }
+    }
+  }, [audits]);
 
   const latestAudit = audits?.[0];
   const displayAudit = currentAudit || latestAudit;
