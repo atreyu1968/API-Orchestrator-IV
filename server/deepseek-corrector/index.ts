@@ -175,6 +175,29 @@ async function aiFlexibleAttributeSearch(
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     
+    const isNameAttribute = attribute.toLowerCase() === 'nombre' || attribute.toLowerCase() === 'name';
+    const isPhysicalAttribute = ['ojos', 'eyes', 'cabello', 'hair', 'pelo'].some(a => attribute.toLowerCase().includes(a));
+    
+    let searchInstructions = '';
+    if (isNameAttribute) {
+      searchInstructions = `
+1. Busca CUALQUIER mención donde el personaje se presente o sea llamado por un nombre diferente a "${correctValue}"
+2. Busca diálogos donde se presente: "—Me llamo X", "Soy X", "Inspector/Inspectora X", "Doctor/Doctora X", etc.
+3. Busca presentaciones narrativas: "X se presentó", "conocido como X", "llamado X"
+4. El nombre incorrecto puede ser un nombre completo, solo el nombre de pila, o solo el apellido diferente`;
+    } else if (isPhysicalAttribute) {
+      searchInstructions = `
+1. Busca CUALQUIER oración que describa el ${attribute} del personaje
+2. Considera sinónimos: para "ojos" → "mirada", "iris", "pupilas"; para "cabello" → "pelo", "melena", "cabellera"
+3. Busca descripciones como "sus ojos X", "el pelo X", "mirada X", "cabello X y rizado", etc.
+4. El personaje puede referirse por nombre, apellido, o pronombres`;
+    } else {
+      searchInstructions = `
+1. Busca CUALQUIER oración que mencione el ${attribute} del personaje
+2. Busca descripciones directas e indirectas del atributo
+3. El personaje puede referirse por nombre, apellido, o pronombres`;
+    }
+    
     const prompt = `Eres un detector de inconsistencias en manuscritos literarios.
 
 TAREA: Buscar en el siguiente capítulo cualquier mención del atributo "${attribute}" del personaje "${characterName}" que NO coincida con el valor canónico de la Biblia de Personajes.
@@ -187,11 +210,7 @@ ${chapterTitle}
 ${chapterContent.substring(0, 15000)}
 ---
 
-INSTRUCCIONES:
-1. Busca CUALQUIER oración que describa el ${attribute} de ${characterName} (o pronombres que se refieran a este personaje)
-2. Si encuentras una descripción que NO coincide con "${correctValue}", devuelve esa oración EXACTA
-3. Considera sinónimos y variaciones: para "ojos" también busca "mirada", "iris", "pupilas"; para "cabello" busca "pelo", "melena", etc.
-4. El personaje puede referirse por nombre, apellido, o pronombres como "él/ella", "su", etc.
+INSTRUCCIONES:${searchInstructions}
 
 FORMATO DE RESPUESTA (JSON estricto):
 Si encuentras inconsistencia:
@@ -1470,16 +1489,16 @@ export async function startCorrectionProcess(
           message: `Detectado issue de Character Bible: buscando "${characterBibleInfo.incorrectValue}" en ${characterBibleInfo.chapterName}...`
         });
 
-        const foundResult = findTextWithIncorrectValue(
+        const regexResult = findTextWithIncorrectValue(
           correctedContent,
           characterBibleInfo.incorrectValue,
           characterBibleInfo.chapterName
         );
 
-        if (foundResult) {
+        if (regexResult) {
           const result = await correctSingleIssue({
-            fullChapter: foundResult.chapterContent,
-            targetText: foundResult.foundText,
+            fullChapter: regexResult.chapterContent,
+            targetText: regexResult.foundText,
             instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Corregir "${characterBibleInfo.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
             suggestion: `Cambiar la descripción para que coincida con la biblia: "${characterBibleInfo.correctValue}"`
           });
@@ -1505,6 +1524,70 @@ export async function startCorrectionProcess(
             successCount++;
           }
           continue;
+        }
+        
+        console.log(`[CharacterBible] Regex no encontró, intentando búsqueda con IA en ${characterBibleInfo.chapterName}...`);
+        
+        const chapterNumber = characterBibleInfo.chapterName.match(/\d+/)?.[0];
+        const isPrologue = characterBibleInfo.chapterName.toLowerCase().includes('prólogo') || 
+                           characterBibleInfo.chapterName.toLowerCase().includes('prologo');
+        
+        let chapterData = null;
+        if (isPrologue) {
+          chapterData = extractChapterContent2(correctedContent, 'prólogo');
+        } else if (chapterNumber) {
+          chapterData = extractChapterContent2(correctedContent, parseInt(chapterNumber));
+        }
+        
+        if (chapterData) {
+          onProgress?.({
+            phase: 'analyzing',
+            current: i + 1,
+            total: allIssues.length,
+            message: `IA buscando "${characterBibleInfo.attribute}" de ${characterBibleInfo.characterName} en ${characterBibleInfo.chapterName}...`
+          });
+          
+          const aiResult = await findAttributeBySearchingAllWithAI(
+            chapterData.content,
+            characterBibleInfo.characterName,
+            characterBibleInfo.attribute,
+            characterBibleInfo.correctValue,
+            characterBibleInfo.incorrectValue,
+            characterBibleInfo.chapterName
+          );
+          
+          if (aiResult) {
+            console.log(`[CharacterBible AI Single] ${characterBibleInfo.chapterName}: encontrado "${aiResult.sentence.substring(0, 50)}..." (valor: ${aiResult.incorrectValue})`);
+            
+            const result = await correctSingleIssue({
+              fullChapter: chapterData.content,
+              targetText: aiResult.sentence,
+              instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Corregir "${aiResult.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
+              suggestion: `Cambiar la descripción para que coincida con la biblia: "${characterBibleInfo.correctValue}"`
+            });
+
+            const correctionRecord: CorrectionRecord = {
+              id: `correction-${Date.now()}-${i}-charfix-ai`,
+              issueId: `issue-${i}`,
+              location: characterBibleInfo.chapterName,
+              chapterNumber: parseInt(chapterNumber || '0'),
+              originalText: result.originalText,
+              correctedText: result.correctedText,
+              instruction: `[CHARACTER-BIBLE AI] ${characterBibleInfo.attribute}: "${aiResult.incorrectValue}" → "${characterBibleInfo.correctValue}"`,
+              severity: issue.severity,
+              status: result.success ? 'pending' : 'rejected',
+              diffStats: result.diffStats,
+              createdAt: new Date().toISOString()
+            };
+
+            pendingCorrections.push(correctionRecord);
+            totalOccurrences++;
+
+            if (result.success) {
+              successCount++;
+            }
+            continue;
+          }
         }
       }
 
