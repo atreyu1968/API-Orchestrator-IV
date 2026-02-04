@@ -9236,7 +9236,9 @@ ${issuesDescription}`;
     originalContent: string,
     correctedContent: string,
     issue: RegisteredIssue,
-    worldBible: any
+    worldBible: any,
+    isMultiChapter: boolean = false,
+    relatedChapters: number[] = []
   ): Promise<{ 
     valid: boolean; 
     originalIssueFixed: boolean;
@@ -9248,6 +9250,19 @@ ${issuesDescription}`;
     // Do NOT use full SmartEditor evaluation which detects ALL weaknesses
     // This was causing ALL corrections to be rejected because it found pre-existing issues
     
+    // v2.9.6: Multi-chapter issues require a different verification approach
+    // For multi-chapter issues, we only verify that THIS chapter's contribution to the issue was addressed
+    const multiChapterContext = isMultiChapter 
+      ? `\n\nIMPORTANTE - PROBLEMA MULTI-CAPÍTULO:
+Este issue afecta MÚLTIPLES capítulos (${[issue.chapter, ...relatedChapters].join(', ')}).
+Estás verificando SOLO el capítulo ${issue.chapter}.
+Para issues multi-capítulo como "timeline" o "coherencia":
+- issueFixed = true si ESTE capítulo fue modificado de manera que CONTRIBUYE a resolver el problema global
+- NO esperes que el issue esté 100% resuelto (requiere corregir los otros capítulos también)
+- Evalúa si el cambio realizado va en la DIRECCIÓN CORRECTA
+- Un cambio parcial que mejora la coherencia cuenta como APROBADO`
+      : '';
+    
     const verificationPrompt = `Eres un verificador de correcciones QUIRÚRGICAS. Tu ÚNICA tarea es verificar si el issue ESPECÍFICO fue corregido.
 
 ISSUE ORIGINAL QUE DEBÍA CORREGIRSE:
@@ -9255,7 +9270,7 @@ ISSUE ORIGINAL QUE DEBÍA CORREGIRSE:
 - Severidad: ${issue.severidad}  
 - Descripción: ${issue.descripcion}
 - Contexto: "${issue.contexto || 'N/A'}"
-- Corrección sugerida: ${issue.correccion || issue.instrucciones || 'N/A'}
+- Corrección sugerida: ${issue.correccion || issue.instrucciones || 'N/A'}${multiChapterContext}
 
 TEXTO ORIGINAL (ANTES):
 ${originalContent.substring(0, 3000)}
@@ -9269,7 +9284,7 @@ INSTRUCCIONES PRECISAS:
 3. Solo reporta "nuevoProblema" si la corrección INTRODUJO algo que antes NO existía (no problemas pre-existentes)
 
 CRITERIOS:
-- issueFixed = true si el problema original YA NO existe en el texto corregido
+- issueFixed = true si el problema original YA NO existe en el texto corregido${isMultiChapter ? ' O si el cambio CONTRIBUYE a resolverlo' : ''}
 - Solo cuenta como "nuevosProblemas" si son DIRECTAMENTE causados por el cambio realizado
 - Problemas pre-existentes NO cuentan como "nuevos"
 - Cambios mínimos de estilo NO son problemas
@@ -9579,7 +9594,9 @@ INSTRUCCIONES DE CONSISTENCIA:
             chapter.content,
             correctedContent,
             issue,
-            worldBible
+            worldBible,
+            isMultiChapter,
+            relatedChapters
           );
 
           // v2.9.5: SIMPLIFIED LOGIC - verifyCorrection now only reports GRAVE problems
