@@ -59,23 +59,46 @@ function extractCharacterBibleInfo(description: string): CharacterBibleExtractio
     }
   }
 
+  const nameInconsistentMatch = description.match(/se (?:le )?presenta como ['"]([^'"]+)['"].*?(?:Biblia|Bible).*?(?:su nombre es|nombre es|es) ['"]([^'"]+)['"]/i);
+  const chapterForNameMatch = description.match(/(?:en el\s+)?(Cap[íi]tulo\s*\d+|Prólogo)/i);
+  
+  if (nameInconsistentMatch && chapterForNameMatch) {
+    console.log('[CharacterBible] Nombre inconsistente detectado:', {
+      incorrectName: nameInconsistentMatch[1],
+      correctName: nameInconsistentMatch[2],
+      chapter: chapterForNameMatch[1]
+    });
+    return {
+      characterName: nameInconsistentMatch[2].split(' ')[0] || 'Personaje',
+      attribute: 'nombre',
+      correctValue: nameInconsistentMatch[2].trim(),
+      incorrectValue: nameInconsistentMatch[1].trim(),
+      chapterName: chapterForNameMatch[1].trim()
+    };
+  }
+
   const bibleMatch = description.match(/\*?\*?Character Bible\*?\*?:?\s*(?:\w+:?\s*)?["']([^"']+)["']/i) ||
                     description.match(/Character Bible.*?:\s*["']([^"']+)["']/i) ||
+                    description.match(/Biblia de Personajes.*?["']([^"']+)["']/i) ||
                     description.match(/hair:\s*["']([^"']+)["']/i) ||
-                    description.match(/cabello.*?como\s*["']([^"']+)["']/i);
+                    description.match(/cabello.*?como\s*["']([^"']+)["']/i) ||
+                    description.match(/nombre es ['"]([^'"]+)['"]/i);
   
-  const manuscriptMatch = description.match(/\*?\*?(?:Prólogo|Cap[íi]tulo\s*\d+)\*?\*?:?\s*["']([^"']+)["']/i) ||
-                         description.match(/(?:en el\s+)?(?:Prólogo|Cap[íi]tulo\s*\d+).*?["']([^"']+)["']/i);
+  const manuscriptMatch = description.match(/se (?:le )?presenta como ['"]([^'"]+)['"]/i) ||
+                         description.match(/\*?\*?(?:Prólogo|Cap[íi]tulo\s*\d+)\*?\*?:?\s*["']([^"']+)["']/i) ||
+                         description.match(/(?:en el\s+)?(?:Prólogo|Cap[íi]tulo\s*\d+).*?['"]([^'"]+)['"]/i);
   
   const locationMatch = description.match(/(?:\*\*)?(?:en el\s+)?(Prólogo|Cap[íi]tulo\s*\d+)(?:\*\*)?/i);
   
   const nameMatch = description.match(/ficha de personaje de (\w+(?:\s+\w+)?)/i) || 
                    description.match(/personaje\s+de\s+(\w+(?:\s+\w+)?)/i) ||
-                   description.match(/de\s+(\w+(?:\s+\w+)?)\s+describe/i);
+                   description.match(/de\s+(\w+(?:\s+\w+)?)\s+describe/i) ||
+                   description.match(/aliada? de (\w+)/i);
   
   const attrMatch = description.match(/describe su (\w+(?:\s+\w+)?)/i) ||
                    description.match(/su\s+(\w+)\s+como/i) ||
-                   description.match(/(\w+):\s*["'][^"']+["']/i);
+                   description.match(/(\w+):\s*["'][^"']+["']/i) ||
+                   description.match(/nombre.*?inconsistente/i);
 
   if (bibleMatch && manuscriptMatch && locationMatch) {
     console.log('[CharacterBible] Extracted:', {
@@ -85,7 +108,7 @@ function extractCharacterBibleInfo(description: string): CharacterBibleExtractio
     });
     return {
       characterName: nameMatch ? nameMatch[1].trim() : 'Personaje',
-      attribute: attrMatch ? attrMatch[1].trim() : 'atributo',
+      attribute: attrMatch ? (attrMatch[1] ? attrMatch[1].trim() : 'nombre') : 'atributo',
       correctValue: bibleMatch[1].trim(),
       incorrectValue: manuscriptMatch[1].trim(),
       chapterName: locationMatch[1].trim()
@@ -111,19 +134,58 @@ function findTextWithIncorrectValue(manuscript: string, incorrectValue: string, 
       new RegExp(chapterName.replace(/\s+/g, '\\s*'), 'i').test(chapterHeader);
     
     if (isTargetChapter) {
-      const incorrectWords = incorrectValue.split(/\s+/).filter(w => w.length > 3);
+      console.log(`[CharacterBible] Buscando "${incorrectValue}" en ${chapterName}`);
       
-      for (const word of incorrectWords) {
-        const wordRegex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-        const wordMatches = chapter.match(wordRegex);
-        if (wordMatches) {
-          const index = chapter.search(wordRegex);
+      const fullPhraseIndex = chapter.toLowerCase().indexOf(incorrectValue.toLowerCase());
+      if (fullPhraseIndex !== -1) {
+        const sentenceStart = Math.max(0, chapter.lastIndexOf('.', fullPhraseIndex) + 1);
+        const sentenceEnd = chapter.indexOf('.', fullPhraseIndex + incorrectValue.length);
+        const sentence = chapter.substring(sentenceStart, sentenceEnd > 0 ? sentenceEnd + 1 : fullPhraseIndex + 200).trim();
+        
+        console.log(`[CharacterBible] Encontrado frase completa: "${sentence.substring(0, 60)}..."`);
+        return {
+          foundText: sentence,
+          chapterContent: chapter,
+          chapterIndex: i
+        };
+      }
+      
+      const incorrectWords = incorrectValue.split(/\s+/).filter(w => w.length > 3);
+      const allWordsPattern = incorrectWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+      const multiWordRegex = new RegExp(allWordsPattern, 'gi');
+      const multiWordMatch = chapter.match(multiWordRegex);
+      
+      if (multiWordMatch) {
+        const index = chapter.search(multiWordRegex);
+        if (index !== -1) {
+          const sentenceStart = Math.max(0, chapter.lastIndexOf('.', index) + 1);
+          const sentenceEnd = chapter.indexOf('.', index + multiWordMatch[0].length);
+          const sentence = chapter.substring(sentenceStart, sentenceEnd > 0 ? sentenceEnd + 1 : index + 200).trim();
+          
+          if (sentence.length > 10) {
+            console.log(`[CharacterBible] Encontrado multi-palabra: "${sentence.substring(0, 60)}..."`);
+            return {
+              foundText: sentence,
+              chapterContent: chapter,
+              chapterIndex: i
+            };
+          }
+        }
+      }
+      
+      const lastWord = incorrectWords[incorrectWords.length - 1];
+      if (lastWord && lastWord.length > 4) {
+        const lastWordRegex = new RegExp(lastWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const lastWordMatch = chapter.match(lastWordRegex);
+        if (lastWordMatch) {
+          const index = chapter.search(lastWordRegex);
           if (index !== -1) {
             const sentenceStart = Math.max(0, chapter.lastIndexOf('.', index) + 1);
-            const sentenceEnd = chapter.indexOf('.', index + word.length);
+            const sentenceEnd = chapter.indexOf('.', index + lastWord.length);
             const sentence = chapter.substring(sentenceStart, sentenceEnd > 0 ? sentenceEnd + 1 : index + 200).trim();
             
-            if (sentence.length > 10) {
+            if (sentence.length > 10 && sentence.toLowerCase().includes(lastWord.toLowerCase())) {
+              console.log(`[CharacterBible] Encontrado por apellido "${lastWord}": "${sentence.substring(0, 60)}..."`);
               return {
                 foundText: sentence,
                 chapterContent: chapter,
@@ -134,18 +196,7 @@ function findTextWithIncorrectValue(manuscript: string, incorrectValue: string, 
         }
       }
       
-      const fullPhraseIndex = chapter.toLowerCase().indexOf(incorrectValue.toLowerCase());
-      if (fullPhraseIndex !== -1) {
-        const sentenceStart = Math.max(0, chapter.lastIndexOf('.', fullPhraseIndex) + 1);
-        const sentenceEnd = chapter.indexOf('.', fullPhraseIndex + incorrectValue.length);
-        const sentence = chapter.substring(sentenceStart, sentenceEnd > 0 ? sentenceEnd + 1 : fullPhraseIndex + 200).trim();
-        
-        return {
-          foundText: sentence,
-          chapterContent: chapter,
-          chapterIndex: i
-        };
-      }
+      console.log(`[CharacterBible] No encontrado "${incorrectValue}" en ${chapterName}`);
     }
   }
   
