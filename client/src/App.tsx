@@ -28,6 +28,7 @@ import CostsHistoryPage from "@/pages/costs-history";
 import ComparePage from "@/pages/compare";
 import GenerateGuidePage from "@/pages/generate-guide";
 import GenerateSeriesGuidePage from "@/pages/generate-series-guide";
+import CorrectedManuscriptsPage from "@/pages/corrected-manuscripts";
 import StyleGuidesPage from "@/pages/style-guides";
 import AuditorPage from "@/pages/auditor";
 import asdLogo from "@assets/ASD_1766442257801.png";
@@ -57,6 +58,7 @@ function Router() {
       <Route path="/generate-series-guide" component={GenerateSeriesGuidePage} />
       <Route path="/style-guides" component={StyleGuidesPage} />
       <Route path="/auditor" component={AuditorPage} />
+      <Route path="/corrected-manuscripts" component={CorrectedManuscriptsPage} />
       <Route path="/config" component={ConfigPage} />
       <Route component={NotFound} />
     </Switch>

@@ -22,7 +22,9 @@ import {
   Clock,
   FileText,
   Trash2,
+  Scissors,
 } from "lucide-react";
+import { Link, useLocation } from "wouter";
 
 interface AuditIssue {
   location: string;
@@ -371,6 +373,44 @@ export default function AuditorPage() {
                     </Badge>
                   )}
                 </div>
+              </div>
+              <div className="flex gap-2 mt-4 pt-4 border-t">
+                <Link href="/corrected-manuscripts">
+                  <Button variant="outline" data-testid="button-go-corrections">
+                    <Scissors className="h-4 w-4 mr-2" /> Ver Correcciones
+                  </Button>
+                </Link>
+                <Button 
+                  onClick={() => {
+                    const eventSource = new EventSource(`/api/audits/${displayAudit.id}/start-correction`);
+                    toast({ title: "Iniciando corrección", description: "El proceso de corrección ha comenzado..." });
+                    
+                    eventSource.addEventListener("progress", (event) => {
+                      const data = JSON.parse(event.data);
+                      toast({ title: "Corrigiendo", description: data.message });
+                    });
+                    
+                    eventSource.addEventListener("completed", (event) => {
+                      const data = JSON.parse(event.data);
+                      toast({ title: "Corrección completada", description: "Revisa las correcciones propuestas." });
+                      eventSource.close();
+                      window.location.href = "/corrected-manuscripts";
+                    });
+                    
+                    eventSource.addEventListener("error", (event: any) => {
+                      try {
+                        const data = JSON.parse(event.data);
+                        toast({ title: "Error", description: data.message, variant: "destructive" });
+                      } catch {
+                        toast({ title: "Error", description: "Error en corrección", variant: "destructive" });
+                      }
+                      eventSource.close();
+                    });
+                  }}
+                  data-testid="button-start-correction"
+                >
+                  <Scissors className="h-4 w-4 mr-2" /> Corregir con DeepSeek
+                </Button>
               </div>
             </CardHeader>
           </Card>

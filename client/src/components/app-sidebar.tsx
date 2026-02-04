@@ -38,6 +38,7 @@ import {
   GitCompare,
   Palette,
   Microscope,
+  Scissors,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -58,6 +59,7 @@ const translationsNavItems = [
   { title: "Comparar Versiones", url: "/compare", icon: GitCompare },
   { title: "Reeditar Manuscrito", url: "/reedit", icon: Edit3 },
   { title: "Auditor Literario", url: "/auditor", icon: Microscope },
+  { title: "Manuscritos Corregidos", url: "/corrected-manuscripts", icon: Scissors },
 ];
 
 const settingsNavItems = [
