@@ -1,14 +1,15 @@
 /**
  * Agent Runner - Executes literary analysis agents
- * Supports both Cache mode (paid tier) and Standard mode (fallback)
+ * Uses your own Gemini API key for portability
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { GoogleAICacheManager } from "@google/generative-ai/server";
 import type { AgentReport, AuditIssue } from "@shared/schema";
-import { getCurrentContext, getModelName, type ContextResult } from "./cache-manager";
+import { getCurrentContext, getModelName } from "./cache-manager";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
+// Use your own Gemini API key
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 export type AgentType = 'CONTINUITY' | 'CHARACTER' | 'STYLE';
 
@@ -115,55 +116,35 @@ export async function runAgent(cacheIdOrContext: string, agentType: AgentType): 
   const context = getCurrentContext();
   
   try {
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    let result;
+    console.log(`[AgentRunner] ${agentType}: Using Gemini ${getModelName()}`);
     
-    if (context?.mode === 'CACHE' && context.cacheId) {
-      console.log(`[AgentRunner] ${agentType}: Using CACHE mode`);
-      
-      const cacheManager = new GoogleAICacheManager(GEMINI_API_KEY);
-      const cache = await cacheManager.get(context.cacheId);
-      
-      const model = genAI.getGenerativeModelFromCachedContent(cache, {
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.3,
-          maxOutputTokens: 8192,
-        },
-      });
-      
-      result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: config.prompt }] }],
-      });
-      
-    } else {
-      console.log(`[AgentRunner] ${agentType}: Using STANDARD mode (fallback)`);
-      
-      const model = genAI.getGenerativeModel({
-        model: getModelName(),
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.3,
-          maxOutputTokens: 8192,
-        },
-      });
-      
-      let fullContext = "";
-      if (context?.novelContent) {
-        fullContext = `=== NOVELA COMPLETA ===\n\n${context.novelContent}`;
-        if (context.bibleContent) {
-          fullContext += `\n\n=== BIBLIA DE LA HISTORIA ===\n\n${context.bibleContent}`;
-        }
+    const model = genAI.getGenerativeModel({
+      model: getModelName(),
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.3,
+        maxOutputTokens: 8192,
+      },
+    });
+    
+    let fullContext = "";
+    if (context?.novelContent) {
+      fullContext = `=== NOVELA COMPLETA ===\n\n${context.novelContent}`;
+      if (context.bibleContent) {
+        fullContext += `\n\n=== BIBLIA DE LA HISTORIA ===\n\n${context.bibleContent}`;
       }
-      
-      const systemPrompt = "Eres un Editor Literario Senior. Responde SIEMPRE en JSON válido.";
-      
-      result = await model.generateContent([
-        { text: `SYSTEM: ${systemPrompt}\n\nCONTEXTO:\n${fullContext}\n\n${config.prompt}` }
-      ]);
     }
     
+    const systemPrompt = "Eres un Editor Literario Senior. Responde SIEMPRE en JSON válido.";
+    const fullPrompt = `SYSTEM: ${systemPrompt}\n\nCONTEXTO:\n${fullContext}\n\n${config.prompt}`;
+    
+    const result = await model.generateContent(fullPrompt);
     const text = result.response.text();
+    
+    if (!text) {
+      throw new Error("No text response from Gemini");
+    }
+    
     const parsed = JSON.parse(text) as AgentReport;
     
     if (!parsed.agentType || typeof parsed.overallScore !== 'number' || !Array.isArray(parsed.issues)) {

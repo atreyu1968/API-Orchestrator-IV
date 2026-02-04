@@ -1,14 +1,14 @@
 /**
- * Gemini Context Caching Manager
- * Handles cache creation with automatic fallback to standard mode
+ * Gemini Context Manager
+ * Uses your own Gemini API key for portability
+ * Uses STANDARD mode (full context injection per request)
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { GoogleAICacheManager } from "@google/generative-ai/server";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
-const MODEL_NAME = "models/gemini-1.5-pro";
-const CACHE_TTL_SECONDS = 3600;
+// Use your own Gemini API key
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const MODEL_NAME = "gemini-1.5-flash"; // Best for high-volume analysis tasks
 
 export type AuditMode = 'CACHE' | 'STANDARD';
 
@@ -34,7 +34,7 @@ export function getCurrentContext(): ContextResult | null {
 }
 
 /**
- * Initialize novel context - tries Cache first, falls back to Standard mode
+ * Initialize novel context - uses STANDARD mode (Context Caching not supported by Replit AI)
  */
 export async function initializeNovelContext(
   novelContent: string,
@@ -49,55 +49,18 @@ export async function initializeNovelContext(
   }
   
   console.log(`[CacheManager] Context size: ${fullContext.length} chars`);
+  console.log("[CacheManager] Using STANDARD mode (Replit AI Integrations)");
   
-  try {
-    console.log("[CacheManager] Intentando activar Context Caching (Tier Pago)...");
-    
-    const cacheManager = new GoogleAICacheManager(GEMINI_API_KEY);
-    
-    const cache = await cacheManager.create({
-      model: MODEL_NAME,
-      displayName: `Novel Audit: ${novelTitle}`,
-      systemInstruction: {
-        role: "system",
-        parts: [{
-          text: `Eres un Editor Literario Senior. Tienes acceso a la novela completa y a la biblia de la historia. Responde SIEMPRE en formato JSON válido.`
-        }]
-      },
-      contents: [{
-        role: "user",
-        parts: [{ text: fullContext }]
-      }],
-      ttlSeconds: CACHE_TTL_SECONDS,
-    });
-    
-    console.log(`[CacheManager] Modo CACHÉ activado: ${cache.name}`);
-    
-    const expiresAt = cache.expireTime ? new Date(cache.expireTime) : new Date(Date.now() + CACHE_TTL_SECONDS * 1000);
-    
-    currentContext = {
-      success: true,
-      mode: 'CACHE',
-      cacheId: cache.name,
-      cacheName: cache.displayName,
-      expiresAt,
-    };
-    
-    return currentContext;
-    
-  } catch (error: any) {
-    console.warn(`[CacheManager] No se pudo activar Caché: ${error.message}`);
-    console.log("[CacheManager] Activando modo STANDARD (Fallback)...");
-    
-    currentContext = {
-      success: true,
-      mode: 'STANDARD',
-      novelContent,
-      bibleContent,
-    };
-    
-    return currentContext;
-  }
+  // Replit AI Integrations does not support Context Caching
+  // Always use STANDARD mode with full context injection
+  currentContext = {
+    success: true,
+    mode: 'STANDARD',
+    novelContent,
+    bibleContent,
+  };
+  
+  return currentContext;
 }
 
 /**
