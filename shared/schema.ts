@@ -951,4 +951,20 @@ export type InsertReeditChapter = z.infer<typeof insertReeditChapterSchema>;
 export type ReeditAuditReport = typeof reeditAuditReports.$inferSelect;
 export type InsertReeditAuditReport = z.infer<typeof insertReeditAuditReportSchema>;
 
+export const generationLocks = pgTable("generation_locks", {
+  id: serial("id").primaryKey(),
+  lockType: text("lock_type").notNull(),
+  title: text("title").notNull(),
+  startedAt: timestamp("started_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const insertGenerationLockSchema = createInsertSchema(generationLocks).omit({
+  id: true,
+  startedAt: true,
+});
+
+export type GenerationLock = typeof generationLocks.$inferSelect;
+export type InsertGenerationLock = z.infer<typeof insertGenerationLockSchema>;
+
 export * from "./models/chat";

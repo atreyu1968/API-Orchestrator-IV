@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { OrchestratorV2 } from "./orchestrator-v2";
 import { queueManager } from "./queue-manager";
-import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema, consistencyViolations, worldEntities, worldRulesTable, worldBibles, chapterAnnotations, insertChapterAnnotationSchema, chapters as chaptersTable } from "@shared/schema";
+import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema, consistencyViolations, worldEntities, worldRulesTable, worldBibles, chapterAnnotations, insertChapterAnnotationSchema, chapters as chaptersTable, generationLocks } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import multer from "multer";
 import mammoth from "mammoth";
@@ -51,28 +51,73 @@ const updateSeriesSchema = z.object({
 const activeStreams = new Map<number, Set<Response>>();
 const activeManuscriptAnalysis = new Map<number, AbortController>();
 
-// Global semaphore to prevent simultaneous guide/series generation
-let activeGuideGeneration: { type: string; title: string; startedAt: Date } | null = null;
+// Global semaphore to prevent simultaneous guide/series generation (DB-persisted)
+// Also keep in-memory cache for faster checks
+let activeGuideGenerationCache: { type: string; title: string; startedAt: Date } | null = null;
 
-function acquireGenerationLock(type: string, title: string): boolean {
-  if (activeGuideGeneration) {
+async function acquireGenerationLock(type: string, title: string): Promise<boolean> {
+  // Check if there's an active lock in DB
+  const activeLocks = await db.select()
+    .from(generationLocks)
+    .where(eq(generationLocks.isActive, true))
+    .limit(1);
+  
+  if (activeLocks.length > 0) {
+    // Update cache from DB
+    activeGuideGenerationCache = {
+      type: activeLocks[0].lockType,
+      title: activeLocks[0].title,
+      startedAt: activeLocks[0].startedAt
+    };
     return false;
   }
-  activeGuideGeneration = { type, title, startedAt: new Date() };
-  console.log(`[GenerationLock] Acquired lock for ${type}: "${title}"`);
+  
+  // Acquire lock in DB
+  const [newLock] = await db.insert(generationLocks)
+    .values({ lockType: type, title, isActive: true })
+    .returning();
+  
+  activeGuideGenerationCache = { type, title, startedAt: newLock.startedAt };
+  console.log(`[GenerationLock] Acquired lock for ${type}: "${title}" (persisted to DB)`);
   return true;
 }
 
-function releaseGenerationLock() {
-  if (activeGuideGeneration) {
-    const duration = Date.now() - activeGuideGeneration.startedAt.getTime();
-    console.log(`[GenerationLock] Released lock for ${activeGuideGeneration.type}: "${activeGuideGeneration.title}" (duration: ${Math.round(duration/1000)}s)`);
-    activeGuideGeneration = null;
+async function releaseGenerationLock(): Promise<void> {
+  // Release all active locks in DB
+  const activeLocks = await db.select()
+    .from(generationLocks)
+    .where(eq(generationLocks.isActive, true));
+  
+  if (activeLocks.length > 0) {
+    for (const lock of activeLocks) {
+      const duration = Date.now() - lock.startedAt.getTime();
+      console.log(`[GenerationLock] Released lock for ${lock.lockType}: "${lock.title}" (duration: ${Math.round(duration/1000)}s)`);
+    }
+    await db.update(generationLocks)
+      .set({ isActive: false })
+      .where(eq(generationLocks.isActive, true));
   }
+  activeGuideGenerationCache = null;
 }
 
-function getActiveGeneration(): { type: string; title: string; startedAt: Date } | null {
-  return activeGuideGeneration;
+async function getActiveGeneration(): Promise<{ type: string; title: string; startedAt: Date } | null> {
+  // Check DB for active lock (source of truth)
+  const activeLocks = await db.select()
+    .from(generationLocks)
+    .where(eq(generationLocks.isActive, true))
+    .limit(1);
+  
+  if (activeLocks.length > 0) {
+    activeGuideGenerationCache = {
+      type: activeLocks[0].lockType,
+      title: activeLocks[0].title,
+      startedAt: activeLocks[0].startedAt
+    };
+    return activeGuideGenerationCache;
+  }
+  
+  activeGuideGenerationCache = null;
+  return null;
 }
 
 function getSectionLabel(chapterNumber: number, title?: string | null): string {
@@ -9548,7 +9593,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
   app.post("/api/generate-writing-guide", async (req: Request, res: Response) => {
     try {
       // Check for active generation to prevent simultaneous operations
-      const activeGen = getActiveGeneration();
+      const activeGen = await getActiveGeneration();
       if (activeGen) {
         return res.status(409).json({ 
           error: `Ya hay una generación en curso: ${activeGen.type} "${activeGen.title}". Por favor espera a que termine.`,
@@ -9625,8 +9670,8 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       console.log(`[GuideGenerator] Generating guide for "${params.title}"...`);
       
       // Acquire generation lock
-      if (!acquireGenerationLock("writing-guide", params.title)) {
-        const activeGen = getActiveGeneration();
+      if (!(await acquireGenerationLock("writing-guide", params.title))) {
+        const activeGen = await getActiveGeneration();
         return res.status(409).json({ 
           error: `Ya hay una generación en curso: ${activeGen?.type} "${activeGen?.title}". Por favor espera a que termine.`,
           activeGeneration: activeGen
@@ -9699,11 +9744,11 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
             : "Guía generada exitosamente",
         });
       } finally {
-        releaseGenerationLock();
+        await releaseGenerationLock();
       }
       
     } catch (error: any) {
-      releaseGenerationLock();
+      await releaseGenerationLock();
       console.error("[GuideGenerator] Error:", error);
       res.status(500).json({ 
         error: error.message || "Error al generar la guía",
@@ -9717,7 +9762,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
   // =============================================
   
   app.get("/api/generation-status", async (req: Request, res: Response) => {
-    const activeGen = getActiveGeneration();
+    const activeGen = await getActiveGeneration();
     res.json({
       isGenerating: !!activeGen,
       activeGeneration: activeGen,
@@ -9735,7 +9780,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     console.log("[SeriesGuideGenerator] Endpoint hit, body:", JSON.stringify(req.body).substring(0, 200));
     
     // Check for active generation to prevent simultaneous operations
-    const activeGen = getActiveGeneration();
+    const activeGen = await getActiveGeneration();
     if (activeGen) {
       return res.status(409).json({ 
         error: `Ya hay una generación en curso: ${activeGen.type} "${activeGen.title}". Por favor espera a que termine.`,
@@ -9782,8 +9827,8 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       console.log(`[SeriesGuideGenerator] Generating guide for series "${params.seriesTitle}"...`);
       
       // Acquire generation lock
-      if (!acquireGenerationLock("series-guide", params.seriesTitle)) {
-        const currentGen = getActiveGeneration();
+      if (!(await acquireGenerationLock("series-guide", params.seriesTitle))) {
+        const currentGen = await getActiveGeneration();
         return res.status(409).json({ 
           error: `Ya hay una generación en curso: ${currentGen?.type} "${currentGen?.title}". Por favor espera a que termine.`,
           activeGeneration: currentGen
@@ -9995,11 +10040,11 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
             : "Guía de serie generada exitosamente",
         });
       } finally {
-        releaseGenerationLock();
+        await releaseGenerationLock();
       }
       
     } catch (error: any) {
-      releaseGenerationLock();
+      await releaseGenerationLock();
       console.error("[SeriesGuideGenerator] Error:", error);
       res.status(500).json({ 
         error: error.message || "Error al generar la guía de serie",
@@ -10014,7 +10059,7 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
   
   app.post("/api/series/:id/continue-generation", async (req: Request, res: Response) => {
     // Check for active generation to prevent simultaneous operations
-    const activeGen = getActiveGeneration();
+    const activeGen = await getActiveGeneration();
     if (activeGen) {
       return res.status(409).json({ 
         error: `Ya hay una generación en curso: ${activeGen.type} "${activeGen.title}". Por favor espera a que termine.`,
@@ -10086,8 +10131,8 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
       console.log(`[ContinueGeneration] Found ${pendingVolumes.length} pending volumes to generate`);
       
       // Acquire generation lock
-      if (!acquireGenerationLock("continue-series", series.title)) {
-        const currentGen = getActiveGeneration();
+      if (!(await acquireGenerationLock("continue-series", series.title))) {
+        const currentGen = await getActiveGeneration();
         return res.status(409).json({ 
           error: `Ya hay una generación en curso: ${currentGen?.type} "${currentGen?.title}". Por favor espera a que termine.`,
           activeGeneration: currentGen
@@ -10206,11 +10251,11 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
           message: `Se generaron ${generatedBooks.length} libros adicionales para la serie "${series.title}"`,
         });
       } finally {
-        releaseGenerationLock();
+        await releaseGenerationLock();
       }
       
     } catch (error: any) {
-      releaseGenerationLock();
+      await releaseGenerationLock();
       console.error("[ContinueGeneration] Error:", error);
       res.status(500).json({ 
         error: error.message || "Error al continuar la generación de la serie",
