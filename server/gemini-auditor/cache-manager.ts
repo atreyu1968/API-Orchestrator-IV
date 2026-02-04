@@ -16,7 +16,7 @@ export interface ContextResult {
 
 let currentContext: ContextResult | null = null;
 
-const MODEL_NAME = "gemini-1.5-flash";
+const MODEL_NAME = "gemini-2.5-flash";
 
 export function getModelName(): string {
   return MODEL_NAME;
@@ -42,7 +42,7 @@ export async function initializeNovelContext(
   }
   
   console.log(`[ContextManager] Context size: ${fullContext.length} chars`);
-  console.log("[ContextManager] Using STANDARD mode with gemini-1.5-flash");
+  console.log("[ContextManager] Using STANDARD mode with gemini-2.5-flash");
   
   currentContext = {
     success: true,
