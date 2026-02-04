@@ -102,16 +102,26 @@ export function isContinuityConflict(issue: AuditIssue): boolean {
     /capítulo\s*\d+\s*vs\.?\s*capítulo\s*\d+/i,
     /sin embargo,?\s*(en|el)\s*capítulo/i,
     /inconsistencia\s*(temporal|lógica|de continuidad)/i,
-    /contradicción\s*entre/i,
+    /contradicción\s*(en|entre)/i,
+    /existe\s*una?\s*contradicción/i,
     /en\s*el\s*capítulo\s*\d+.*pero\s*(en\s*el\s*)?capítulo\s*\d+/i,
     /genera\s*una\s*inconsistencia/i,
-    /esto\s*genera\s*una\s*incons/i
+    /esto\s*genera\s*una\s*incons/i,
+    /capítulo\s*\d+.*sin embargo.*capítulo\s*\d+/i,
+    /afiliación.*matones/i,
+    /napolitano.*calabr/i,
+    /calabr.*napolitano/i
   ];
   
   const locationPattern = /capítulo\s*\d+\s*vs\.?\s*capítulo\s*\d+/i;
   
-  return conflictPatterns.some(p => p.test(issue.description)) ||
-         locationPattern.test(issue.location || '');
+  const fullText = `${issue.location || ''} ${issue.description}`;
+  const hasConflictPattern = conflictPatterns.some(p => p.test(fullText));
+  const hasVsInLocation = locationPattern.test(issue.location || '');
+  
+  console.log(`[ContinuityConflict] Checking: location="${issue.location?.substring(0, 50)}", hasVs=${hasVsInLocation}, hasPattern=${hasConflictPattern}`);
+  
+  return hasConflictPattern || hasVsInLocation;
 }
 
 export function extractContinuityConflict(issue: AuditIssue): ContinuityConflict | null {
