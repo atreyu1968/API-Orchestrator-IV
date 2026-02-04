@@ -1017,6 +1017,16 @@ export default function Dashboard() {
                         <Download className="h-4 w-4 mr-2" />
                         Exportar Word
                       </Button>
+                      {chapters && chapters.filter(c => c.chapterNumber > 0 && c.chapterNumber < 998).length >= 2 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowMergeChaptersDialog(true)}
+                          data-testid="button-merge-chapters-manuscript"
+                        >
+                          Fusionar
+                        </Button>
+                      )}
                     </>
                   )}
                 </div>
@@ -1488,16 +1498,6 @@ export default function Dashboard() {
                         <Plus className="h-4 w-4 mr-2" />
                         Extender
                       </Button>
-                      {chapters && chapters.filter(c => c.chapterNumber > 0).length >= 2 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowMergeChaptersDialog(true)}
-                          data-testid="button-merge-chapters"
-                        >
-                          Fusionar Capítulos
-                        </Button>
-                      )}
                     </>
                   )}
 
