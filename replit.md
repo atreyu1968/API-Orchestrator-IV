@@ -54,6 +54,7 @@ Preferred communication style: Simple, everyday language.
 - **Character Consistency & Emergency Recovery**: Enforces character consistency during regeneration and provides emergency chapter recovery to reconstruct outlines from existing chapters if plotOutline is missing. Extended guide character extraction parses multiple formats (bullet lists, headers, prose mentions).
 - **Cancel Correction Button**: The "Cancelar Corrección" button now properly stops active corrections. The orchestrator checks cancellation flags via `shouldStopProcessing()` at multiple loop points, with logged traceability.
 - **Enhanced Error Recovery**: All orchestrator errors result in a "paused" status for easy resume, preserving state and providing activity logs with context.
+- **Chapter Backup System (v2.9.6)**: Automatic backups are created before any destructive chapter operations (merge, delete). Backups include full chapter data (content, metadata, scores) and can be restored via API. Prevents data loss during chapter manipulation. Endpoints: `GET /api/projects/:id/chapter-backups` (list), `POST /api/chapter-backups/:id/restore` (restore).
 - **Structural Issue Detection**: Identifies and auto-resolves structural issues to prevent infinite rewrite loops.
 - **Re-editor**: Functions as a Development Editor with forensic consistency audits and commercial viability analysis, using surgical fix optimization.
 
