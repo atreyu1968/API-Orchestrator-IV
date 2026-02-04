@@ -190,8 +190,11 @@ export async function registerRoutes(
     return correction?.cancelled || false;
   };
   
-  // Export for orchestrator to check cancellation
+  // Export for orchestrator to check cancellation and manage corrections
   (global as any).isCorrectionCancelled = isCorrectionCancelled;
+  (global as any).startCorrection = startCorrection;
+  (global as any).endCorrection = endCorrection;
+  (global as any).isAnyCorrectionActive = isAnyCorrectionActive;
   
   // Legacy compatibility
   const activeDetectAndFix = new Set<number>();

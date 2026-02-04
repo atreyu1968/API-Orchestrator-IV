@@ -5478,6 +5478,13 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
   async runFinalReviewOnly(project: Project, maxCycles: number = 15): Promise<void> {
     console.log(`[OrchestratorV2] Running final review for project ${project.id}`);
     
+    // Register correction in global tracking so cancel button works
+    const startCorrection = (global as any).startCorrection;
+    const endCorrection = (global as any).endCorrection;
+    if (startCorrection) {
+      startCorrection(project.id, 'legacy');
+    }
+    
     try {
       this.callbacks.onAgentStatus("final-reviewer", "active", "Ejecutando revisión final completa...");
       
@@ -7809,6 +7816,11 @@ ${issuesDescription}`;
       });
       
       console.log(`[OrchestratorV2] Project ${project.id} paused after FinalReviewer error - can resume with "Continuar" button`);
+    } finally {
+      // Always unregister correction when method ends (success, error, or cancellation)
+      if (endCorrection) {
+        endCorrection(project.id);
+      }
     }
   }
 
@@ -9536,6 +9548,18 @@ ${wbContext}
    * Main entry point for the new "Detect All, Then Fix" strategy
    */
   async detectAndFixStrategy(project: any): Promise<{ registry: IssueRegistry; finalScore: number }> {
+    // Register correction in global tracking so cancel button works
+    const startCorrection = (global as any).startCorrection;
+    const endCorrection = (global as any).endCorrection;
+    const isAlreadyActive = (global as any).isAnyCorrectionActive;
+    
+    // Only register if not already registered (avoid double registration from endpoint)
+    const wasAlreadyActive = isAlreadyActive && isAlreadyActive(project.id);
+    if (startCorrection && !wasAlreadyActive) {
+      startCorrection(project.id, 'detect-fix');
+    }
+    
+    try {
     const chapters = await storage.getChaptersByProject(project.id);
     const worldBibleRecord = await storage.getWorldBibleByProject(project.id);
     const worldBible = (worldBibleRecord as any)?.content || worldBibleRecord || {};
@@ -9596,5 +9620,11 @@ ${wbContext}
     });
 
     return { registry: finalRegistry, finalScore };
+    } finally {
+      // Always unregister correction when method ends (only if we registered it)
+      if (endCorrection && !wasAlreadyActive) {
+        endCorrection(project.id);
+      }
+    }
   }
 }
