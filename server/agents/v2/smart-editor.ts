@@ -370,6 +370,65 @@ ${jsonFormat}`;
   }
 
   /**
+   * Focused paragraph rewrite - ONLY rewrites the specific paragraph(s) with the issue
+   * Returns the FULL chapter with only the affected paragraph(s) modified
+   */
+  async focusedParagraphRewrite(input: SurgicalFixInput): Promise<AgentResponse & { rewrittenContent?: string }> {
+    console.log(`[SmartEditor] Focused paragraph rewrite for chapter (${input.chapterContent.length} chars)...`);
+    
+    const focusedPrompt = `REESCRITURA FOCALIZADA DE PÁRRAFO ESPECÍFICO
+
+PROBLEMA A CORREGIR:
+${input.errorDescription}
+
+CAPÍTULO COMPLETO (REFERENCIA):
+${input.chapterContent}
+
+INSTRUCCIONES CRÍTICAS:
+1. IDENTIFICA el párrafo EXACTO donde ocurre el problema descrito
+2. REESCRIBE ÚNICAMENTE ese párrafo (máximo 2 párrafos si es necesario)
+3. MANTÉN el resto del capítulo EXACTAMENTE IGUAL, carácter por carácter
+4. El párrafo corregido debe tener una longitud similar al original (+-20%)
+5. PRESERVA el estilo, tono y voz del autor
+
+FORMATO DE RESPUESTA OBLIGATORIO:
+Devuelve el capítulo COMPLETO con SOLO el/los párrafo(s) afectado(s) corregido(s).
+NO incluyas explicaciones, comentarios, ni formato markdown.
+El resultado debe ser texto plano listo para reemplazar el capítulo original.`;
+
+    const response = await this.generateContent(focusedPrompt);
+    
+    if (response.error) {
+      console.error(`[SmartEditor] Focused paragraph rewrite API error: ${response.error}`);
+      return response;
+    }
+
+    if (!response.content || response.content.length === 0) {
+      console.error(`[SmartEditor] Focused paragraph rewrite returned empty content`);
+      return { ...response, rewrittenContent: undefined };
+    }
+
+    // Clean up the response
+    let rewrittenContent = response.content
+      .replace(/^```[\w]*\n?/gm, '')
+      .replace(/```$/gm, '')
+      .trim();
+    
+    // Validate the rewrite maintains most of the original
+    const originalLen = input.chapterContent.length;
+    const newLen = rewrittenContent.length;
+    const lengthDiff = Math.abs(newLen - originalLen) / originalLen;
+    
+    if (lengthDiff > 0.25) {
+      console.warn(`[SmartEditor] Focused rewrite length differs by ${(lengthDiff * 100).toFixed(1)}% - may have rewritten too much`);
+    }
+    
+    console.log(`[SmartEditor] Focused paragraph rewrite complete: ${rewrittenContent.length} chars (original: ${originalLen}, diff: ${(lengthDiff * 100).toFixed(1)}%)`);
+    
+    return { ...response, rewrittenContent };
+  }
+
+  /**
    * Full chapter rewrite - rewrites entire chapter with complete context
    * Now includes World Bible, character info, and all relevant context for better corrections
    */

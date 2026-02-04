@@ -9511,8 +9511,8 @@ INSTRUCCIONES DE CONSISTENCIA:
             }
             
           } else {
-            // Attempt 3: Use FOCUSED rewrite (last resort) - only modify the specific paragraph
-            console.log(`[OrchestratorV2] ESCALATION: Using focused rewrite for issue ${issue.id} after 2 failed surgicalFix attempts`);
+            // Attempt 3: Use FOCUSED paragraph rewrite (last resort) - only modify the specific paragraph
+            console.log(`[OrchestratorV2] ESCALATION: Using focused paragraph rewrite for issue ${issue.id} after 2 failed surgicalFix attempts`);
             
             await storage.createActivityLog({
               projectId: project.id,
@@ -9521,48 +9521,10 @@ INSTRUCCIONES DE CONSISTENCIA:
               agentRole: "smart-editor",
             });
             
-            // BUILD COMPLETE WORLD BIBLE CONTEXT FOR STRICT PRESERVATION
-            const wbContext = this.buildFullWorldBibleForRewrite(worldBible);
-            
-            // STRICT REWRITE PROMPT with FULL World Bible injection
-            const rewriteDescription = `CORRECCION FOCALIZADA DE UN PROBLEMA ESPECIFICO:
-${errorDescription}
-
-===============================================================================
-                    WORLD BIBLE - ELEMENTOS CANONICOS
-         PROHIBIDO MODIFICAR CUALQUIER ELEMENTO LISTADO ABAJO
-===============================================================================
-
-${wbContext}
-
-===============================================================================
-                         REGLAS DE REESCRITURA
-===============================================================================
-
-[PERMITIDO]:
-- Corregir UNICAMENTE el problema especifico descrito arriba
-- Modificar maximo 1-2 parrafos donde ocurre el error
-- Ajustar frases para resolver el issue sin cambiar el significado global
-
-[PROHIBIDO] (causara RECHAZO automatico):
-- Cambiar CUALQUIER atributo fisico de personajes (ojos, pelo, edad, altura)
-- Resucitar personajes muertos o mencionar muertos como vivos
-- Cambiar relaciones establecidas entre personajes
-- Modificar la linea temporal o epoca
-- Anadir objetos que no existian antes
-- Cambiar nombres de lugares o personajes
-- Inventar informacion nueva no implicita en el texto
-- Modificar mas del 15% del capitulo
-
-[RESTRICCIONES DE ALCANCE]:
-- Localiza el parrafo EXACTO con el problema
-- Reescribe SOLO ese parrafo (maximo 2)
-- El resto del capitulo debe permanecer IDENTICO
-- Longitud del parrafo corregido: +-20% del original`;
-            
-            const rewriteResult = await this.smartEditor.fullRewrite({
+            // Use the new focusedParagraphRewrite method which is designed to only change specific paragraphs
+            const rewriteResult = await this.smartEditor.focusedParagraphRewrite({
               chapterContent: chapter.content,
-              errorDescription: rewriteDescription,
+              errorDescription: errorDescription,
               worldBible,
               chapterNumber: issue.chapter,
             });
@@ -9570,16 +9532,16 @@ ${wbContext}
             this.addTokenUsage(rewriteResult.tokenUsage);
             await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", rewriteResult.tokenUsage, issue.chapter);
 
-            // STRICT VALIDATION: Reject if too much content changed
+            // VALIDATION: Accept if content changed but not too drastically
             if (rewriteResult.rewrittenContent && 
                 rewriteResult.rewrittenContent !== chapter.content) {
               
-              // Calculate how much changed (character-level diff estimate)
+              // Calculate how much changed
               const originalLen = chapter.content.length;
               const newLen = rewriteResult.rewrittenContent.length;
               const lengthDiff = Math.abs(newLen - originalLen) / originalLen;
               
-              // Count how many lines changed (rough estimate)
+              // Count how many lines changed
               const originalLines = chapter.content.split('\n');
               const newLines = rewriteResult.rewrittenContent.split('\n');
               let changedLines = 0;
@@ -9590,15 +9552,17 @@ ${wbContext}
               changedLines += Math.abs(originalLines.length - newLines.length);
               const changeRatio = changedLines / originalLines.length;
               
-              // REJECT if more than 15% of lines changed or length differs by more than 10%
-              if (changeRatio > 0.15 || lengthDiff > 0.10) {
-                console.warn(`[OrchestratorV2] REJECTED fullRewrite: too many changes (${(changeRatio * 100).toFixed(1)}% lines, ${(lengthDiff * 100).toFixed(1)}% length)`);
+              // MORE LENIENT: Accept up to 25% line changes or 15% length difference
+              // This is the "last resort" so we're more permissive than surgical patches
+              if (changeRatio > 0.25 || lengthDiff > 0.15) {
+                console.warn(`[OrchestratorV2] REJECTED focusedParagraphRewrite: too many changes (${(changeRatio * 100).toFixed(1)}% lines, ${(lengthDiff * 100).toFixed(1)}% length)`);
                 issue.lastAttemptError = `Intento ${issue.attempts}: reescritura rechazada - cambió demasiado contenido (${(changeRatio * 100).toFixed(0)}% del capítulo)`;
-                // Don't set correctedContent - this will trigger the "continue" below
               } else {
                 correctedContent = rewriteResult.rewrittenContent;
-                console.log(`[OrchestratorV2] Focused rewrite accepted: ${(changeRatio * 100).toFixed(1)}% lines changed`);
+                console.log(`[OrchestratorV2] Focused paragraph rewrite accepted: ${(changeRatio * 100).toFixed(1)}% lines changed`);
               }
+            } else {
+              issue.lastAttemptError = `Intento ${issue.attempts}: reescritura no generó cambios`;
             }
           }
 
