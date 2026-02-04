@@ -91,19 +91,28 @@ function isStructuralIssue(issue: AuditIssue): boolean {
     /narran\s+lo\s+mismo/i,
     /repiten?\s+(el|los)\s+mismo/i,
     /se\s+repite\s+en\s+\w+\s+capítulos/i,
-    /sensación\s+de\s+repetición/i,
+    /sensación\s+de\s*repetición/i,
     /teléfono.*vibr.*repite/i,
-    /llamada.*repite/i
+    /llamada.*repite/i,
+    /interacción\s+redundante/i,
+    /redundante\s+con/i,
+    /el\s+mismo\s+\w+\s+(para|que)/i,
+    /primera\s+parte.*segunda\s+parte/i
   ];
   
   const descriptionLower = issue.description.toLowerCase();
   const hasMultipleChapters = (issue.location?.match(/capítulo/gi)?.length || 0) >= 2 ||
                               (issue.location?.match(/,/g)?.length || 0) >= 2;
+  const hasRedundancy = descriptionLower.includes('redundant') || 
+                        descriptionLower.includes('mismo fragmento') ||
+                        descriptionLower.includes('el mismo') ||
+                        (descriptionLower.includes('primera') && descriptionLower.includes('segunda'));
   
   return structuralPatterns.some(pattern => pattern.test(issue.description)) ||
     (descriptionLower.includes('capítulo') && 
      (descriptionLower.includes('idéntic') || descriptionLower.includes('duplic'))) ||
-    (hasMultipleChapters && (descriptionLower.includes('repite') || descriptionLower.includes('similar')));
+    (hasMultipleChapters && (descriptionLower.includes('repite') || descriptionLower.includes('similar'))) ||
+    hasRedundancy;
 }
 
 export function isContinuityConflict(issue: AuditIssue): boolean {
@@ -352,9 +361,55 @@ function isRepeatedSceneIssue(description: string): boolean {
   return patterns.some(p => p.test(description));
 }
 
+function isRedundantInteractionIssue(description: string): boolean {
+  const patterns = [
+    /interacción\s+redundante/i,
+    /redundante\s+con/i,
+    /el\s+mismo\s+\w+\s+(para|que)/i,
+    /primera\s+parte.*segunda\s+parte/i,
+    /mismo\s+fragmento/i,
+    /entrega.*el\s+mismo/i
+  ];
+  return patterns.some(p => p.test(description));
+}
+
 function generateResolutionOptions(chapters: number[], description: string): ResolutionOption[] {
   const options: ResolutionOption[] = [];
   const isRepeatedScene = isRepeatedSceneIssue(description);
+  const isRedundant = isRedundantInteractionIssue(description);
+  
+  if (isRedundant && chapters.length <= 1) {
+    const chapterName = chapters.length === 1 ? `Capítulo ${chapters[0]}` : 'Epílogo';
+    
+    options.push({
+      id: `remove-first-occurrence`,
+      type: 'rewrite',
+      label: `✨ RECOMENDADO: Eliminar primera aparición`,
+      description: `Elimina la primera interacción redundante del ${chapterName}, manteniendo la segunda que es más significativa narrativamente.`,
+      chaptersToMerge: chapters.length > 0 ? chapters : [0],
+      estimatedTokens: 2000
+    });
+    
+    options.push({
+      id: `remove-second-occurrence`,
+      type: 'rewrite',
+      label: `Eliminar segunda aparición`,
+      description: `Elimina la segunda interacción del ${chapterName}, manteniendo solo la primera.`,
+      chaptersToMerge: chapters.length > 0 ? chapters : [0],
+      estimatedTokens: 2000
+    });
+    
+    options.push({
+      id: `modify-to-differ`,
+      type: 'rewrite',
+      label: `Modificar para diferenciar`,
+      description: `Modifica una de las interacciones para que sean claramente diferentes y no redundantes.`,
+      chaptersToMerge: chapters.length > 0 ? chapters : [0],
+      estimatedTokens: 2500
+    });
+    
+    return options;
+  }
   
   if (isRepeatedScene && chapters.length > 2) {
     options.push({
