@@ -806,7 +806,7 @@ CAPÍTULO CON EXPLICACIÓN:`;
       { role: 'user', content: prompt }
     ],
     temperature: 0.4,
-    max_tokens: 10000
+    max_tokens: 8000
   });
 
   const newChapterContent = completion.choices[0]?.message?.content?.trim();
