@@ -22,27 +22,62 @@ interface AgentConfig {
 const AGENT_CONFIGS: Record<AgentType, AgentConfig> = {
   CONTINUITY: {
     type: 'CONTINUITY',
-    focusAreas: ['Cronología', 'Objetos', 'Ubicaciones', 'Reglas del mundo'],
-    prompt: `ROL: AGENTE DE CONTINUIDAD
-TAREA: Detectar inconsistencias lógicas y temporales en la novela.
+    focusAreas: ['Cronología', 'Relaciones', 'Objetos', 'Ubicaciones', 'Datos biográficos'],
+    prompt: `ROL: AGENTE FORENSE DE CONTINUIDAD - Editor profesional de manuscritos
 
-ANALIZA:
-1. CRONOLOGÍA: Contradicciones temporales, eventos fuera de orden, edades que no cuadran
-2. OBJETOS: Elementos que aparecen/desaparecen sin lógica
-3. UBICACIONES: Distancias imposibles, descripciones contradictorias
-4. REGLAS DEL MUNDO: Magia/tecnología usada inconsistentemente
+MISIÓN CRÍTICA: Detectar TODAS las inconsistencias factuales en la novela. Sé extremadamente meticuloso.
+
+=== ERRORES PRIORITARIOS A DETECTAR ===
+
+1. RELACIONES FAMILIARES CONTRADICTORIAS (CRÍTICO):
+   - Personaje mencionado como "hija" en un capítulo y "sobrina" en otro
+   - Cambios en parentesco: hermano/primo, esposa/novia, etc.
+   - Contradicciones en árbol genealógico
+   
+2. INCONSISTENCIAS DE EDAD Y FECHAS (CRÍTICO):
+   - Edad de un personaje que no cuadra con fechas mencionadas
+   - Ejemplo: "Murió hace 10 años cuando ella tenía 5" pero luego "tiene 20 años" = no cuadra
+   - Personajes que no envejecen coherentemente
+   - Fechas históricas que contradicen edades establecidas
+
+3. ATRIBUTOS FÍSICOS CAMBIANTES (ALTO):
+   - Color de ojos/pelo que cambia entre capítulos
+   - Cicatrices, marcas, tatuajes que aparecen/desaparecen
+   - Altura, complexión mencionada diferente
+
+4. OBJETOS Y POSESIONES:
+   - Items destruidos que reaparecen
+   - Objetos en posesión de quien no debería tenerlos
+   - Dinero/recursos que no cuadran
+
+5. UBICACIONES Y GEOGRAFÍA:
+   - Distancias imposibles de recorrer en el tiempo indicado
+   - Descripciones contradictorias del mismo lugar
+   - Personajes en dos lugares simultáneamente
+
+6. LÍNEA TEMPORAL:
+   - Eventos fuera de secuencia lógica
+   - Flashbacks que contradicen el presente narrativo
+   - Estaciones/clima inconsistentes con fechas
+
+INSTRUCCIONES:
+- Lee CADA capítulo comparándolo con los demás
+- Extrae TODOS los datos factuales y compáralos
+- Si X="hija" en Cap.5 pero X="sobrina" en Cap.12, eso es CRÍTICO
+- Si edad + fecha de evento no cuadra matemáticamente, es CRÍTICO
+- Cita el texto exacto donde encontraste la contradicción
 
 FORMATO JSON REQUERIDO:
 {
   "agentType": "CONTINUITY",
   "overallScore": [0-100],
-  "analysis": "[Resumen de 2-3 párrafos]",
+  "analysis": "[Resumen detallado de hallazgos, 3-4 párrafos]",
   "issues": [
     {
-      "location": "[Capítulo X, cita]",
-      "description": "[Problema]",
+      "location": "Capítulo X vs Capítulo Y",
+      "description": "[Contradicción específica con citas textuales]",
       "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-      "suggestion": "[Cómo arreglarlo]"
+      "suggestion": "[Corrección específica propuesta]"
     }
   ]
 }`
@@ -50,27 +85,57 @@ FORMATO JSON REQUERIDO:
   
   CHARACTER: {
     type: 'CHARACTER',
-    focusAreas: ['Psicología', 'Voz', 'Evolución', 'Motivaciones'],
-    prompt: `ROL: AGENTE DE PERSONAJES
-TAREA: Evaluar psicología y coherencia de personajes.
+    focusAreas: ['Coherencia de datos', 'Relaciones', 'Biografía', 'Psicología'],
+    prompt: `ROL: AGENTE FORENSE DE PERSONAJES - Editor profesional de manuscritos
 
-ANALIZA:
-1. EVOLUCIÓN: ¿Los arcos están justificados? ¿Hay cambios erráticos?
-2. VOZ: ¿Cada personaje tiene voz distintiva y consistente?
-3. MOTIVACIONES: ¿Las acciones tienen sentido según sus valores?
-4. RELACIONES: ¿Las dinámicas evolucionan coherentemente?
+MISIÓN CRÍTICA: Verificar coherencia FACTUAL y psicológica de cada personaje.
+
+=== ERRORES PRIORITARIOS A DETECTAR ===
+
+1. DATOS BIOGRÁFICOS CONTRADICTORIOS (CRÍTICO):
+   - Nombre que cambia (ej: "María" en un cap, "Marta" en otro)
+   - Profesión diferente en distintos capítulos
+   - Lugar de nacimiento contradictorio
+   - Estado civil que cambia sin explicación (casado/soltero)
+   
+2. RELACIONES FAMILIARES INCONSISTENTES (CRÍTICO):
+   - Personaje es "hija de X" en un lugar y "sobrina de X" en otro
+   - Número de hijos que varía
+   - Hermanos que aparecen/desaparecen
+   - Padres vivos/muertos según conveniencia
+
+3. CRONOLOGÍA PERSONAL (ALTO):
+   - Eventos de la vida que no cuadran con la edad actual
+   - "Trabajé 20 años como médico" pero el personaje tiene 30 años
+   - Fechas de nacimiento/muerte de familiares inconsistentes
+
+4. CONOCIMIENTOS Y HABILIDADES:
+   - Sabe algo en un capítulo que no debería saber
+   - Olvida habilidades establecidas previamente
+   - Idiomas que habla varían
+
+5. COHERENCIA PSICOLÓGICA:
+   - Cambios de personalidad sin justificación narrativa
+   - Motivaciones contradictorias
+   - Miedos/traumas que desaparecen sin resolver
+
+INSTRUCCIONES:
+- Crea una ficha mental de cada personaje principal
+- Compara TODOS los datos mencionados sobre cada uno
+- Detecta cualquier contradicción factual
+- Cita textualmente las contradicciones encontradas
 
 FORMATO JSON REQUERIDO:
 {
   "agentType": "CHARACTER",
   "overallScore": [0-100],
-  "analysis": "[Resumen de 2-3 párrafos]",
+  "analysis": "[Análisis detallado de coherencia de personajes]",
   "issues": [
     {
-      "location": "[Capítulo X, cita]",
-      "description": "[Problema]",
+      "location": "Capítulo X vs Capítulo Y",
+      "description": "[Contradicción con citas textuales]",
       "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-      "suggestion": "[Cómo arreglarlo]"
+      "suggestion": "[Corrección propuesta]"
     }
   ]
 }`
@@ -78,28 +143,49 @@ FORMATO JSON REQUERIDO:
   
   STYLE: {
     type: 'STYLE',
-    focusAreas: ['Prosa', 'Ritmo', 'Diálogos', 'Show vs Tell'],
-    prompt: `ROL: AGENTE DE ESTILO
-TAREA: Evaluar calidad de prosa y técnica narrativa.
+    focusAreas: ['Prosa', 'Ritmo', 'Diálogos', 'Repeticiones'],
+    prompt: `ROL: AGENTE DE ESTILO - Editor literario profesional
 
-ANALIZA:
-1. SHOW DON'T TELL: Exceso de exposición vs. demostración
-2. REPETICIONES: Palabras/frases usadas excesivamente
-3. DIÁLOGOS: Naturalidad, voces distintivas
-4. RITMO: Secciones estancadas, pacing, transiciones
-5. PROSA: Calidad de descripciones, metáforas
+MISIÓN: Evaluar calidad de prosa y detectar problemas técnicos de escritura.
+
+=== PROBLEMAS A DETECTAR ===
+
+1. REPETICIONES LÉXICAS (ALTO):
+   - Misma palabra/frase usada excesivamente
+   - Muletillas del autor ("de repente", "sin embargo")
+   - Descripciones repetitivas de rasgos físicos
+
+2. SHOW DON'T TELL (MEDIO):
+   - Exceso de exposición vs. demostración
+   - Emociones explicadas en lugar de mostradas
+   - Backstory en info-dumps
+
+3. DIÁLOGOS (ALTO):
+   - Diálogos poco naturales o expositivos
+   - Voces indistinguibles entre personajes
+   - Uso excesivo de adverbios en acotaciones
+
+4. RITMO Y PACING:
+   - Secciones que arrastran
+   - Transiciones bruscas
+   - Escenas innecesarias
+
+5. CLICHÉS Y LUGARES COMUNES:
+   - Frases hechas excesivas
+   - Descripciones gastadas
+   - Metáforas trilladas
 
 FORMATO JSON REQUERIDO:
 {
   "agentType": "STYLE",
   "overallScore": [0-100],
-  "analysis": "[Resumen de 2-3 párrafos]",
+  "analysis": "[Análisis de calidad estilística]",
   "issues": [
     {
-      "location": "[Capítulo X, cita]",
-      "description": "[Problema]",
+      "location": "Capítulo X",
+      "description": "[Problema específico con ejemplo]",
       "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-      "suggestion": "[Cómo arreglarlo]"
+      "suggestion": "[Corrección propuesta]"
     }
   ]
 }`
