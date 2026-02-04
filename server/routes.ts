@@ -10885,27 +10885,31 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
       
       const cacheResult = await initializeNovelContext(audit.novelContent, audit.bibleContent, novelTitle);
       
-      if (!cacheResult.success || !cacheResult.cacheId) {
-        sendEvent("error", { message: `Error creando caché: ${cacheResult.error}` });
+      if (!cacheResult.success) {
+        sendEvent("error", { message: `Error inicializando contexto: ${cacheResult.error || 'Error desconocido'}` });
         await db.update(manuscriptAudits).set({ 
           status: "error", 
-          errorMessage: cacheResult.error 
+          errorMessage: cacheResult.error || 'Error desconocido'
         }).where(eq(manuscriptAudits.id, auditId));
         return res.end();
       }
       
-      await db.update(manuscriptAudits).set({ 
-        cacheId: cacheResult.cacheId,
-        cacheExpiresAt: cacheResult.expiresAt,
-      }).where(eq(manuscriptAudits.id, auditId));
-      
-      sendEvent("progress", { phase: "caching_complete", message: "Caché creado. Iniciando análisis paralelo..." });
+      // Update cache info (only in CACHE mode)
+      if (cacheResult.mode === 'CACHE' && cacheResult.cacheId) {
+        await db.update(manuscriptAudits).set({ 
+          cacheId: cacheResult.cacheId,
+          cacheExpiresAt: cacheResult.expiresAt,
+        }).where(eq(manuscriptAudits.id, auditId));
+        sendEvent("progress", { phase: "caching_complete", message: "Caché creado. Iniciando análisis paralelo..." });
+      } else {
+        sendEvent("progress", { phase: "caching_complete", message: "Modo estándar activado. Iniciando análisis paralelo..." });
+      }
       
       // Phase 2: Run agents in parallel
       sendEvent("progress", { phase: "analyzing", message: "Ejecutando 3 agentes de análisis en paralelo..." });
       await db.update(manuscriptAudits).set({ status: "analyzing" }).where(eq(manuscriptAudits.id, auditId));
       
-      const reports = await runAllAgents(cacheResult.cacheId);
+      const reports = await runAllAgents(cacheResult.cacheId || "standard-mode");
       
       // Find reports by type
       const continuityReport = reports.find(r => r.agentType === 'CONTINUITY');
@@ -10936,8 +10940,10 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
         completedAt: new Date(),
       }).where(eq(manuscriptAudits.id, auditId));
       
-      // Clean up cache
-      await deleteCache(cacheResult.cacheId);
+      // Clean up cache (only in CACHE mode)
+      if (cacheResult.mode === 'CACHE' && cacheResult.cacheId) {
+        await deleteCache(cacheResult.cacheId);
+      }
       
       sendEvent("complete", {
         overallScore,
