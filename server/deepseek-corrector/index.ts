@@ -950,13 +950,29 @@ function extractChapterListFromLocation(location: string): (number | 'prólogo')
 }
 
 function extractConceptFromDescription(description: string): string | null {
+  const quotedPhrases = description.match(/'([^']{5,80})'/g);
+  if (quotedPhrases && quotedPhrases.length > 0) {
+    const firstPhrase = quotedPhrases[0].replace(/'/g, '').trim();
+    console.log(`[MultiChapter] Concepto de frase entrecomillada: "${firstPhrase}"`);
+    return firstPhrase;
+  }
+  
+  const doubleQuotedPhrases = description.match(/"([^"]{5,80})"/g);
+  if (doubleQuotedPhrases && doubleQuotedPhrases.length > 0) {
+    const firstPhrase = doubleQuotedPhrases[0].replace(/"/g, '').trim();
+    console.log(`[MultiChapter] Concepto de frase con comillas dobles: "${firstPhrase}"`);
+    return firstPhrase;
+  }
+
   const patterns = [
     /La descripción del?\s+(.+?)\s+se repite/i,
     /descripción de[l]?\s+(.+?)\s+se repite/i,
     /(.+?)\s+se repite con una frecuencia/i,
     /(.+?)\s+aparece de forma repetitiva/i,
     /menciones? de[l]?\s+(.+?)\s+(?:se|es|son)/i,
-    /(?:el|la|los|las)\s+(.+?)\s+(?:es|son|aparece|se usa)/i
+    /(?:el|la|los|las)\s+(.+?)\s+(?:es|son|aparece|se usa)/i,
+    /Frases como\s+(.+?)\s+aparecen/i,
+    /ejemplos? (?:incluyen?|como)\s+(.+?)(?:\.|,|$)/i
   ];
   
   for (const pattern of patterns) {
@@ -964,7 +980,7 @@ function extractConceptFromDescription(description: string): string | null {
     if (match && match[1]) {
       const concept = match[1].trim();
       if (concept.length > 5 && concept.length < 200) {
-        console.log(`[MultiChapter] Concepto extraído: "${concept}"`);
+        console.log(`[MultiChapter] Concepto extraído por patrón: "${concept}"`);
         return concept;
       }
     }
@@ -996,15 +1012,75 @@ function extractChapterContent2(manuscript: string, chapterRef: number | 'prólo
   return null;
 }
 
+function extractAllQuotedPhrases(description: string): string[] {
+  const phrases: string[] = [];
+  const singleQuoted = description.match(/'([^']{3,80})'/g) || [];
+  const doubleQuoted = description.match(/"([^"]{3,80})"/g) || [];
+  
+  for (const p of singleQuoted) {
+    phrases.push(p.replace(/'/g, '').trim());
+  }
+  for (const p of doubleQuoted) {
+    phrases.push(p.replace(/"/g, '').trim());
+  }
+  
+  return phrases.filter(p => p.length >= 3);
+}
+
 async function findConceptInChapter(
   chapterContent: string,
   concept: string,
   fullDescription: string
 ): Promise<{ sentence: string; context: string } | null> {
+  const contentLower = chapterContent.toLowerCase();
+  const conceptLower = concept.toLowerCase();
+  
+  const directIndex = contentLower.indexOf(conceptLower);
+  if (directIndex !== -1) {
+    const lineStart = chapterContent.lastIndexOf('\n', directIndex) + 1;
+    const lineEnd = chapterContent.indexOf('\n', directIndex);
+    const sentence = chapterContent.substring(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
+    
+    if (sentence.length >= 20) {
+      const contextStart = Math.max(0, directIndex - 200);
+      const contextEnd = Math.min(chapterContent.length, directIndex + concept.length + 200);
+      const context = chapterContent.substring(contextStart, contextEnd);
+      
+      console.log(`[MultiChapter] Encontrado directo: "${concept}" → "${sentence.substring(0, 60)}..."`);
+      return { sentence, context };
+    }
+  }
+  
+  const allPhrases = extractAllQuotedPhrases(fullDescription);
+  for (const phrase of allPhrases) {
+    const phraseLower = phrase.toLowerCase();
+    const phraseIndex = contentLower.indexOf(phraseLower);
+    
+    if (phraseIndex !== -1) {
+      const lineStart = chapterContent.lastIndexOf('\n', phraseIndex) + 1;
+      const lineEnd = chapterContent.indexOf('\n', phraseIndex);
+      const sentence = chapterContent.substring(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
+      
+      if (sentence.length >= 20) {
+        const contextStart = Math.max(0, phraseIndex - 200);
+        const contextEnd = Math.min(chapterContent.length, phraseIndex + phrase.length + 200);
+        const context = chapterContent.substring(contextStart, contextEnd);
+        
+        console.log(`[MultiChapter] Encontrado frase "${phrase}" → "${sentence.substring(0, 60)}..."`);
+        return { sentence, context };
+      }
+    }
+  }
+  
   const stopWords = ['de', 'del', 'la', 'el', 'los', 'las', 'en', 'con', 'una', 'un', 'se', 'que', 'por', 'para'];
   const keywords = concept.split(/\s+/)
     .filter(w => w.length > 2 && !stopWords.includes(w.toLowerCase()))
     .map(w => w.toLowerCase());
+  
+  if (keywords.length === 0) {
+    console.log(`[MultiChapter] Sin keywords válidas para buscar`);
+    return null;
+  }
   
   console.log(`[MultiChapter] Buscando keywords: ${keywords.join(', ')}`);
   
