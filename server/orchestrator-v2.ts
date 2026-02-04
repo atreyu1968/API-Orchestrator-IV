@@ -9371,7 +9371,7 @@ Responde SOLO en JSON válido (sin markdown):
     registry: IssueRegistry,
     worldBible: any
   ): Promise<IssueRegistry> {
-    const MAX_ATTEMPTS_PER_ISSUE = 3;
+    const MAX_ATTEMPTS_PER_ISSUE = 4; // Allows: attempt 1 (surgical), attempt 2 (surgical expanded), attempt 3 (focused rewrite)
     const chapters = await storage.getChaptersByProject(project.id);
     const chapterMap = new Map(chapters.map(c => [c.chapterNumber, c]));
 
