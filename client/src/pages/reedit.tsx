@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -1443,6 +1444,13 @@ export default function ReeditPage() {
   
   // Chapter viewer state
   const [viewingChapterId, setViewingChapterId] = useState<number | null>(null);
+  
+  // Custom polishing dialog state
+  const [showPolishingDialog, setShowPolishingDialog] = useState(false);
+  const [polishingChapterRange, setPolishingChapterRange] = useState("");
+  const [polishingDiagnosis, setPolishingDiagnosis] = useState("");
+  const [polishingProcedure, setPolishingProcedure] = useState("");
+  const [polishingObjective, setPolishingObjective] = useState("");
 
   const { data: projects = [], isLoading: projectsLoading } = useQuery<ReeditProject[]>({
     queryKey: ["/api/reedit-projects"],
@@ -1744,6 +1752,52 @@ export default function ReeditPage() {
       setShowRestartDialog(true);
     }
   }, [selectedProjectData]);
+
+  const polishingMutation = useMutation({
+    mutationFn: async (params: { projectId: number; chapterRange: string; diagnosis: string; procedure: string; objective: string }) => {
+      return apiRequest("POST", `/api/reedit-projects/${params.projectId}/custom-polishing`, {
+        chapterRange: params.chapterRange,
+        diagnosis: params.diagnosis,
+        procedure: params.procedure,
+        objective: params.objective,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Pulido Iniciado", description: "El proceso de pulido personalizado ha comenzado." });
+      queryClient.invalidateQueries({ queryKey: ["/api/reedit-projects"] });
+      setShowPolishingDialog(false);
+      setPolishingChapterRange("");
+      setPolishingDiagnosis("");
+      setPolishingProcedure("");
+      setPolishingObjective("");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const openPolishingDialog = useCallback(() => {
+    setPolishingChapterRange("");
+    setPolishingDiagnosis("");
+    setPolishingProcedure("");
+    setPolishingObjective("");
+    setShowPolishingDialog(true);
+  }, []);
+
+  const handlePolishingSubmit = useCallback(() => {
+    if (!selectedProjectData) return;
+    if (!polishingChapterRange.trim()) {
+      toast({ title: "Campo Requerido", description: "Por favor indica el rango de capítulos", variant: "destructive" });
+      return;
+    }
+    polishingMutation.mutate({
+      projectId: selectedProjectData.id,
+      chapterRange: polishingChapterRange.trim(),
+      diagnosis: polishingDiagnosis.trim(),
+      procedure: polishingProcedure.trim(),
+      objective: polishingObjective.trim(),
+    });
+  }, [selectedProjectData, polishingChapterRange, polishingDiagnosis, polishingProcedure, polishingObjective, polishingMutation]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2106,14 +2160,24 @@ export default function ReeditPage() {
                       </Button>
                     )}
                     {selectedProjectData.status === "completed" && (
-                      <Button
-                        variant="outline"
-                        onClick={openRestartDialog}
-                        data-testid="button-restart-reedit"
-                      >
-                        <RotateCcw className="h-4 w-4 mr-2" />
-                        Reeditar de Nuevo
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          onClick={openRestartDialog}
+                          data-testid="button-restart-reedit"
+                        >
+                          <RotateCcw className="h-4 w-4 mr-2" />
+                          Reeditar de Nuevo
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={openPolishingDialog}
+                          data-testid="button-custom-polishing"
+                        >
+                          <Wand2 className="h-4 w-4 mr-2" />
+                          Pulido Manual
+                        </Button>
+                      </>
                     )}
                     <Button
                       variant="ghost"
@@ -3052,6 +3116,93 @@ export default function ReeditPage() {
                 <Check className="h-4 w-4 mr-2" />
               )}
               Aprobar Plan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Custom Polishing Dialog */}
+      <Dialog open={showPolishingDialog} onOpenChange={setShowPolishingDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Pulido Manual Personalizado</DialogTitle>
+            <DialogDescription>
+              Define instrucciones específicas para pulir y reescribir capítulos seleccionados. 
+              Útil para corregir problemas de coherencia narrativa o desarrollo de personajes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="polishing-chapters">Rango de Capítulos *</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Ej: "18-19" o "5, 7, 12-15" o "Capítulo 18-19 (El cambio de bando de Salgado)"
+              </p>
+              <Input
+                id="polishing-chapters"
+                value={polishingChapterRange}
+                onChange={(e) => setPolishingChapterRange(e.target.value)}
+                placeholder="Capítulos a reescribir..."
+                data-testid="input-polishing-chapters"
+              />
+            </div>
+            <div>
+              <Label htmlFor="polishing-diagnosis">Diagnóstico</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                ¿Cuál es el problema que has detectado?
+              </p>
+              <Textarea
+                id="polishing-diagnosis"
+                value={polishingDiagnosis}
+                onChange={(e) => setPolishingDiagnosis(e.target.value)}
+                placeholder="Ej: El giro del personaje es abrupto y se percibe como una conveniencia del guion..."
+                rows={3}
+                data-testid="textarea-polishing-diagnosis"
+              />
+            </div>
+            <div>
+              <Label htmlFor="polishing-procedure">Procedimiento</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                ¿Qué cambios específicos deben hacerse?
+              </p>
+              <Textarea
+                id="polishing-procedure"
+                value={polishingProcedure}
+                onChange={(e) => setPolishingProcedure(e.target.value)}
+                placeholder="Ej: Insertar una escena o monólogo interno donde el personaje vea una prueba de que..."
+                rows={4}
+                data-testid="textarea-polishing-procedure"
+              />
+            </div>
+            <div>
+              <Label htmlFor="polishing-objective">Objetivo</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                ¿Qué resultado esperas lograr con estos cambios?
+              </p>
+              <Textarea
+                id="polishing-objective"
+                value={polishingObjective}
+                onChange={(e) => setPolishingObjective(e.target.value)}
+                placeholder="Ej: Dar coherencia causal al arco del personaje..."
+                rows={2}
+                data-testid="textarea-polishing-objective"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPolishingDialog(false)} data-testid="button-cancel-polishing">
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handlePolishingSubmit}
+              disabled={polishingMutation.isPending || !polishingChapterRange.trim()}
+              data-testid="button-submit-polishing"
+            >
+              {polishingMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Wand2 className="h-4 w-4 mr-2" />
+              )}
+              Iniciar Pulido
             </Button>
           </DialogFooter>
         </DialogContent>

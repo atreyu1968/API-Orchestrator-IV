@@ -853,6 +853,8 @@ export const reeditChapters = pgTable("reedit_chapters", {
   wordCount: integer("word_count").default(0),
   status: text("status").notNull().default("pending"), // pending, summarizing, analyzing, editing, reviewed, completed, skipped, deleted
   processingStage: text("processing_stage").default("none"), // none, summarizer, editor, copyeditor, auditor, completed
+  // Custom polishing instructions
+  polishingInstructions: text("polishing_instructions"), // User-provided instructions for manual polishing
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

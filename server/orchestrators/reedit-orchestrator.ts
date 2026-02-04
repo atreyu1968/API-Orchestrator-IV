@@ -6262,6 +6262,156 @@ Al analizar la arquitectura, TEN EN CUENTA estas violaciones existentes y recomi
     
     return report;
   }
+
+  /**
+   * Run custom polishing on specific chapters with user-provided instructions
+   */
+  async runCustomPolishing(projectId: number, chapterIds: number[], polishingInstructions: string): Promise<void> {
+    console.log(`[ReeditOrchestrator] Starting custom polishing for project ${projectId}, chapters: ${chapterIds.join(', ')}`);
+    
+    try {
+      const project = await storage.getReeditProject(projectId);
+      if (!project) {
+        throw new Error(`Project ${projectId} not found`);
+      }
+
+      // Get world bible for context
+      const worldBible = await storage.getReeditWorldBible(projectId);
+      const worldBibleContext = worldBible?.content ? JSON.stringify(worldBible.content, null, 2) : '';
+
+      // Get all chapters for adjacency context
+      const allChapters = await storage.getReeditChaptersByProject(projectId);
+      const sortedChapters = [...allChapters].sort((a, b) => a.chapterNumber - b.chapterNumber);
+
+      let processedCount = 0;
+      
+      for (const chapterId of chapterIds) {
+        // Check for cancellation
+        if (this.cancelled) {
+          console.log(`[ReeditOrchestrator] Custom polishing cancelled for project ${projectId}`);
+          await storage.updateReeditProject(projectId, {
+            status: "paused",
+            errorMessage: "Proceso cancelado por el usuario",
+          });
+          return;
+        }
+
+        const chapter = sortedChapters.find(c => c.id === chapterId);
+        if (!chapter) {
+          console.warn(`[ReeditOrchestrator] Chapter ${chapterId} not found, skipping`);
+          continue;
+        }
+
+        console.log(`[ReeditOrchestrator] Polishing chapter ${chapter.chapterNumber}: ${chapter.title || 'Sin título'}`);
+
+        // Get adjacent chapters for context
+        const chapterIndex = sortedChapters.findIndex(c => c.id === chapterId);
+        const prevChapter = chapterIndex > 0 ? sortedChapters[chapterIndex - 1] : null;
+        const nextChapter = chapterIndex < sortedChapters.length - 1 ? sortedChapters[chapterIndex + 1] : null;
+
+        const adjacentContext = {
+          previousChapter: prevChapter ? {
+            number: prevChapter.chapterNumber,
+            title: prevChapter.title,
+            content: (prevChapter.editedContent || prevChapter.originalContent || '').slice(-2000),
+          } : null,
+          nextChapter: nextChapter ? {
+            number: nextChapter.chapterNumber,
+            title: nextChapter.title,
+            content: (nextChapter.editedContent || nextChapter.originalContent || '').slice(0, 2000),
+          } : null,
+        };
+
+        // Update chapter status
+        await storage.updateReeditChapter(chapterId, {
+          status: "editing",
+          processingStage: "polishing",
+        });
+
+        await storage.updateReeditProject(projectId, {
+          currentChapter: chapter.chapterNumber,
+        });
+
+        // Get content to polish
+        const currentContent = chapter.editedContent || chapter.originalContent;
+        
+        // Create a custom problem that wraps the polishing instructions
+        const customProblems = [{
+          categoria: "pulido_manual",
+          severidad: "mayor" as const,
+          descripcion: polishingInstructions,
+          capitulos_afectados: [chapter.chapterNumber],
+          sugerencia_correccion: polishingInstructions,
+        }];
+
+        try {
+          // Use the narrative rewriter agent for actual rewriting
+          const rewriteResult = await this.narrativeRewriter.rewriteChapter(
+            currentContent || '',
+            chapter.chapterNumber,
+            customProblems,
+            worldBible?.content || {},
+            adjacentContext,
+            project.language || 'es',
+            polishingInstructions
+          );
+
+          this.trackTokens(rewriteResult);
+
+          if (rewriteResult.capituloReescrito) {
+            // Update chapter with polished content
+            await storage.updateReeditChapter(chapterId, {
+              editedContent: rewriteResult.capituloReescrito,
+              status: "completed",
+              processingStage: "completed",
+              wordCount: rewriteResult.capituloReescrito.split(/\s+/).length,
+            });
+            console.log(`[ReeditOrchestrator] Successfully polished chapter ${chapter.chapterNumber}`);
+          } else {
+            console.warn(`[ReeditOrchestrator] Polishing returned no content for chapter ${chapter.chapterNumber}`);
+            await storage.updateReeditChapter(chapterId, {
+              status: "completed",
+              processingStage: "completed",
+            });
+          }
+        } catch (error) {
+          console.error(`[ReeditOrchestrator] Error polishing chapter ${chapter.chapterNumber}:`, error);
+          await storage.updateReeditChapter(chapterId, {
+            status: "completed",
+            processingStage: "completed",
+          });
+        }
+
+        processedCount++;
+        await storage.updateReeditProject(projectId, {
+          processedChapters: processedCount,
+        });
+
+        // Update token counts
+        await storage.updateReeditProject(projectId, {
+          totalInputTokens: (project.totalInputTokens || 0) + this.totalInputTokens,
+          totalOutputTokens: (project.totalOutputTokens || 0) + this.totalOutputTokens,
+          totalThinkingTokens: (project.totalThinkingTokens || 0) + this.totalThinkingTokens,
+        });
+      }
+
+      // Mark project as completed
+      await storage.updateReeditProject(projectId, {
+        status: "completed",
+        currentStage: "completed",
+        errorMessage: null,
+      });
+
+      console.log(`[ReeditOrchestrator] Custom polishing completed for project ${projectId}, ${processedCount} chapters processed`);
+    } catch (error) {
+      console.error(`[ReeditOrchestrator] Custom polishing failed for project ${projectId}:`, error);
+      await storage.updateReeditProject(projectId, {
+        status: "error",
+        errorMessage: error instanceof Error ? error.message : "Unknown error during custom polishing",
+      });
+      throw error;
+    }
+  }
 }
 
 export const reeditOrchestrator = new ReeditOrchestrator();

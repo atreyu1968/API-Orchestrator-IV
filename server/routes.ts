@@ -8420,6 +8420,129 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
     }
   });
 
+  // Custom Polishing endpoint for manual chapter rewriting
+  app.post("/api/reedit-projects/:id/custom-polishing", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getReeditProject(projectId);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (project.status === "processing") {
+        return res.status(400).json({ error: "Project is currently being processed" });
+      }
+
+      const { chapterRange, diagnosis, procedure, objective } = req.body;
+      
+      if (!chapterRange || !chapterRange.trim()) {
+        return res.status(400).json({ error: "Chapter range is required" });
+      }
+
+      // Parse chapter range to get chapter numbers
+      const parseChapterRange = (range: string): number[] => {
+        const chapters: number[] = [];
+        // Remove text descriptions like "Capítulo" and "(description)"
+        const cleaned = range.replace(/\([^)]*\)/g, '').replace(/[Cc]apítulos?/g, '').trim();
+        
+        // Split by comma for multiple ranges/chapters
+        const parts = cleaned.split(',').map(p => p.trim()).filter(p => p);
+        
+        for (const part of parts) {
+          if (part.includes('-')) {
+            // Range: "18-19"
+            const [start, end] = part.split('-').map(n => parseInt(n.trim()));
+            if (!isNaN(start) && !isNaN(end)) {
+              for (let i = start; i <= end; i++) {
+                chapters.push(i);
+              }
+            }
+          } else {
+            // Single chapter: "5"
+            const num = parseInt(part);
+            if (!isNaN(num)) {
+              chapters.push(num);
+            }
+          }
+        }
+        
+        return Array.from(new Set(chapters)).sort((a, b) => a - b);
+      };
+
+      const chapterNumbers = parseChapterRange(chapterRange);
+      
+      if (chapterNumbers.length === 0) {
+        return res.status(400).json({ error: "Could not parse chapter numbers from range. Use format like '18-19' or '5, 7, 12-15'" });
+      }
+
+      // Get all chapters for this project
+      const allChapters = await storage.getReeditChaptersByProject(projectId);
+      const targetChapters = allChapters.filter(c => chapterNumbers.includes(c.chapterNumber));
+      
+      if (targetChapters.length === 0) {
+        return res.status(400).json({ error: `No chapters found matching numbers: ${chapterNumbers.join(', ')}` });
+      }
+
+      // Build custom polishing instructions
+      const polishingInstructions = [
+        `## INSTRUCCIONES DE PULIDO MANUAL`,
+        ``,
+        `### Capítulos afectados: ${chapterRange}`,
+        ``,
+        diagnosis ? `### Diagnóstico:\n${diagnosis}` : '',
+        ``,
+        procedure ? `### Procedimiento:\n${procedure}` : '',
+        ``,
+        objective ? `### Objetivo:\n${objective}` : '',
+      ].filter(line => line !== '').join('\n');
+
+      // Store polishing instructions and mark chapters for rewrite
+      for (const chapter of targetChapters) {
+        await storage.updateReeditChapter(chapter.id, {
+          status: "pending",
+          polishingInstructions: polishingInstructions,
+        });
+      }
+
+      // Update project to processing state with custom polishing stage
+      await storage.updateReeditProject(projectId, {
+        status: "processing",
+        currentStage: "custom_polishing",
+        processedChapters: 0,
+        currentChapter: targetChapters[0]?.chapterNumber || 0,
+        errorMessage: null,
+        cancelRequested: false,
+      });
+
+      // Start the polishing process asynchronously
+      (async () => {
+        try {
+          const { ReeditOrchestrator } = await import("./orchestrators/reedit-orchestrator");
+          const orchestrator = new ReeditOrchestrator();
+          await orchestrator.runCustomPolishing(projectId, targetChapters.map(c => c.id), polishingInstructions);
+        } catch (error) {
+          console.error(`[CustomPolishing] Error processing project ${projectId}:`, error);
+          await storage.updateReeditProject(projectId, {
+            status: "error",
+            errorMessage: error instanceof Error ? error.message : "Unknown error during custom polishing",
+          });
+        }
+      })();
+
+      console.log(`[CustomPolishing] Started custom polishing for project ${projectId}, chapters: ${chapterNumbers.join(', ')}`);
+      res.json({ 
+        success: true, 
+        message: `Pulido iniciado para capítulos: ${chapterNumbers.join(', ')}`,
+        chaptersAffected: chapterNumbers.length,
+        projectId 
+      });
+    } catch (error) {
+      console.error("Error starting custom polishing:", error);
+      res.status(500).json({ error: "Failed to start custom polishing" });
+    }
+  });
+
   app.delete("/api/reedit-projects/:id", async (req: Request, res: Response) => {
     try {
       const projectId = parseInt(req.params.id);
