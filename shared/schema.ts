@@ -1048,4 +1048,55 @@ export interface FinalAudit {
   criticalFlags: number;
 }
 
+// =============================================
+// CORRECTED MANUSCRIPTS - Surgical Correction Module
+// =============================================
+
+export const correctedManuscripts = pgTable("corrected_manuscripts", {
+  id: serial("id").primaryKey(),
+  auditId: integer("audit_id").notNull().references(() => manuscriptAudits.id, { onDelete: "cascade" }),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"), // pending, correcting, review, approved, error
+  originalContent: text("original_content").notNull(),
+  correctedContent: text("corrected_content"),
+  corrections: jsonb("corrections"), // Array of applied corrections
+  pendingCorrections: jsonb("pending_corrections"), // Corrections awaiting approval
+  totalIssues: integer("total_issues").default(0),
+  correctedIssues: integer("corrected_issues").default(0),
+  approvedIssues: integer("approved_issues").default(0),
+  rejectedIssues: integer("rejected_issues").default(0),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertCorrectedManuscriptSchema = createInsertSchema(correctedManuscripts).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+
+export type CorrectedManuscript = typeof correctedManuscripts.$inferSelect;
+export type InsertCorrectedManuscript = z.infer<typeof insertCorrectedManuscriptSchema>;
+
+// Correction record interface
+export interface CorrectionRecord {
+  id: string;
+  issueId: string;
+  location: string;
+  chapterNumber: number;
+  originalText: string;
+  correctedText: string;
+  instruction: string;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  status: 'pending' | 'approved' | 'rejected' | 'applied';
+  diffStats: {
+    wordsAdded: number;
+    wordsRemoved: number;
+    lengthChange: number;
+  };
+  createdAt: string;
+  reviewedAt?: string;
+}
+
 export * from "./models/chat";
