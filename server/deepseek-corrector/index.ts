@@ -354,8 +354,13 @@ function isGenericIssue(description: string, location: string): boolean {
 }
 
 function hasExplicitChapterList(location: string): boolean {
-  const listPattern = /(?:prólogo|cap\.?\s*\d+)(?:\s*,\s*(?:\d+|prólogo|cap\.?\s*\d+))+/i;
-  return listPattern.test(location);
+  const listPatterns = [
+    /(?:prólogo|cap\.?\s*\d+)(?:\s*,\s*(?:\d+|prólogo|cap\.?\s*\d+))+/i,
+    /múltiples\s+cap[íi]tulos/i,
+    /cap[íi]tulos?\s*[\d,\s]+/i,
+    /\d+\s*,\s*\d+\s*,\s*\d+/
+  ];
+  return listPatterns.some(p => p.test(location));
 }
 
 function extractChapterListFromLocation(location: string): (number | 'prólogo')[] {
@@ -379,20 +384,26 @@ function extractChapterListFromLocation(location: string): (number | 'prólogo')
 
 function extractConceptFromDescription(description: string): string | null {
   const patterns = [
-    /La descripción del?\s+([^.]+?)\s+(?:se repite|aparece|es)/i,
-    /descripción de[l]?\s+([^.]+?)\s+(?:se repite|aparece|es)/i,
-    /([^.]+?)\s+se repite con una frecuencia/i,
-    /([^.]+?)\s+aparece de forma repetitiva/i,
-    /menciones? de[l]?\s+([^.]+?)\s+(?:se|es|son)/i
+    /La descripción del?\s+(.+?)\s+se repite/i,
+    /descripción de[l]?\s+(.+?)\s+se repite/i,
+    /(.+?)\s+se repite con una frecuencia/i,
+    /(.+?)\s+aparece de forma repetitiva/i,
+    /menciones? de[l]?\s+(.+?)\s+(?:se|es|son)/i,
+    /(?:el|la|los|las)\s+(.+?)\s+(?:es|son|aparece|se usa)/i
   ];
   
   for (const pattern of patterns) {
     const match = description.match(pattern);
     if (match && match[1]) {
-      return match[1].trim();
+      const concept = match[1].trim();
+      if (concept.length > 5 && concept.length < 200) {
+        console.log(`[MultiChapter] Concepto extraído: "${concept}"`);
+        return concept;
+      }
     }
   }
   
+  console.log(`[MultiChapter] No se pudo extraer concepto de: "${description.substring(0, 100)}..."`);
   return null;
 }
 
@@ -423,24 +434,39 @@ async function findConceptInChapter(
   concept: string,
   fullDescription: string
 ): Promise<{ sentence: string; context: string } | null> {
-  const keywords = concept.split(/\s+/).filter(w => w.length > 3);
+  const stopWords = ['de', 'del', 'la', 'el', 'los', 'las', 'en', 'con', 'una', 'un', 'se', 'que', 'por', 'para'];
+  const keywords = concept.split(/\s+/)
+    .filter(w => w.length > 2 && !stopWords.includes(w.toLowerCase()))
+    .map(w => w.toLowerCase());
+  
+  console.log(`[MultiChapter] Buscando keywords: ${keywords.join(', ')}`);
   
   const sentences = chapterContent.split(/(?<=[.!?])\s+/);
+  let bestMatch: { sentence: string; context: string; score: number } | null = null;
   
   for (const sentence of sentences) {
-    const sentenceLower = sentence.toLowerCase();
-    const matchCount = keywords.filter(kw => sentenceLower.includes(kw.toLowerCase())).length;
+    if (sentence.length < 20) continue;
     
-    if (matchCount >= Math.min(2, keywords.length)) {
+    const sentenceLower = sentence.toLowerCase();
+    const matchCount = keywords.filter(kw => sentenceLower.includes(kw)).length;
+    const score = matchCount / keywords.length;
+    
+    if (score >= 0.4 && (!bestMatch || score > bestMatch.score)) {
       const idx = chapterContent.indexOf(sentence);
       const contextStart = Math.max(0, idx - 200);
       const contextEnd = Math.min(chapterContent.length, idx + sentence.length + 200);
       const context = chapterContent.substring(contextStart, contextEnd);
       
-      return { sentence, context };
+      bestMatch = { sentence, context, score };
     }
   }
   
+  if (bestMatch) {
+    console.log(`[MultiChapter] Encontrado (score ${bestMatch.score.toFixed(2)}): "${bestMatch.sentence.substring(0, 60)}..."`);
+    return { sentence: bestMatch.sentence, context: bestMatch.context };
+  }
+  
+  console.log(`[MultiChapter] No encontrado en capítulo`);
   return null;
 }
 
@@ -954,9 +980,15 @@ export async function startCorrectionProcess(
         }
       }
 
-      if (hasExplicitChapterList(issue.location)) {
+      console.log(`[DeepSeek] Checking multi-chapter for location: "${issue.location.substring(0, 80)}..."`);
+      const hasMultiChapter = hasExplicitChapterList(issue.location);
+      console.log(`[DeepSeek] hasExplicitChapterList: ${hasMultiChapter}`);
+      
+      if (hasMultiChapter) {
         const chapterList = extractChapterListFromLocation(issue.location);
         const concept = extractConceptFromDescription(issue.description);
+        
+        console.log(`[DeepSeek] MultiChapter - chapters: ${chapterList.length}, concept: ${concept ? 'found' : 'null'}`);
         
         if (chapterList.length > 0 && concept) {
           onProgress?.({
