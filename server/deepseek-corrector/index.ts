@@ -37,6 +37,72 @@ interface CharacterBibleExtraction {
   chapterName: string;
 }
 
+function extractChapterNumbersFromLocation(location: string): number[] {
+  const numbers: number[] = [];
+  const matches = location.match(/\d+/g);
+  if (matches) {
+    for (const m of matches) {
+      const num = parseInt(m, 10);
+      if (num > 0 && num < 100) {
+        numbers.push(num);
+      }
+    }
+  }
+  return Array.from(new Set(numbers)).sort((a, b) => a - b);
+}
+
+function extractEpilogueContent(manuscript: string): { content: string; title: string } | null {
+  const pattern = /(?:^|\n)((?:EPÍLOGO|Epílogo|EPILOGO|Epilogo)[^\n]*\n)([\s\S]*?)$/i;
+  const match = manuscript.match(pattern);
+  if (match) {
+    return {
+      title: match[1].trim(),
+      content: match[2].trim()
+    };
+  }
+  return null;
+}
+
+function findAttributeInChapterContent(content: string, incorrectValue: string, attribute: string): string | null {
+  if (!incorrectValue || incorrectValue.length < 2) return null;
+  
+  const patterns: string[] = [];
+  const escapedValue = incorrectValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  
+  patterns.push(`[^.]*${escapedValue}[^.]*\\.`);
+  
+  if (attribute === 'ojos' || attribute === 'eyes') {
+    patterns.push(`[^.]*ojos\\s+${escapedValue}[^.]*\\.`);
+    patterns.push(`[^.]*${escapedValue}\\s+ojos[^.]*\\.`);
+    patterns.push(`[^.]*mirada\\s+${escapedValue}[^.]*\\.`);
+    patterns.push(`[^.]*iris\\s+${escapedValue}[^.]*\\.`);
+  } else if (attribute === 'cabello' || attribute === 'pelo' || attribute === 'hair') {
+    patterns.push(`[^.]*cabello\\s+${escapedValue}[^.]*\\.`);
+    patterns.push(`[^.]*${escapedValue}\\s+cabello[^.]*\\.`);
+    patterns.push(`[^.]*pelo\\s+${escapedValue}[^.]*\\.`);
+    patterns.push(`[^.]*melena\\s+${escapedValue}[^.]*\\.`);
+  }
+  
+  for (const pattern of patterns) {
+    try {
+      const regex = new RegExp(pattern, 'gi');
+      const matches = content.match(regex);
+      if (matches && matches.length > 0) {
+        return matches[0].trim();
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+  
+  const simpleMatch = content.match(new RegExp(`[^.]{0,100}${escapedValue}[^.]{0,100}\\.`, 'i'));
+  if (simpleMatch) {
+    return simpleMatch[0].trim();
+  }
+  
+  return null;
+}
+
 function extractCharacterBibleInfo(description: string): CharacterBibleExtraction | null {
   const patterns = [
     /La ficha de personaje de (\w+(?:\s+\w+)?)\s+describe su (\w+(?:\s+\w+)?)\s+como ['"]([^'"]+)['"]\.\s*Sin embargo,?\s*(?:en el )?(\w+(?:\s+\d+)?),?\s*se menciona que (?:su \w+ es |es )['"]?([^'".\n]+)['"]?/i,
@@ -681,7 +747,7 @@ function extractNGramsFromDescription(description: string, novelContent: string)
     .filter(w => w.length >= 4)
     .filter(w => !['como', 'para', 'pero', 'este', 'esta', 'esto', 'esos', 'esas', 'forma', 'manera', 'novela', 'texto', 'capítulo', 'capítulos'].includes(w));
   
-  const uniqueWords = [...new Set(keyWords)];
+  const uniqueWords = Array.from(new Set(keyWords));
   const foundPhrases: string[] = [];
   
   for (const word of uniqueWords.slice(0, 5)) {
@@ -1044,6 +1110,109 @@ export async function startCorrectionProcess(
       const characterBibleInfo = extractCharacterBibleInfo(issue.description);
       
       if (characterBibleInfo) {
+        const isMultiChapterBible = issue.location?.toLowerCase().includes('vs capítulos') ||
+                                    issue.location?.toLowerCase().includes('múltiples') ||
+                                    issue.description.toLowerCase().includes('vs múltiples') ||
+                                    (issue.location?.match(/\d+/g)?.length || 0) > 2;
+        
+        if (isMultiChapterBible) {
+          console.log('[CharacterBible Multi] Detectado caso multi-capítulo');
+          const chapterNumbers = extractChapterNumbersFromLocation(issue.location || issue.description);
+          const hasEpilogue = issue.location?.toLowerCase().includes('epílogo') || 
+                              issue.location?.toLowerCase().includes('epilogo');
+          
+          console.log(`[CharacterBible Multi] Capítulos: ${chapterNumbers.join(', ')}, Epílogo: ${hasEpilogue}`);
+          
+          onProgress?.({
+            phase: 'analyzing',
+            current: i + 1,
+            total: allIssues.length,
+            message: `Character Bible multi-capítulo: buscando "${characterBibleInfo.incorrectValue}" en ${chapterNumbers.length} capítulos...`
+          });
+          
+          for (const chapterNum of chapterNumbers) {
+            const chapterRef = `Capítulo ${chapterNum}`;
+            const chapterData = extractChapterContent2(correctedContent, chapterNum);
+            
+            if (chapterData) {
+              const foundInChapter = findAttributeInChapterContent(
+                chapterData.content,
+                characterBibleInfo.incorrectValue,
+                characterBibleInfo.attribute
+              );
+              
+              if (foundInChapter) {
+                console.log(`[CharacterBible Multi] ${chapterRef}: encontrado "${foundInChapter.substring(0, 50)}..."`);
+                
+                const result = await correctSingleIssue({
+                  fullChapter: chapterData.content,
+                  targetText: foundInChapter,
+                  instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Cambiar "${characterBibleInfo.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
+                  suggestion: `Reemplazar con: "${characterBibleInfo.correctValue}"`
+                });
+                
+                pendingCorrections.push({
+                  id: `correction-${Date.now()}-${i}-ch${chapterNum}`,
+                  issueId: `issue-${i}`,
+                  location: chapterRef,
+                  chapterNumber: chapterNum,
+                  originalText: result.originalText,
+                  correctedText: result.correctedText,
+                  instruction: `[CHARACTER-BIBLE] ${characterBibleInfo.attribute}: "${characterBibleInfo.incorrectValue}" → "${characterBibleInfo.correctValue}"`,
+                  severity: issue.severity,
+                  status: result.success ? 'pending' : 'rejected',
+                  diffStats: result.diffStats,
+                  createdAt: new Date().toISOString()
+                });
+                
+                totalOccurrences++;
+                if (result.success) successCount++;
+                
+                await new Promise(resolve => setTimeout(resolve, 300));
+              }
+            }
+          }
+          
+          if (hasEpilogue) {
+            const epilogueData = extractEpilogueContent(correctedContent);
+            if (epilogueData) {
+              const foundInEpilogue = findAttributeInChapterContent(
+                epilogueData.content,
+                characterBibleInfo.incorrectValue,
+                characterBibleInfo.attribute
+              );
+              
+              if (foundInEpilogue) {
+                const result = await correctSingleIssue({
+                  fullChapter: epilogueData.content,
+                  targetText: foundInEpilogue,
+                  instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Cambiar "${characterBibleInfo.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
+                  suggestion: `Reemplazar con: "${characterBibleInfo.correctValue}"`
+                });
+                
+                pendingCorrections.push({
+                  id: `correction-${Date.now()}-${i}-epilogue`,
+                  issueId: `issue-${i}`,
+                  location: 'Epílogo',
+                  chapterNumber: 999,
+                  originalText: result.originalText,
+                  correctedText: result.correctedText,
+                  instruction: `[CHARACTER-BIBLE] ${characterBibleInfo.attribute}: "${characterBibleInfo.incorrectValue}" → "${characterBibleInfo.correctValue}"`,
+                  severity: issue.severity,
+                  status: result.success ? 'pending' : 'rejected',
+                  diffStats: result.diffStats,
+                  createdAt: new Date().toISOString()
+                });
+                
+                totalOccurrences++;
+                if (result.success) successCount++;
+              }
+            }
+          }
+          
+          continue;
+        }
+        
         onProgress?.({
           phase: 'analyzing',
           current: i + 1,
