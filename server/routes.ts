@@ -10987,6 +10987,18 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
     }
   });
 
+  // Delete a manuscript audit
+  app.delete("/api/audits/:id", async (req: Request, res: Response) => {
+    const auditId = parseInt(req.params.id);
+    
+    try {
+      await db.delete(manuscriptAudits).where(eq(manuscriptAudits.id, auditId));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return httpServer;
 }
 

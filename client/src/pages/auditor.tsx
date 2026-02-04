@@ -21,6 +21,7 @@ import {
   Palette,
   Clock,
   FileText,
+  Trash2,
 } from "lucide-react";
 
 interface AuditIssue {
@@ -195,6 +196,27 @@ export default function AuditorPage() {
       toast({
         title: "Error",
         description: error.message || "No se pudo iniciar la auditoría",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteAuditMutation = useMutation({
+    mutationFn: async (auditId: number) => {
+      const res = await apiRequest("DELETE", `/api/audits/${auditId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", currentProject?.id, "audits"] });
+      toast({
+        title: "Auditoría eliminada",
+        description: "La auditoría ha sido eliminada correctamente",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo eliminar la auditoría",
         variant: "destructive",
       });
     },
@@ -430,10 +452,12 @@ export default function AuditorPage() {
                 <div 
                   key={audit.id} 
                   className="flex items-center justify-between p-3 rounded-lg border cursor-pointer hover-elevate"
-                  onClick={() => setCurrentAuditId(audit.id)}
                   data-testid={`row-audit-${audit.id}`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div 
+                    className="flex items-center gap-3 flex-1"
+                    onClick={() => setCurrentAuditId(audit.id)}
+                  >
                     {audit.status === "completed" ? (
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
                     ) : (
@@ -443,14 +467,28 @@ export default function AuditorPage() {
                       {new Date(audit.createdAt).toLocaleString()}
                     </span>
                   </div>
-                  {audit.overallScore !== null && (
-                    <Badge 
-                      variant={audit.overallScore >= 70 ? "default" : "secondary"}
-                      data-testid={`badge-audit-score-${audit.id}`}
+                  <div className="flex items-center gap-2">
+                    {audit.overallScore !== null && (
+                      <Badge 
+                        variant={audit.overallScore >= 70 ? "default" : "secondary"}
+                        data-testid={`badge-audit-score-${audit.id}`}
+                      >
+                        {audit.overallScore}/100
+                      </Badge>
+                    )}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteAuditMutation.mutate(audit.id);
+                      }}
+                      disabled={deleteAuditMutation.isPending}
+                      data-testid={`button-delete-audit-${audit.id}`}
                     >
-                      {audit.overallScore}/100
-                    </Badge>
-                  )}
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
