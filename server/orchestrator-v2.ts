@@ -671,6 +671,59 @@ export class OrchestratorV2 {
       
       if (!charName || charName.length < 2) continue;
       
+      // Generate all possible aliases for the character
+      const aliases = new Set<string>();
+      aliases.add(charName); // Full name
+      
+      // Get explicit aliases from World Bible if defined
+      const explicitAliases = (char.aliases || char.apodos || char.alias || []) as string[];
+      if (Array.isArray(explicitAliases)) {
+        explicitAliases.forEach(a => aliases.add(a.toLowerCase()));
+      }
+      
+      // Extract name parts - handle titles and particles
+      const nameParts = charName
+        .replace(/[,()]/g, ' ') // Remove commas and parentheses
+        .split(/\s+/)
+        .filter(p => p.length >= 2);
+      
+      // Add individual significant parts (skip particles like "de", "el", "la", "del", "los")
+      const particles = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'von', 'van', 'di', 'da']);
+      for (const part of nameParts) {
+        if (!particles.has(part) && part.length >= 3) {
+          aliases.add(part);
+        }
+      }
+      
+      // Handle nobility titles: "Marqués de X" -> "el Marqués", "X"
+      const titleMatch = charName.match(/(marqués|conde|duque|barón|vizconde|príncipe|rey|reina|señor|señora|don|doña)\s+(?:de\s+)?(\w+)/i);
+      if (titleMatch) {
+        aliases.add(`el ${titleMatch[1].toLowerCase()}`);
+        aliases.add(titleMatch[1].toLowerCase());
+        if (titleMatch[2] && titleMatch[2].length >= 3) {
+          aliases.add(titleMatch[2].toLowerCase());
+        }
+      }
+      
+      // Handle nicknames in quotes or parentheses: "Juan 'El Manco'" -> "el manco"
+      const nicknameMatch = charName.match(/[''""]([^''"]+)[''""]|\(([^)]+)\)/);
+      if (nicknameMatch) {
+        const nickname = (nicknameMatch[1] || nicknameMatch[2]).toLowerCase();
+        aliases.add(nickname);
+        aliases.add(`el ${nickname}`);
+      }
+      
+      // Get first two names combined (for "Antonio de Salazar" style)
+      if (nameParts.length >= 2 && !particles.has(nameParts[1])) {
+        aliases.add(`${nameParts[0]} ${nameParts[1]}`);
+      }
+      
+      // Get last significant name part (often the family name)
+      const significantParts = nameParts.filter(p => !particles.has(p) && p.length >= 3);
+      if (significantParts.length > 1) {
+        aliases.add(significantParts[significantParts.length - 1]); // Last name
+      }
+      
       let firstAppearance = -1;
       let lastAppearance = -1;
       let appearanceCount = 0;
@@ -679,9 +732,16 @@ export class OrchestratorV2 {
         const ch = safeOutline[i];
         const combined = ((ch.summary || '') + ' ' + (ch.key_event || '')).toLowerCase();
         
-        // Check full name or first name (if multi-word)
-        const firstName = charName.split(' ')[0];
-        if (combined.includes(charName) || (firstName.length >= 3 && combined.includes(firstName))) {
+        // Check all aliases
+        let found = false;
+        for (const alias of aliases) {
+          if (alias.length >= 3 && combined.includes(alias)) {
+            found = true;
+            break;
+          }
+        }
+        
+        if (found) {
           if (firstAppearance === -1) firstAppearance = i;
           lastAppearance = i;
           appearanceCount++;
