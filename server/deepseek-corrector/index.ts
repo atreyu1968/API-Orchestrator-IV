@@ -29,6 +29,129 @@ interface CorrectionRequest {
   suggestion: string;
 }
 
+interface CharacterBibleExtraction {
+  characterName: string;
+  attribute: string;
+  correctValue: string;
+  incorrectValue: string;
+  chapterName: string;
+}
+
+function extractCharacterBibleInfo(description: string): CharacterBibleExtraction | null {
+  const patterns = [
+    /La ficha de personaje de (\w+(?:\s+\w+)?)\s+describe su (\w+(?:\s+\w+)?)\s+como ['"]([^'"]+)['"]\.\s*Sin embargo,?\s*(?:en el )?(\w+(?:\s+\d+)?),?\s*se menciona que (?:su \w+ es |es )['"]?([^'".\n]+)['"]?/i,
+    /ficha.*?(\w+(?:\s+\w+)?).*?(\w+).*?['"]([^'"]+)['"].*?(\w+(?:\s+\d+)?).*?['"]([^'"]+)['"]/i,
+    /Character Bible.*?(\w+).*?['"]([^'"]+)['"].*?(\w+(?:\s+\d+)?).*?['"]([^'"]+)['"]/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = description.match(pattern);
+    if (match) {
+      if (match.length >= 6) {
+        return {
+          characterName: match[1].trim(),
+          attribute: match[2].trim(),
+          correctValue: match[3].trim(),
+          incorrectValue: match[5].trim(),
+          chapterName: match[4].trim()
+        };
+      }
+    }
+  }
+
+  const bibleMatch = description.match(/\*?\*?Character Bible\*?\*?:?\s*(?:\w+:?\s*)?["']([^"']+)["']/i) ||
+                    description.match(/Character Bible.*?:\s*["']([^"']+)["']/i) ||
+                    description.match(/hair:\s*["']([^"']+)["']/i) ||
+                    description.match(/cabello.*?como\s*["']([^"']+)["']/i);
+  
+  const manuscriptMatch = description.match(/\*?\*?(?:Prólogo|Cap[íi]tulo\s*\d+)\*?\*?:?\s*["']([^"']+)["']/i) ||
+                         description.match(/(?:en el\s+)?(?:Prólogo|Cap[íi]tulo\s*\d+).*?["']([^"']+)["']/i);
+  
+  const locationMatch = description.match(/(?:\*\*)?(?:en el\s+)?(Prólogo|Cap[íi]tulo\s*\d+)(?:\*\*)?/i);
+  
+  const nameMatch = description.match(/ficha de personaje de (\w+(?:\s+\w+)?)/i) || 
+                   description.match(/personaje\s+de\s+(\w+(?:\s+\w+)?)/i) ||
+                   description.match(/de\s+(\w+(?:\s+\w+)?)\s+describe/i);
+  
+  const attrMatch = description.match(/describe su (\w+(?:\s+\w+)?)/i) ||
+                   description.match(/su\s+(\w+)\s+como/i) ||
+                   description.match(/(\w+):\s*["'][^"']+["']/i);
+
+  if (bibleMatch && manuscriptMatch && locationMatch) {
+    console.log('[CharacterBible] Extracted:', {
+      correctValue: bibleMatch[1],
+      incorrectValue: manuscriptMatch[1],
+      chapter: locationMatch[1]
+    });
+    return {
+      characterName: nameMatch ? nameMatch[1].trim() : 'Personaje',
+      attribute: attrMatch ? attrMatch[1].trim() : 'atributo',
+      correctValue: bibleMatch[1].trim(),
+      incorrectValue: manuscriptMatch[1].trim(),
+      chapterName: locationMatch[1].trim()
+    };
+  }
+
+  return null;
+}
+
+function findTextWithIncorrectValue(manuscript: string, incorrectValue: string, chapterName: string): { 
+  foundText: string; 
+  chapterContent: string;
+  chapterIndex: number;
+} | null {
+  const chapters = manuscript.split(/(?=^(?:Capítulo|CAPÍTULO|Prólogo|PRÓLOGO)\s*\d*)/mi);
+  
+  for (let i = 0; i < chapters.length; i++) {
+    const chapter = chapters[i];
+    const chapterHeader = chapter.split('\n')[0] || '';
+    
+    const isTargetChapter = 
+      (chapterName.toLowerCase() === 'prólogo' && /prólogo/i.test(chapterHeader)) ||
+      new RegExp(chapterName.replace(/\s+/g, '\\s*'), 'i').test(chapterHeader);
+    
+    if (isTargetChapter) {
+      const incorrectWords = incorrectValue.split(/\s+/).filter(w => w.length > 3);
+      
+      for (const word of incorrectWords) {
+        const wordRegex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const wordMatches = chapter.match(wordRegex);
+        if (wordMatches) {
+          const index = chapter.search(wordRegex);
+          if (index !== -1) {
+            const sentenceStart = Math.max(0, chapter.lastIndexOf('.', index) + 1);
+            const sentenceEnd = chapter.indexOf('.', index + word.length);
+            const sentence = chapter.substring(sentenceStart, sentenceEnd > 0 ? sentenceEnd + 1 : index + 200).trim();
+            
+            if (sentence.length > 10) {
+              return {
+                foundText: sentence,
+                chapterContent: chapter,
+                chapterIndex: i
+              };
+            }
+          }
+        }
+      }
+      
+      const fullPhraseIndex = chapter.toLowerCase().indexOf(incorrectValue.toLowerCase());
+      if (fullPhraseIndex !== -1) {
+        const sentenceStart = Math.max(0, chapter.lastIndexOf('.', fullPhraseIndex) + 1);
+        const sentenceEnd = chapter.indexOf('.', fullPhraseIndex + incorrectValue.length);
+        const sentence = chapter.substring(sentenceStart, sentenceEnd > 0 ? sentenceEnd + 1 : fullPhraseIndex + 200).trim();
+        
+        return {
+          foundText: sentence,
+          chapterContent: chapter,
+          chapterIndex: i
+        };
+      }
+    }
+  }
+  
+  return null;
+}
+
 interface CorrectionResult {
   success: boolean;
   originalText: string;
@@ -652,6 +775,54 @@ export async function startCorrectionProcess(
           }
         }
         continue;
+      }
+
+      const characterBibleInfo = extractCharacterBibleInfo(issue.description);
+      
+      if (characterBibleInfo) {
+        onProgress?.({
+          phase: 'analyzing',
+          current: i + 1,
+          total: allIssues.length,
+          message: `Detectado issue de Character Bible: buscando "${characterBibleInfo.incorrectValue}" en ${characterBibleInfo.chapterName}...`
+        });
+
+        const foundResult = findTextWithIncorrectValue(
+          correctedContent,
+          characterBibleInfo.incorrectValue,
+          characterBibleInfo.chapterName
+        );
+
+        if (foundResult) {
+          const result = await correctSingleIssue({
+            fullChapter: foundResult.chapterContent,
+            targetText: foundResult.foundText,
+            instruction: `El personaje ${characterBibleInfo.characterName} tiene ${characterBibleInfo.attribute} como "${characterBibleInfo.correctValue}" según la biblia de personajes. Corregir "${characterBibleInfo.incorrectValue}" a "${characterBibleInfo.correctValue}".`,
+            suggestion: `Cambiar la descripción para que coincida con la biblia: "${characterBibleInfo.correctValue}"`
+          });
+
+          const correctionRecord: CorrectionRecord = {
+            id: `correction-${Date.now()}-${i}-charfix`,
+            issueId: `issue-${i}`,
+            location: characterBibleInfo.chapterName,
+            chapterNumber: parseInt(characterBibleInfo.chapterName.match(/\d+/)?.[0] || '0'),
+            originalText: result.originalText,
+            correctedText: result.correctedText,
+            instruction: `[CHARACTER-BIBLE] ${issue.description}`,
+            severity: issue.severity,
+            status: result.success ? 'pending' : 'rejected',
+            diffStats: result.diffStats,
+            createdAt: new Date().toISOString()
+          };
+
+          pendingCorrections.push(correctionRecord);
+          totalOccurrences++;
+
+          if (result.success) {
+            successCount++;
+          }
+          continue;
+        }
       }
 
       pendingCorrections.push({
