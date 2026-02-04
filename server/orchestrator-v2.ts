@@ -685,7 +685,7 @@ export class OrchestratorV2 {
       const nameParts = charName
         .replace(/[,()]/g, ' ') // Remove commas and parentheses
         .split(/\s+/)
-        .filter(p => p.length >= 2);
+        .filter((p: string) => p.length >= 2);
       
       // Add individual significant parts (skip particles like "de", "el", "la", "del", "los")
       const particles = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'von', 'van', 'di', 'da']);
@@ -719,7 +719,7 @@ export class OrchestratorV2 {
       }
       
       // Get last significant name part (often the family name)
-      const significantParts = nameParts.filter(p => !particles.has(p) && p.length >= 3);
+      const significantParts = nameParts.filter((p: string) => !particles.has(p) && p.length >= 3);
       if (significantParts.length > 1) {
         aliases.add(significantParts[significantParts.length - 1]); // Last name
       }
@@ -734,7 +734,9 @@ export class OrchestratorV2 {
         
         // Check all aliases
         let found = false;
-        for (const alias of aliases) {
+        const aliasArray = Array.from(aliases);
+        for (let j = 0; j < aliasArray.length; j++) {
+          const alias = aliasArray[j];
           if (alias.length >= 3 && combined.includes(alias)) {
             found = true;
             break;
