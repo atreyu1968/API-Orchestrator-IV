@@ -12,6 +12,8 @@ import {
   SummarizerAgent,
   NarrativeDirectorAgent,
   SeriesWorldBibleExtractor,
+  getPatternTracker,
+  clearPatternTracker,
   type GlobalArchitectOutput,
   type ChapterArchitectOutput,
   type SmartEditorOutput,
@@ -4133,6 +4135,10 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
     try {
       // Update project status
       await storage.updateProject(project.id, { status: "generating" });
+      
+      // LitAgents 2.9.7: Clear pattern tracker for fresh generation
+      clearPatternTracker(project.id);
+      console.log(`[OrchestratorV2] Pattern tracker cleared for project ${project.id}`);
 
       // Fetch extended guide if exists
       let extendedGuideContent: string | undefined;
@@ -4814,6 +4820,14 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         const thoughtContext = await this.getChapterDecisionContext(project.id, chapterNumber);
         const enrichedConstraints = consistencyConstraints + thoughtContext;
 
+        // LitAgents 2.9.7: Get pattern analysis to prevent structural repetition
+        const patternTracker = getPatternTracker(project.id);
+        const patternAnalysis = patternTracker.analyzeForChapter(chapterNumber);
+        const patternAnalysisContext = patternTracker.formatForPrompt(patternAnalysis);
+        if (patternAnalysisContext) {
+          console.log(`[OrchestratorV2] Pattern analysis ready: ${patternAnalysis.recentPatterns.length} patterns tracked, ${patternAnalysis.avoidSequences.length} sequences to avoid`);
+        }
+
         const chapterPlan = await this.chapterArchitect.execute({
           chapterOutline,
           worldBible,
@@ -4822,6 +4836,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           consistencyConstraints: enrichedConstraints, // LitAgents 2.1: Inject constraints + thought context
           fullPlotOutline: outline, // LitAgents 2.1: Full plot context for coherent scene planning
           isKindleUnlimited: project.kindleUnlimitedOptimized || false, // LitAgents 2.5: Direct KU pacing flag
+          patternAnalysisContext, // LitAgents 2.9.7: Anti-repetition pattern context
         });
 
         if (chapterPlan.error || !chapterPlan.parsed) {
@@ -4844,6 +4859,21 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         this.callbacks.onAgentStatus("chapter-architect", "completed", `${chapterPlan.parsed.scenes.length} scenes planned`);
 
         const sceneBreakdown = chapterPlan.parsed;
+
+        // LitAgents 2.9.7: Register the chapter's pattern after planning
+        const chapterPattern = patternTracker.extractPatternFromScenes(
+          chapterNumber,
+          chapterOutline.title,
+          sceneBreakdown.scenes.map(s => ({
+            plot_beat: s.plot_beat,
+            emotional_beat: s.emotional_beat,
+            ending_hook: s.ending_hook
+          })),
+          sceneBreakdown.chapter_hook
+        );
+        patternTracker.registerPattern(chapterPattern);
+        console.log(`[OrchestratorV2] Registered pattern for Chapter ${chapterNumber}: ${chapterPattern.sceneSequence.join(' → ')}`);
+
 
         // 2b: Ghostwriter - Write scene by scene
         let fullChapterText = "";
@@ -5615,6 +5645,11 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
       console.log(`[OrchestratorV2] Generated KU pacing constraints for helper (${effectiveConstraints.length} chars)`);
     }
     
+    // LitAgents 2.9.7: Get pattern analysis to prevent structural repetition
+    const patternTracker = getPatternTracker(project.id);
+    const patternAnalysis = patternTracker.analyzeForChapter(chapterOutline.chapter_num);
+    const patternAnalysisContext = patternTracker.formatForPrompt(patternAnalysis);
+    
     const chapterPlan = await this.chapterArchitect.execute({
       chapterOutline,
       worldBible,
@@ -5623,6 +5658,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
       consistencyConstraints: effectiveConstraints, // LitAgents 2.5: Pass KU pacing constraints
       fullPlotOutline: fullOutline, // LitAgents 2.1: Full plot context
       isKindleUnlimited: project.kindleUnlimitedOptimized || false, // LitAgents 2.5: Direct KU pacing flag
+      patternAnalysisContext, // LitAgents 2.9.7: Anti-repetition pattern context
     });
 
     if (!chapterPlan.parsed) {
@@ -5630,6 +5666,19 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
     }
 
     const sceneBreakdown = chapterPlan.parsed;
+    
+    // LitAgents 2.9.7: Register the chapter's pattern after planning
+    const chapterPattern = patternTracker.extractPatternFromScenes(
+      chapterOutline.chapter_num,
+      chapterOutline.title,
+      sceneBreakdown.scenes.map(s => ({
+        plot_beat: s.plot_beat,
+        emotional_beat: s.emotional_beat,
+        ending_hook: s.ending_hook
+      })),
+      sceneBreakdown.chapter_hook
+    );
+    patternTracker.registerPattern(chapterPattern);
 
     // Write scenes
     let fullChapterText = "";
@@ -8128,6 +8177,11 @@ ${issuesDescription}`;
         const plotData = (worldBibleData as any)?.plotOutline as any;
         const fullOutline = plotData?.chapterOutlines || plotData?.chapters || [];
         
+        // LitAgents 2.9.7: Get pattern analysis to prevent structural repetition
+        const patternTracker = getPatternTracker(project.id);
+        const patternAnalysis = patternTracker.analyzeForChapter(chapterNum);
+        const patternAnalysisContext = patternTracker.formatForPrompt(patternAnalysis);
+        
         const chapterPlan = await this.chapterArchitect.execute({
           chapterOutline: tempOutline,
           worldBible: worldBibleData,
@@ -8136,6 +8190,7 @@ ${issuesDescription}`;
           consistencyConstraints,
           fullPlotOutline: fullOutline, // LitAgents 2.1: Full plot context
           isKindleUnlimited: project.kindleUnlimitedOptimized || false, // LitAgents 2.5: Direct KU pacing flag
+          patternAnalysisContext, // LitAgents 2.9.7: Anti-repetition pattern context
         });
 
         if (!chapterPlan.parsed) {
@@ -8145,6 +8200,19 @@ ${issuesDescription}`;
 
         this.addTokenUsage(chapterPlan.tokenUsage);
         await this.logAiUsage(project.id, "chapter-architect", "deepseek-reasoner", chapterPlan.tokenUsage, chapterNum);
+        
+        // LitAgents 2.9.7: Register the chapter's pattern after planning
+        const chapterPattern = patternTracker.extractPatternFromScenes(
+          chapterNum,
+          tempOutline.title,
+          chapterPlan.parsed.scenes.map(s => ({
+            plot_beat: s.plot_beat,
+            emotional_beat: s.emotional_beat,
+            ending_hook: s.ending_hook
+          })),
+          chapterPlan.parsed.chapter_hook
+        );
+        patternTracker.registerPattern(chapterPattern);
         
         // Generate a better title from the chapter hook or first scene
         const generatedTitle = chapterPlan.parsed.chapter_hook 
@@ -8410,6 +8478,11 @@ ${issuesDescription}`;
         const plotData2 = (worldBibleData as any)?.plotOutline as any;
         const fullOutline = plotData2?.chapterOutlines || plotData2?.chapters || [];
         
+        // LitAgents 2.9.7: Get pattern analysis to prevent structural repetition
+        const patternTracker = getPatternTracker(project.id);
+        const patternAnalysis = patternTracker.analyzeForChapter(chapter.chapterNumber);
+        const patternAnalysisContext = patternTracker.formatForPrompt(patternAnalysis);
+        
         const chapterPlan = await this.chapterArchitect.execute({
           chapterOutline,
           worldBible: worldBibleData,
@@ -8418,6 +8491,7 @@ ${issuesDescription}`;
           consistencyConstraints,
           fullPlotOutline: fullOutline, // LitAgents 2.1: Full plot context
           isKindleUnlimited: project.kindleUnlimitedOptimized || false, // LitAgents 2.5: Direct KU pacing flag
+          patternAnalysisContext, // LitAgents 2.9.7: Anti-repetition pattern context
         });
 
         if (!chapterPlan.parsed) {
@@ -8427,6 +8501,19 @@ ${issuesDescription}`;
 
         this.addTokenUsage(chapterPlan.tokenUsage);
         await this.logAiUsage(project.id, "chapter-architect", "deepseek-reasoner", chapterPlan.tokenUsage, chapter.chapterNumber);
+        
+        // LitAgents 2.9.7: Register the chapter's pattern after planning
+        const chapterPatternRegen = patternTracker.extractPatternFromScenes(
+          chapter.chapterNumber,
+          chapterOutline.title,
+          chapterPlan.parsed.scenes.map(s => ({
+            plot_beat: s.plot_beat,
+            emotional_beat: s.emotional_beat,
+            ending_hook: s.ending_hook
+          })),
+          chapterPlan.parsed.chapter_hook
+        );
+        patternTracker.registerPattern(chapterPatternRegen);
 
         // Write new scenes
         let fullChapterText = "";
@@ -8836,6 +8923,11 @@ ${issuesDescription}`;
         const plotData3 = (worldBible as any)?.plotOutline;
         const fullOutline = plotData3?.chapterOutlines || plotData3?.chapters || outline;
         
+        // LitAgents 2.9.7: Get pattern analysis to prevent structural repetition
+        const patternTracker = getPatternTracker(project.id);
+        const patternAnalysis = patternTracker.analyzeForChapter(chapterNumber);
+        const patternAnalysisContext = patternTracker.formatForPrompt(patternAnalysis);
+        
         const chapterPlan = await this.chapterArchitect.execute({
           chapterOutline,
           worldBible: worldBible as any,
@@ -8844,6 +8936,7 @@ ${issuesDescription}`;
           consistencyConstraints,
           fullPlotOutline: fullOutline, // LitAgents 2.1: Full plot context
           isKindleUnlimited: project.kindleUnlimitedOptimized || false, // LitAgents 2.5: Direct KU pacing flag
+          patternAnalysisContext, // LitAgents 2.9.7: Anti-repetition pattern context
         });
 
         if (chapterPlan.error || !chapterPlan.parsed) {
@@ -8855,6 +8948,19 @@ ${issuesDescription}`;
         this.callbacks.onAgentStatus("chapter-architect", "completed", `${chapterPlan.parsed.scenes.length} scenes planned`);
 
         const sceneBreakdown = chapterPlan.parsed;
+        
+        // LitAgents 2.9.7: Register the chapter's pattern after planning
+        const chapterPatternFill = patternTracker.extractPatternFromScenes(
+          chapterNumber,
+          chapterOutline.title,
+          sceneBreakdown.scenes.map(s => ({
+            plot_beat: s.plot_beat,
+            emotional_beat: s.emotional_beat,
+            ending_hook: s.ending_hook
+          })),
+          sceneBreakdown.chapter_hook
+        );
+        patternTracker.registerPattern(chapterPatternFill);
 
         // Ghostwriter - Write scenes
         let fullChapterText = "";
