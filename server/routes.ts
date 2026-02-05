@@ -11457,7 +11457,7 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
     const correctionId = req.params.correctionId;
 
     try {
-      const { getStructuralIssueFromCorrection } = await import('./deepseek-corrector');
+      const { getStructuralIssueFromCorrection, isNarrativeFlowIssue, extractFlowBreakContext, generateFlowTransitionOptions } = await import('./deepseek-corrector');
       const [manuscript] = await db.select()
         .from(correctedManuscripts)
         .where(eq(correctedManuscripts.id, manuscriptId));
@@ -11482,6 +11482,37 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
           affectedChapters: structuralIssue.affectedChapters
         });
       } else {
+        const mockAuditIssue = {
+          id: correction.id,
+          location: correction.location || '',
+          description: correction.instruction || '',
+          suggestion: correction.correctedText || '',
+          severity: correction.severity || 'HIGH',
+          agent: 'structural-resolver'
+        };
+        
+        if (isNarrativeFlowIssue(mockAuditIssue)) {
+          const manuscriptContent = (manuscript.correctedContent || manuscript.originalContent) as string;
+          const flowContext = extractFlowBreakContext(mockAuditIssue, manuscriptContent);
+          
+          if (flowContext) {
+            const flowOptions = generateFlowTransitionOptions(
+              flowContext.fromChapter,
+              flowContext.toChapter,
+              correction.instruction || '',
+              manuscriptContent
+            );
+            
+            res.json({ 
+              isStructural: true, 
+              isNarrativeFlow: true,
+              options: flowOptions,
+              affectedChapters: [flowContext.fromChapter, flowContext.toChapter]
+            });
+            return;
+          }
+        }
+        
         const structuralPatterns = [
           /capítulos?\s+(son\s+)?idénticos/i,
           /repetición\s+literal/i,

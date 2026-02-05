@@ -11,7 +11,7 @@ const deepseek = new OpenAI({
 
 export interface StructuralIssue {
   id: string;
-  type: 'duplicate_chapters' | 'duplicate_scenes' | 'redundant_content' | 'continuity_conflict' | 'repeated_scene';
+  type: 'duplicate_chapters' | 'duplicate_scenes' | 'redundant_content' | 'continuity_conflict' | 'repeated_scene' | 'narrative_flow_break';
   severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
   description: string;
   affectedChapters: number[];
@@ -31,7 +31,7 @@ export interface ContinuityConflict {
 
 export interface ResolutionOption {
   id: string;
-  type: 'delete' | 'rewrite' | 'merge' | 'modify_a' | 'modify_b' | 'add_explanation';
+  type: 'delete' | 'rewrite' | 'merge' | 'modify_a' | 'modify_b' | 'add_explanation' | 'add_transition';
   label: string;
   description: string;
   chaptersToDelete?: number[];
@@ -41,6 +41,12 @@ export interface ResolutionOption {
   targetFact?: string;
   correctFact?: string;
   estimatedTokens?: number;
+  transitionContext?: {
+    fromChapter: number;
+    toChapter: number;
+    endingContext: string;
+    startingContext: string;
+  };
 }
 
 export interface StructuralResolutionProgress {
@@ -160,6 +166,133 @@ export function isContinuityConflict(issue: AuditIssue): boolean {
   console.log(`[ContinuityConflict] Checking: location="${issue.location?.substring(0, 50)}", hasVs=${hasVsInLocation}, hasPattern=${hasConflictPattern}`);
   
   return hasConflictPattern || hasVsInLocation;
+}
+
+export function isNarrativeFlowIssue(issue: AuditIssue): boolean {
+  const flowPatterns = [
+    /fluidez\s*narrativa/i,
+    /inconsistencia\s*(en\s*la\s*)?fluidez/i,
+    /interrup(ción|e)\s*(abrupta|de\s*la\s*narrativa)/i,
+    /ruptura\s*(de\s*)?narrativa/i,
+    /transición\s*(abrupta|brusca|inexistente)/i,
+    /no\s*hay\s*(una\s*)?transición/i,
+    /sin\s*transición/i,
+    /salto\s*(abrupto|brusco|narrativo)/i,
+    /cambio\s*significativo\s*de\s*(ubicación|escena)/i,
+    /no\s*se\s*explica\s*cómo/i,
+    /termina\s*con.*comienza\s*con/i,
+    /cap[íi]tulo\s*\d+\s*vs\.?\s*cap[íi]tulo\s*\d+/i
+  ];
+  
+  const fullText = `${issue.location || ''} ${issue.description}`;
+  const hasFlowPattern = flowPatterns.some(p => p.test(fullText));
+  const hasFluidezKeyword = fullText.toLowerCase().includes('fluidez') || 
+                            fullText.toLowerCase().includes('transición') ||
+                            (fullText.toLowerCase().includes('termina') && fullText.toLowerCase().includes('comienza'));
+  
+  console.log(`[NarrativeFlow] Checking: "${issue.description?.substring(0, 60)}...", hasPattern=${hasFlowPattern}, hasKeyword=${hasFluidezKeyword}`);
+  
+  return hasFlowPattern || hasFluidezKeyword;
+}
+
+export function extractFlowBreakContext(issue: AuditIssue, manuscriptContent: string): { fromChapter: number; toChapter: number; endingContext: string; startingContext: string } | null {
+  const vsMatch = (issue.location || '').match(/cap[íi]tulo\s*(\d+)\s*vs\.?\s*cap[íi]tulo\s*(\d+)/i) ||
+                  issue.description.match(/cap[íi]tulo\s*(\d+)\s*vs\.?\s*cap[íi]tulo\s*(\d+)/i);
+  
+  if (!vsMatch) {
+    const chapPattern = /cap[íi]tulo\s*(\d+)/gi;
+    const chapters: number[] = [];
+    let m;
+    while ((m = chapPattern.exec(issue.description)) !== null) {
+      const num = parseInt(m[1]);
+      if (!chapters.includes(num)) chapters.push(num);
+    }
+    if (chapters.length >= 2) {
+      chapters.sort((a, b) => a - b);
+      return extractChapterContexts(chapters[0], chapters[1], manuscriptContent);
+    }
+    return null;
+  }
+  
+  const fromChapter = parseInt(vsMatch[1]);
+  const toChapter = parseInt(vsMatch[2]);
+  
+  return extractChapterContexts(fromChapter, toChapter, manuscriptContent);
+}
+
+function extractChapterContexts(fromChapter: number, toChapter: number, manuscriptContent: string): { fromChapter: number; toChapter: number; endingContext: string; startingContext: string } {
+  const getChapterEnd = (chapterNum: number): string => {
+    const chapterPattern = new RegExp(`===\\s*(?:CAPÍTULO|Capítulo|Cap\\.?)\\s*${chapterNum}[^=]*===([\\s\\S]*?)(?====\\s*(?:CAPÍTULO|Capítulo|Cap\\.?|EPÍLOGO)|$)`, 'i');
+    const match = manuscriptContent.match(chapterPattern);
+    if (match && match[1]) {
+      const content = match[1].trim();
+      const paragraphs = content.split(/\n\n+/);
+      const lastParagraphs = paragraphs.slice(-3).join('\n\n');
+      return lastParagraphs.length > 1500 ? lastParagraphs.substring(lastParagraphs.length - 1500) : lastParagraphs;
+    }
+    return '';
+  };
+  
+  const getChapterStart = (chapterNum: number): string => {
+    const chapterPattern = new RegExp(`===\\s*(?:CAPÍTULO|Capítulo|Cap\\.?)\\s*${chapterNum}[^=]*===([\\s\\S]*?)(?====\\s*(?:CAPÍTULO|Capítulo|Cap\\.?|EPÍLOGO)|$)`, 'i');
+    const match = manuscriptContent.match(chapterPattern);
+    if (match && match[1]) {
+      const content = match[1].trim();
+      const paragraphs = content.split(/\n\n+/);
+      const firstParagraphs = paragraphs.slice(0, 3).join('\n\n');
+      return firstParagraphs.length > 1500 ? firstParagraphs.substring(0, 1500) : firstParagraphs;
+    }
+    return '';
+  };
+  
+  return {
+    fromChapter,
+    toChapter,
+    endingContext: getChapterEnd(fromChapter),
+    startingContext: getChapterStart(toChapter)
+  };
+}
+
+export function generateFlowTransitionOptions(
+  fromChapter: number,
+  toChapter: number,
+  description: string,
+  manuscriptContent: string
+): ResolutionOption[] {
+  const options: ResolutionOption[] = [];
+  const context = extractChapterContexts(fromChapter, toChapter, manuscriptContent);
+  
+  options.push({
+    id: `add-transition-end-${fromChapter}`,
+    type: 'add_transition',
+    label: `✨ RECOMENDADO: Añadir transición al final del Capítulo ${fromChapter}`,
+    description: `Genera 1-2 párrafos de transición al final del Capítulo ${fromChapter} que faciliten el paso narrativo hacia el Capítulo ${toChapter}. Incluye anticipación sutil del cambio de escena.`,
+    chapterToModify: fromChapter,
+    transitionContext: context,
+    estimatedTokens: 1200
+  });
+  
+  options.push({
+    id: `add-transition-start-${toChapter}`,
+    type: 'add_transition',
+    label: `Añadir transición al inicio del Capítulo ${toChapter}`,
+    description: `Genera 1-2 párrafos de apertura del Capítulo ${toChapter} que conecten narrativamente con el cierre del Capítulo ${fromChapter}. Incluye orientación contextual para el lector.`,
+    chapterToModify: toChapter,
+    transitionContext: context,
+    estimatedTokens: 1200
+  });
+  
+  options.push({
+    id: `add-transition-both-${fromChapter}-${toChapter}`,
+    type: 'add_transition',
+    label: `Añadir transiciones a ambos capítulos`,
+    description: `Genera transiciones complementarias: un párrafo de cierre para el Capítulo ${fromChapter} y otro de apertura para el Capítulo ${toChapter}, creando una conexión narrativa fluida.`,
+    chaptersToMerge: [fromChapter, toChapter],
+    transitionContext: context,
+    estimatedTokens: 2000
+  });
+  
+  return options;
 }
 
 export function extractContinuityConflict(issue: AuditIssue): ContinuityConflict | null {
@@ -592,6 +725,18 @@ export async function applyStructuralResolution(
           return { success: false, error: 'No hay detalles del conflicto de continuidad' };
         }
         break;
+      case 'add_transition':
+        if (option.transitionContext) {
+          content = await applyTransitionResolution(
+            content,
+            option,
+            structuralCorrection.instruction,
+            onProgress
+          );
+        } else {
+          return { success: false, error: 'No hay contexto de transición disponible' };
+        }
+        break;
     }
     
     const updatedCorrections = pendingCorrections.map(c => {
@@ -972,4 +1117,188 @@ CAPÍTULO CON EXPLICACIÓN:`;
   );
   
   return content.replace(chapterPattern, `$1${newChapterContent}\n\n`);
+}
+
+async function applyTransitionResolution(
+  content: string,
+  option: ResolutionOption,
+  fullDescription: string,
+  onProgress?: (progress: StructuralResolutionProgress) => void
+): Promise<string> {
+  const { GoogleGenAI } = await import('@google/genai');
+  
+  const apiKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('No se encontró API key de Gemini');
+  }
+  
+  const genAI = new GoogleGenAI({ apiKey });
+  const ctx = option.transitionContext!;
+  
+  onProgress?.({
+    phase: 'rewriting',
+    message: `Generando transición narrativa entre Capítulo ${ctx.fromChapter} y ${ctx.toChapter}...`
+  });
+  
+  let prompt = '';
+  let chapterToModify: number;
+  let insertPosition: 'end' | 'start' | 'both';
+  
+  if (option.id.includes('end-')) {
+    chapterToModify = ctx.fromChapter;
+    insertPosition = 'end';
+    prompt = `Eres un escritor literario experto en narrativa de thriller/novela negra. Tu tarea es generar 1-2 párrafos de TRANSICIÓN que se añadirán al FINAL del Capítulo ${ctx.fromChapter} para crear una conexión narrativa fluida con el Capítulo ${ctx.toChapter}.
+
+PROBLEMA DETECTADO:
+${fullDescription}
+
+CONTEXTO - FINAL DEL CAPÍTULO ${ctx.fromChapter}:
+"""
+${ctx.endingContext}
+"""
+
+CONTEXTO - INICIO DEL CAPÍTULO ${ctx.toChapter}:
+"""
+${ctx.startingContext}
+"""
+
+INSTRUCCIONES:
+1. Genera SOLO 1-2 párrafos de transición (máximo 200 palabras)
+2. La transición debe cerrar naturalmente la escena del Capítulo ${ctx.fromChapter}
+3. Incluye sutilmente una anticipación del cambio de escena/ubicación/tiempo
+4. Mantén el mismo estilo narrativo y tono del texto original
+5. NO uses frases cliché como "mientras tanto" o "en otro lugar"
+6. Puede incluir pensamientos del personaje, paso del tiempo, o detalles sensoriales
+7. Devuelve SOLO los párrafos de transición, sin explicaciones ni markdown
+
+PÁRRAFOS DE TRANSICIÓN:`;
+  } else if (option.id.includes('start-')) {
+    chapterToModify = ctx.toChapter;
+    insertPosition = 'start';
+    prompt = `Eres un escritor literario experto en narrativa de thriller/novela negra. Tu tarea es generar 1-2 párrafos de APERTURA que se añadirán al INICIO del Capítulo ${ctx.toChapter} para crear una conexión narrativa fluida con el Capítulo ${ctx.fromChapter}.
+
+PROBLEMA DETECTADO:
+${fullDescription}
+
+CONTEXTO - FINAL DEL CAPÍTULO ${ctx.fromChapter}:
+"""
+${ctx.endingContext}
+"""
+
+CONTEXTO - INICIO ACTUAL DEL CAPÍTULO ${ctx.toChapter}:
+"""
+${ctx.startingContext}
+"""
+
+INSTRUCCIONES:
+1. Genera SOLO 1-2 párrafos de apertura/orientación (máximo 200 palabras)
+2. La apertura debe orientar al lector sobre el cambio de escena/ubicación/tiempo
+3. Conecta sutilmente con lo que ocurrió en el Capítulo ${ctx.fromChapter}
+4. Mantén el mismo estilo narrativo y tono del texto original
+5. NO uses frases cliché como "mientras tanto" o "al día siguiente"
+6. Puede incluir reflexiones del personaje, descripción del nuevo entorno, o paso del tiempo
+7. Devuelve SOLO los párrafos de apertura, sin explicaciones ni markdown
+
+PÁRRAFOS DE APERTURA:`;
+  } else {
+    insertPosition = 'both';
+    prompt = `Eres un escritor literario experto en narrativa de thriller/novela negra. Tu tarea es generar transiciones COMPLEMENTARIAS: un párrafo de cierre para el Capítulo ${ctx.fromChapter} y otro de apertura para el Capítulo ${ctx.toChapter}.
+
+PROBLEMA DETECTADO:
+${fullDescription}
+
+CONTEXTO - FINAL DEL CAPÍTULO ${ctx.fromChapter}:
+"""
+${ctx.endingContext}
+"""
+
+CONTEXTO - INICIO DEL CAPÍTULO ${ctx.toChapter}:
+"""
+${ctx.startingContext}
+"""
+
+INSTRUCCIONES:
+1. Genera exactamente 2 secciones claramente separadas
+2. CIERRE (1 párrafo): Transición natural que cierra el Capítulo ${ctx.fromChapter}
+3. APERTURA (1 párrafo): Orientación que abre el Capítulo ${ctx.toChapter}
+4. Máximo 150 palabras por sección
+5. Mantén el mismo estilo narrativo y tono
+6. Evita clichés narrativos
+
+Formato de respuesta:
+---CIERRE---
+[párrafo de cierre]
+---APERTURA---
+[párrafo de apertura]`;
+    chapterToModify = ctx.fromChapter;
+  }
+
+  const response = await genAI.models.generateContent({
+    model: 'gemini-2.0-flash',
+    contents: prompt,
+    config: {
+      temperature: 0.7,
+      maxOutputTokens: 1500
+    }
+  });
+
+  const transitionText = response.text?.trim();
+  
+  if (!transitionText || transitionText.length < 50) {
+    throw new Error('La respuesta del modelo fue demasiado corta o vacía');
+  }
+
+  console.log(`[Transition] Generated transition (${transitionText.length} chars) for position: ${insertPosition}`);
+
+  if (insertPosition === 'end') {
+    const endPattern = new RegExp(
+      `(===\\s*(?:CAPÍTULO|Capítulo|Cap\\.?)\\s*${chapterToModify}[^=]*===)([\\s\\S]*?)(===\\s*(?:CAPÍTULO|Capítulo|Cap\\.?|EPÍLOGO))`,
+      'i'
+    );
+    return content.replace(endPattern, (match, header, chapterContent, nextHeader) => {
+      const trimmedContent = chapterContent.trimEnd();
+      return `${header}${trimmedContent}\n\n${transitionText}\n\n${nextHeader}`;
+    });
+  } else if (insertPosition === 'start') {
+    const startPattern = new RegExp(
+      `(===\\s*(?:CAPÍTULO|Capítulo|Cap\\.?)\\s*${chapterToModify}[^=]*===\\s*\\n+)`,
+      'i'
+    );
+    return content.replace(startPattern, `$1${transitionText}\n\n`);
+  } else {
+    const closingMatch = transitionText.match(/---CIERRE---\s*([\s\S]*?)---APERTURA---\s*([\s\S]*)/i);
+    if (!closingMatch) {
+      console.log('[Transition] Could not parse both sections, applying as single transition');
+      const endPattern = new RegExp(
+        `(===\\s*(?:CAPÍTULO|Capítulo|Cap\\.?)\\s*${ctx.fromChapter}[^=]*===)([\\s\\S]*?)(===\\s*(?:CAPÍTULO|Capítulo|Cap\\.?|EPÍLOGO))`,
+        'i'
+      );
+      return content.replace(endPattern, (match, header, chapterContent, nextHeader) => {
+        const trimmedContent = chapterContent.trimEnd();
+        return `${header}${trimmedContent}\n\n${transitionText.replace(/---.*?---/g, '').trim()}\n\n${nextHeader}`;
+      });
+    }
+    
+    const closingParagraph = closingMatch[1].trim();
+    const openingParagraph = closingMatch[2].trim();
+    
+    let modifiedContent = content;
+    
+    const endPattern = new RegExp(
+      `(===\\s*(?:CAPÍTULO|Capítulo|Cap\\.?)\\s*${ctx.fromChapter}[^=]*===)([\\s\\S]*?)(===\\s*(?:CAPÍTULO|Capítulo|Cap\\.?|EPÍLOGO))`,
+      'i'
+    );
+    modifiedContent = modifiedContent.replace(endPattern, (match, header, chapterContent, nextHeader) => {
+      const trimmedContent = chapterContent.trimEnd();
+      return `${header}${trimmedContent}\n\n${closingParagraph}\n\n${nextHeader}`;
+    });
+    
+    const startPattern = new RegExp(
+      `(===\\s*(?:CAPÍTULO|Capítulo|Cap\\.?)\\s*${ctx.toChapter}[^=]*===\\s*\\n+)`,
+      'i'
+    );
+    modifiedContent = modifiedContent.replace(startPattern, `$1${openingParagraph}\n\n`);
+    
+    return modifiedContent;
+  }
 }
