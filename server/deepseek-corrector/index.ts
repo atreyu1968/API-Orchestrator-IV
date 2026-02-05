@@ -2246,11 +2246,11 @@ export async function startCorrectionProcess(
         issueId: `issue-${i}`,
         location: issue.location,
         chapterNumber: parseInt(issue.location.match(/\d+/)?.[0] || '0'),
-        originalText: '[No se pudo localizar el texto exacto]',
-        correctedText: '',
-        instruction: issue.description,
+        originalText: '[Edita manualmente el texto original aquí]',
+        correctedText: '[Escribe aquí la corrección]',
+        instruction: `[REQUIERE EDICIÓN MANUAL] ${issue.description}`,
         severity: issue.severity,
-        status: 'rejected',
+        status: 'pending',
         diffStats: { wordsAdded: 0, wordsRemoved: 0, lengthChange: 0 },
         createdAt: new Date().toISOString()
       });

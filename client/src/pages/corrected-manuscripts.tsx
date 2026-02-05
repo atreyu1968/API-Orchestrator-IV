@@ -3,6 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Pencil, Save } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -127,7 +129,8 @@ function CorrectionCard({
   onStructuralResolve,
   isApproving,
   isRejecting,
-  isResolving
+  isResolving,
+  onUpdateTexts
 }: { 
   correction: CorrectionRecord;
   manuscriptId: number;
@@ -137,12 +140,18 @@ function CorrectionCard({
   isApproving: boolean;
   isRejecting: boolean;
   isResolving: boolean;
+  onUpdateTexts: (correctionId: string, originalText: string, correctedText: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [structuralOptions, setStructuralOptions] = useState<StructuralOptions | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [checkedStructural, setCheckedStructural] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editOriginal, setEditOriginal] = useState(correction.originalText);
+  const [editCorrected, setEditCorrected] = useState(correction.correctedText);
   const isPending = correction.status === 'pending';
+  const requiresManualEdit = correction.instruction?.includes('[REQUIERE EDICIÓN MANUAL]') || 
+                             correction.originalText?.includes('[Edita manualmente');
 
   const isStructural = structuralOptions?.isStructural || false;
 
@@ -249,17 +258,77 @@ function CorrectionCard({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1">Texto Original:</p>
-                <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded text-sm border border-red-200 dark:border-red-800" data-testid={`text-original-${correction.id}`}>
-                  {correction.originalText || '[No localizado]'}
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs font-medium text-muted-foreground">Texto Original:</p>
+                  {isPending && !isEditing && (
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="h-6 px-2"
+                      onClick={() => setIsEditing(true)}
+                      data-testid={`button-edit-${correction.id}`}
+                    >
+                      <Pencil className="h-3 w-3 mr-1" />
+                      Editar
+                    </Button>
+                  )}
                 </div>
+                {isEditing ? (
+                  <Textarea
+                    value={editOriginal}
+                    onChange={(e) => setEditOriginal(e.target.value)}
+                    className="bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-sm min-h-[100px]"
+                    data-testid={`textarea-original-${correction.id}`}
+                  />
+                ) : (
+                  <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded text-sm border border-red-200 dark:border-red-800" data-testid={`text-original-${correction.id}`}>
+                    {correction.originalText || '[No localizado]'}
+                  </div>
+                )}
               </div>
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1">Texto Corregido:</p>
-                <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded text-sm border border-green-200 dark:border-green-800" data-testid={`text-corrected-${correction.id}`}>
-                  {correction.correctedText || '[Sin corrección]'}
-                </div>
+                {isEditing ? (
+                  <Textarea
+                    value={editCorrected}
+                    onChange={(e) => setEditCorrected(e.target.value)}
+                    className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-sm min-h-[100px]"
+                    data-testid={`textarea-corrected-${correction.id}`}
+                  />
+                ) : (
+                  <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded text-sm border border-green-200 dark:border-green-800" data-testid={`text-corrected-${correction.id}`}>
+                    {correction.correctedText || '[Sin corrección]'}
+                  </div>
+                )}
               </div>
+            </div>
+          )}
+          
+          {isEditing && (
+            <div className="flex justify-end gap-2 mt-3">
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => {
+                  setIsEditing(false);
+                  setEditOriginal(correction.originalText);
+                  setEditCorrected(correction.correctedText);
+                }}
+                data-testid={`button-cancel-edit-${correction.id}`}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                size="sm"
+                onClick={() => {
+                  onUpdateTexts(correction.id, editOriginal, editCorrected);
+                  setIsEditing(false);
+                }}
+                data-testid={`button-save-edit-${correction.id}`}
+              >
+                <Save className="h-3 w-3 mr-1" />
+                Guardar
+              </Button>
             </div>
           )}
           
@@ -444,6 +513,23 @@ function ManuscriptDetail({ manuscript, onBack }: { manuscript: CorrectedManuscr
     }
   });
 
+  const updateTextsMutation = useMutation({
+    mutationFn: async ({ id, original, corrected }: { id: string; original: string; corrected: string }) => {
+      const res = await apiRequest('PATCH', `/api/corrected-manuscripts/${manuscript.id}/update-texts/${id}`, { 
+        originalText: original, 
+        correctedText: corrected 
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/corrected-manuscripts', manuscript.id] });
+      toast({ title: "Textos actualizados" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
@@ -523,6 +609,7 @@ function ManuscriptDetail({ manuscript, onBack }: { manuscript: CorrectedManuscr
                   onApprove={(id) => approveMutation.mutate(id)}
                   onReject={(id) => rejectMutation.mutate(id)}
                   onStructuralResolve={handleStructuralResolve}
+                  onUpdateTexts={(id, original, corrected) => updateTextsMutation.mutate({ id, original, corrected })}
                   isApproving={approvingId === correction.id}
                   isRejecting={rejectingId === correction.id}
                   isResolving={resolvingId === correction.id}

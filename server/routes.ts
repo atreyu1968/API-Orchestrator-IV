@@ -11358,6 +11358,50 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
     }
   });
 
+  // Update correction texts manually
+  app.patch("/api/corrected-manuscripts/:id/update-texts/:correctionId", async (req: Request, res: Response) => {
+    const manuscriptId = parseInt(req.params.id);
+    const correctionId = req.params.correctionId;
+    const { originalText, correctedText } = req.body;
+
+    try {
+      const [manuscript] = await db.select()
+        .from(correctedManuscripts)
+        .where(eq(correctedManuscripts.id, manuscriptId));
+
+      if (!manuscript) {
+        return res.status(404).json({ error: "Manuscrito no encontrado" });
+      }
+
+      const corrections = manuscript.pendingCorrections as any[];
+      const correctionIndex = corrections.findIndex((c: any) => c.id === correctionId);
+
+      if (correctionIndex === -1) {
+        return res.status(404).json({ error: "Corrección no encontrada" });
+      }
+
+      corrections[correctionIndex].originalText = originalText;
+      corrections[correctionIndex].correctedText = correctedText;
+      corrections[correctionIndex].instruction = corrections[correctionIndex].instruction?.replace('[REQUIERE EDICIÓN MANUAL] ', '') || corrections[correctionIndex].instruction;
+      
+      const wordsOriginal = originalText.split(/\s+/).length;
+      const wordsCorrected = correctedText.split(/\s+/).length;
+      corrections[correctionIndex].diffStats = {
+        wordsAdded: Math.max(0, wordsCorrected - wordsOriginal),
+        wordsRemoved: Math.max(0, wordsOriginal - wordsCorrected),
+        lengthChange: correctedText.length - originalText.length
+      };
+
+      await db.update(correctedManuscripts)
+        .set({ pendingCorrections: corrections })
+        .where(eq(correctedManuscripts.id, manuscriptId));
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Apply structural resolution
   app.post("/api/corrected-manuscripts/:id/structural-resolve/:correctionId", async (req: Request, res: Response) => {
     const manuscriptId = parseInt(req.params.id);
