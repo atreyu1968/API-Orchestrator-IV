@@ -524,6 +524,20 @@ export async function registerRoutes(
           updateData.seriesId = null;
           updateData.seriesOrder = null;
         }
+        
+        // LitAgents 2.9.9: Only approved manuscripts can be added to a series
+        if (updateData.seriesId && updateData.seriesId !== project.seriesId) {
+          const [approvedManuscript] = await db.select()
+            .from(correctedManuscripts)
+            .where(eq(correctedManuscripts.projectId, id))
+            .limit(1);
+          
+          if (!approvedManuscript || approvedManuscript.status !== 'approved') {
+            return res.status(400).json({ 
+              error: "Solo los proyectos con manuscrito auditado y aprobado pueden añadirse a una serie. Por favor, ejecuta primero el auditor y aprueba las correcciones." 
+            });
+          }
+        }
       }
 
       const updated = await storage.updateProject(id, updateData);
@@ -6254,6 +6268,22 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       res.end();
       return;
     }
+
+    // LitAgents 2.9.9: Verify project has an approved corrected manuscript before translation
+    const [approvedManuscript] = await db.select()
+      .from(correctedManuscripts)
+      .where(eq(correctedManuscripts.projectId, projectId))
+      .limit(1);
+    
+    if (!approvedManuscript || approvedManuscript.status !== 'approved') {
+      sendEvent("error", { 
+        error: "El proyecto debe tener un manuscrito auditado y aprobado antes de poder traducirlo. Por favor, ejecuta primero el auditor y aprueba las correcciones." 
+      });
+      cleanup();
+      res.end();
+      return;
+    }
+    console.log(`[Translation] Project ${projectId} has approved manuscript, proceeding with translation`);
 
     // Create initial translation record in repository
     let translationRecordId: number | null = null;
