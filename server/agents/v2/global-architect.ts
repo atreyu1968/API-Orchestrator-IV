@@ -181,28 +181,54 @@ export class GlobalArchitectAgent extends BaseAgent {
     let parseError: string | null = null;
     const content = response.content || "";
     
+    // Helper to clean and repair common JSON issues
+    const cleanJsonString = (str: string): string => {
+      return str
+        // Remove markdown code blocks
+        .replace(/```json\s*/gi, '')
+        .replace(/```\s*/g, '')
+        // Remove trailing commas before } or ]
+        .replace(/,(\s*[}\]])/g, '$1')
+        // Remove control characters except valid whitespace
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+        .trim();
+    };
+    
     try {
       // Strategy 1: Match JSON object containing expected keys
       const jsonMatch = content.match(/\{[\s\S]*"outline"[\s\S]*\}/);
       if (jsonMatch) {
         try {
-          parsed = JSON.parse(jsonMatch[0]) as GlobalArchitectOutput;
+          const cleanedJson = cleanJsonString(jsonMatch[0]);
+          parsed = JSON.parse(cleanedJson) as GlobalArchitectOutput;
         } catch (e) {
           // Strategy 2: Find first { and last } for malformed JSON
           const firstBrace = content.indexOf('{');
           const lastBrace = content.lastIndexOf('}');
           if (firstBrace !== -1 && lastBrace > firstBrace) {
             try {
-              parsed = JSON.parse(content.substring(firstBrace, lastBrace + 1)) as GlobalArchitectOutput;
+              const extracted = content.substring(firstBrace, lastBrace + 1);
+              const cleanedExtracted = cleanJsonString(extracted);
+              parsed = JSON.parse(cleanedExtracted) as GlobalArchitectOutput;
             } catch (e2) {
-              parseError = `JSON malformado: ${e2}`;
+              // Strategy 3: Try to find balanced braces
+              try {
+                const balanced = this.extractBalancedJson(content);
+                if (balanced) {
+                  parsed = JSON.parse(cleanJsonString(balanced)) as GlobalArchitectOutput;
+                } else {
+                  parseError = `JSON malformado: ${e2}`;
+                }
+              } catch (e3) {
+                parseError = `JSON malformado después de limpieza: ${e3}`;
+              }
             }
           }
         }
       } else {
-        // Strategy 3: Try parsing the entire content
+        // Strategy 4: Try parsing the entire content
         try {
-          const trimmed = content.trim();
+          const trimmed = cleanJsonString(content);
           if (trimmed.startsWith('{')) {
             parsed = JSON.parse(trimmed) as GlobalArchitectOutput;
           }
@@ -279,6 +305,50 @@ export class GlobalArchitectAgent extends BaseAgent {
     }
     
     return { ...response, parsed };
+  }
+
+  /**
+   * Extract balanced JSON from content by counting braces.
+   * Handles cases where extra text follows the JSON object.
+   */
+  private extractBalancedJson(content: string): string | null {
+    const firstBrace = content.indexOf('{');
+    if (firstBrace === -1) return null;
+    
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    
+    for (let i = firstBrace; i < content.length; i++) {
+      const char = content[i];
+      
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      
+      if (char === '"' && !escaped) {
+        inString = !inString;
+        continue;
+      }
+      
+      if (!inString) {
+        if (char === '{') depth++;
+        if (char === '}') {
+          depth--;
+          if (depth === 0) {
+            return content.substring(firstBrace, i + 1);
+          }
+        }
+      }
+    }
+    
+    return null; // Unbalanced braces
   }
 
   /**
