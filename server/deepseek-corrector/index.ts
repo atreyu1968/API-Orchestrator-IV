@@ -1109,7 +1109,94 @@ async function findConceptInChapter(
     return { sentence: bestMatch.sentence, context: bestMatch.context };
   }
   
+  console.log(`[MultiChapter] Intentando búsqueda con IA...`);
+  const aiResult = await findConceptWithAI(chapterContent, concept, fullDescription);
+  if (aiResult) {
+    return aiResult;
+  }
+  
   console.log(`[MultiChapter] No encontrado en capítulo`);
+  return null;
+}
+
+async function findConceptWithAI(
+  chapterContent: string,
+  concept: string,
+  fullDescription: string
+): Promise<{ sentence: string; context: string } | null> {
+  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  if (!geminiApiKey) {
+    console.log(`[MultiChapter AI] No hay API key de Gemini disponible`);
+    return null;
+  }
+  
+  const chapterPreview = chapterContent.substring(0, 12000);
+  
+  const prompt = `Analiza el siguiente texto de un capítulo y encuentra una oración que coincida con el problema descrito.
+
+PROBLEMA A BUSCAR:
+${fullDescription}
+
+CONCEPTO CLAVE:
+"${concept}"
+
+TEXTO DEL CAPÍTULO:
+${chapterPreview}
+
+INSTRUCCIONES:
+1. Busca una oración que contenga el concepto descrito o algo muy similar
+2. Si encuentras una coincidencia, devuelve EXACTAMENTE en este formato JSON:
+{"found": true, "sentence": "la oración exacta del texto", "reason": "breve explicación"}
+3. Si NO encuentras ninguna coincidencia, devuelve:
+{"found": false}
+
+Responde SOLO con el JSON, sin explicaciones adicionales.`;
+
+  try {
+    const { GoogleGenAI } = await import('@google/genai');
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: prompt
+    });
+    
+    const text = response.text?.trim() || '';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    
+    if (jsonMatch) {
+      const result = JSON.parse(jsonMatch[0]);
+      
+      if (result.found && result.sentence) {
+        const sentenceIndex = chapterContent.indexOf(result.sentence);
+        
+        if (sentenceIndex !== -1) {
+          const contextStart = Math.max(0, sentenceIndex - 200);
+          const contextEnd = Math.min(chapterContent.length, sentenceIndex + result.sentence.length + 200);
+          const context = chapterContent.substring(contextStart, contextEnd);
+          
+          console.log(`[MultiChapter AI] Encontrado: "${result.sentence.substring(0, 60)}..." - ${result.reason}`);
+          return { sentence: result.sentence, context };
+        } else {
+          const lines = chapterContent.split('\n');
+          for (const line of lines) {
+            if (line.toLowerCase().includes(result.sentence.toLowerCase().substring(0, 30))) {
+              const idx = chapterContent.indexOf(line);
+              const contextStart = Math.max(0, idx - 200);
+              const contextEnd = Math.min(chapterContent.length, idx + line.length + 200);
+              const context = chapterContent.substring(contextStart, contextEnd);
+              
+              console.log(`[MultiChapter AI] Encontrado (fuzzy): "${line.substring(0, 60)}..."`);
+              return { sentence: line.trim(), context };
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`[MultiChapter AI] Error:`, error);
+  }
+  
   return null;
 }
 
