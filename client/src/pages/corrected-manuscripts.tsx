@@ -573,7 +573,7 @@ function ManuscriptDetail({ manuscript, onBack }: { manuscript: CorrectedManuscr
           onClick={() => window.open(`/api/corrected-manuscripts/${manuscript.id}/download`, '_blank')}
           data-testid="button-download"
         >
-          <Download className="h-4 w-4 mr-2" /> Descargar Manuscrito
+          <Download className="h-4 w-4 mr-2" /> Descargar MD
         </Button>
         {manuscript.status === 'review' && pendingCount === 0 && (
           <Button 
@@ -724,6 +724,18 @@ export default function CorrectedManuscriptsPage() {
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     {getStatusBadge(manuscript.status)}
+                    <Button 
+                      size="icon" 
+                      variant="ghost"
+                      title="Descargar Manuscrito MD"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(`/api/corrected-manuscripts/${manuscript.id}/download`, '_blank');
+                      }}
+                      data-testid={`button-download-${manuscript.id}`}
+                    >
+                      <Download className="h-4 w-4 text-muted-foreground" />
+                    </Button>
                     <Button 
                       size="icon" 
                       variant="ghost"

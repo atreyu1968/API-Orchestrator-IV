@@ -11543,12 +11543,33 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
         .where(eq(projects.id, manuscript.projectId))
         .limit(1);
 
-      const content = manuscript.correctedContent || manuscript.originalContent;
-      const filename = `${project?.title || 'manuscrito'}_corregido.txt`;
+      const rawContent = (manuscript.correctedContent || manuscript.originalContent) as string;
+      
+      const chapterPattern = /===\s*(?:CAPÍTULO|Capítulo|Cap\.?)\s*(\d+)(?:\s*[-:]\s*(.+?))?===\s*/gi;
+      const prologuePattern = /===\s*(?:PRÓLOGO|Prólogo|Prologo)(?:\s*[-:]\s*(.+?))?===\s*/gi;
+      const epiloguePattern = /===\s*(?:EPÍLOGO|Epílogo|Epilogo)(?:\s*[-:]\s*(.+?))?===\s*/gi;
+      
+      let formattedContent = rawContent;
+      
+      formattedContent = formattedContent.replace(prologuePattern, (_, title) => {
+        return title ? `# Prólogo: ${title.trim()}\n\n` : `# Prólogo\n\n`;
+      });
+      
+      formattedContent = formattedContent.replace(epiloguePattern, (_, title) => {
+        return title ? `# Epílogo: ${title.trim()}\n\n` : `# Epílogo\n\n`;
+      });
+      
+      formattedContent = formattedContent.replace(chapterPattern, (_, num, title) => {
+        return title ? `# Capítulo ${num}: ${title.trim()}\n\n` : `# Capítulo ${num}\n\n`;
+      });
+      
+      formattedContent = formattedContent.replace(/\n{3,}/g, '\n\n\n');
+      
+      const filename = `${(project?.title || 'manuscrito').replace(/\s+/g, '_')}_corregido.md`;
 
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(content);
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+      res.send(formattedContent);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
