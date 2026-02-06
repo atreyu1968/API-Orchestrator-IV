@@ -4903,7 +4903,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
 
         // Get thought context from previous agents for this chapter
         const thoughtContext = await this.getChapterDecisionContext(project.id, chapterNumber);
-        const enrichedConstraints = consistencyConstraints + thoughtContext;
+        let enrichedConstraints = consistencyConstraints + thoughtContext;
 
         // LitAgents 2.9.7: Get pattern analysis to prevent structural repetition
         const patternTracker = getPatternTracker(project.id);
