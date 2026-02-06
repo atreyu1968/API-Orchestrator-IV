@@ -135,6 +135,7 @@ export const AGENT_DEEPSEEK_MODELS: Record<string, DeepSeekModel> = {
   "restructurer": "deepseek-chat",      // V3: fast restructuring (was R1)
   "expansion_analyzer": "deepseek-chat", // V3: fast expansion analysis (was R1)
   "italian-reviewer": "deepseek-chat",  // V3: fast Italian review (was R1)
+  "writing-lessons": "deepseek-chat",  // V3: fast lesson extraction
 };
 
 export type AIModel = GeminiModel | DeepSeekModel;

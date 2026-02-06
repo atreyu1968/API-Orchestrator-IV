@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,36 +61,31 @@ function getSeverityColor(weight: number): string {
 
 export default function WritingLessonsPage() {
   const { toast } = useToast();
-  const [isPolling, setIsPolling] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { data: lessons = [], isLoading } = useQuery<WritingLesson[]>({
     queryKey: ["/api/writing-lessons"],
-    refetchInterval: isPolling ? 3000 : false,
   });
-
-  useEffect(() => {
-    if (isPolling && lessons.length > 0) {
-      setIsPolling(false);
-    }
-  }, [isPolling, lessons.length]);
 
   const refreshMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/writing-lessons/refresh");
+      setIsRefreshing(true);
+      const response = await apiRequest("POST", "/api/writing-lessons/refresh-sync");
       return response.json();
     },
-    onSuccess: () => {
-      setIsPolling(true);
+    onSuccess: (data: any) => {
+      setIsRefreshing(false);
       queryClient.invalidateQueries({ queryKey: ["/api/writing-lessons"] });
       toast({
-        title: "Regenerando lecciones",
-        description: "Analizando auditorías anteriores. Esto puede tardar unos minutos...",
+        title: "Lecciones generadas",
+        description: `Se extrajeron ${data.created || 0} lecciones de ${data.projectsAnalyzed || 0} proyectos analizados.`,
       });
     },
-    onError: () => {
+    onError: (error: any) => {
+      setIsRefreshing(false);
       toast({
-        title: "Error",
-        description: "No se pudieron regenerar las lecciones",
+        title: "Error al generar lecciones",
+        description: error?.message || "No se pudieron regenerar las lecciones. Verifica que DEEPSEEK_API_KEY esté configurada.",
         variant: "destructive",
       });
     },
@@ -158,10 +153,10 @@ export default function WritingLessonsPage() {
         </div>
         <Button
           onClick={() => refreshMutation.mutate()}
-          disabled={refreshMutation.isPending || isPolling}
+          disabled={refreshMutation.isPending || isRefreshing}
           data-testid="button-refresh-lessons"
         >
-          {refreshMutation.isPending || isPolling ? (
+          {refreshMutation.isPending || isRefreshing ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
           ) : (
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -170,12 +165,12 @@ export default function WritingLessonsPage() {
         </Button>
       </div>
 
-      {isPolling && (
-        <Card data-testid="status-polling">
+      {isRefreshing && (
+        <Card data-testid="status-refreshing">
           <CardContent className="flex items-center gap-3 py-4">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              Analizando auditorías y extrayendo lecciones... Esto puede tardar unos minutos.
+              Analizando auditorías y extrayendo lecciones con DeepSeek... Esto tarda entre 1-3 minutos.
             </p>
           </CardContent>
         </Card>
@@ -185,7 +180,7 @@ export default function WritingLessonsPage() {
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-8 w-8 text-muted-foreground/30 animate-spin" />
         </div>
-      ) : lessons.length === 0 && !isPolling ? (
+      ) : lessons.length === 0 && !isRefreshing ? (
         <Card data-testid="status-empty">
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <BookOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
