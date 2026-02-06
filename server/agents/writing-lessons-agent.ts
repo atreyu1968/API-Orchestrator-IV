@@ -83,22 +83,62 @@ export class WritingLessonsAgent extends BaseAgent {
     const allProjects = await storage.getAllProjects();
     const auditData: ProjectAuditData[] = [];
 
-    for (const project of allProjects) {
-      if (!project.finalReviewResult) continue;
-      const review = project.finalReviewResult as any;
-      if (!review.issues || !Array.isArray(review.issues) || review.issues.length === 0) continue;
+    console.log(`[WritingLessonsAgent] Scanning ${allProjects.length} total projects for audit data...`);
 
+    for (const project of allProjects) {
+      if (!project.finalReviewResult) {
+        console.log(`[WritingLessonsAgent] Project ${project.id} "${project.title}": no finalReviewResult, skipping`);
+        continue;
+      }
+      const review = project.finalReviewResult as any;
+      const issues: AuditIssue[] = [];
+
+      if (review.issues && Array.isArray(review.issues) && review.issues.length > 0) {
+        issues.push(...review.issues);
+      }
+
+      if (review.justificacion_puntuacion?.debilidades_principales) {
+        const debilidades = review.justificacion_puntuacion.debilidades_principales as string[];
+        for (const d of debilidades) {
+          const alreadyCovered = issues.some(i => i.descripcion && d.includes(i.descripcion.substring(0, 30)));
+          if (!alreadyCovered) {
+            issues.push({
+              categoria: "calidad_general",
+              severidad: "menor",
+              descripcion: d,
+            });
+          }
+        }
+      }
+
+      if (review.justificacion_puntuacion?.recomendaciones_proceso) {
+        const recs = review.justificacion_puntuacion.recomendaciones_proceso as string[];
+        for (const r of recs) {
+          issues.push({
+            categoria: "proceso",
+            severidad: "menor",
+            descripcion: r,
+          });
+        }
+      }
+
+      if (issues.length === 0) {
+        console.log(`[WritingLessonsAgent] Project ${project.id} "${project.title}": finalReviewResult exists but no issues/debilidades found (keys: ${Object.keys(review).join(", ")})`);
+        continue;
+      }
+
+      console.log(`[WritingLessonsAgent] Project ${project.id} "${project.title}": found ${issues.length} issues/insights`);
       auditData.push({
         projectId: project.id,
         title: project.title,
         genre: project.genre,
-        issues: review.issues,
+        issues,
         puntuacion_global: review.puntuacion_global || 0,
       });
     }
 
     if (auditData.length === 0) {
-      console.log("[WritingLessonsAgent] No audit data found to analyze");
+      console.log("[WritingLessonsAgent] No audit data found to analyze across any projects");
       return { lessons: [], projectsAnalyzed: 0 };
     }
 
@@ -165,7 +205,13 @@ Responde SOLO con JSON válido.`;
 
     const allProjects = await storage.getAllProjects();
     const projectsWithAudits = allProjects
-      .filter(p => p.finalReviewResult && (p.finalReviewResult as any).issues?.length > 0)
+      .filter(p => {
+        if (!p.finalReviewResult) return false;
+        const r = p.finalReviewResult as any;
+        return (r.issues?.length > 0) || 
+               (r.justificacion_puntuacion?.debilidades_principales?.length > 0) ||
+               (r.justificacion_puntuacion?.recomendaciones_proceso?.length > 0);
+      })
       .map(p => p.id);
 
     await storage.deleteAllWritingLessons();
