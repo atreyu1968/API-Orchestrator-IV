@@ -46,6 +46,8 @@ export interface EditorResult {
   debilidades_criticas: string[];
   errores_continuidad?: string[];
   frases_repetidas?: string[];
+  acotaciones_forzadas?: string[];
+  estructuras_repetitivas?: string[];
   problemas_ritmo?: string[];
   problemas_verosimilitud?: string[];
   cliches_ia_detectados?: string[];
@@ -149,6 +151,29 @@ PROTOCOLO DE EVALUACIÓN INTEGRADO
    - 4-6 repeticiones: -1 punto
    - Más de 6 repeticiones: -2 puntos máximo
 
+4b. ACOTACIONES DE DIÁLOGO FORZADAS (v2.9.9+ - CRÍTICO):
+   Verbos de habla como "masculló", "espetó", "gruñó", "susurró", "replicó", "bramó"
+   CUENTAN la emoción en vez de MOSTRARLA. Esto es "telling" y hace el diálogo forzado.
+   - Cuenta TODOS los verbos de habla "expresivos" (excluyendo "dijo", "preguntó", "respondió")
+   - 1-3 usos: aceptable, nota sin penalización
+   - 4-6 usos: -1 punto. Señalar en debilidades_criticas
+   - 7+ usos: -2 puntos. Rechazar capítulo. El autor debe MOSTRAR emociones con acciones físicas
+   - Incluir en el JSON: "acotaciones_forzadas": ["lista de cada acotación forzada encontrada"]
+
+4c. FRASES DESCRIPTIVAS CASI IDÉNTICAS (v2.9.9+):
+   Busca frases que describan cosas similares con vocabulario casi idéntico.
+   Ejemplo: "La oscuridad envolvía la habitación" + "La oscuridad envolvía el pasillo"
+   - Cada descripción debe ser ÚNICA en vocabulario y estructura
+   - 1-2 pares similares: nota sin penalización
+   - 3+ pares similares: -1 punto. Señalar en frases_repetidas
+   
+4d. ESTRUCTURAS GRAMATICALES REPETITIVAS (v2.9.9+):
+   Detecta patrones como "no solo [X], sino que [Y]" usados múltiples veces.
+   También: "más que X, era Y", "tanto X como Y", "no era X, era Y"
+   - Cada estructura retórica: MÁXIMO 1 vez por capítulo
+   - 2 usos del mismo patrón: nota en debilidades
+   - 3+ usos del mismo patrón: -1 punto. Señalar como patrón predecible y monótono
+
 5. RITMO Y PACING:
    - ¿Los eventos dramáticos tienen suficiente SETUP emocional?
    - ¿Las transiciones son fluidas?
@@ -181,6 +206,9 @@ CHECKLIST DE RECHAZO (Cualquiera = aprobado: false):
 - DEUS EX MACHINA o solución inverosímil
 - Clichés de IA detectados
 - Anacronismos en ficción histórica
+- 7+ acotaciones de diálogo forzadas (masculló, espetó, gruñó, etc.)
+- 3+ pares de frases descriptivas casi idénticas
+- 3+ usos de la misma estructura gramatical (no solo X sino Y, etc.)
 
 SALIDA JSON OBLIGATORIA:
 {
@@ -189,7 +217,9 @@ SALIDA JSON OBLIGATORIA:
   "fortalezas": [],
   "debilidades_criticas": [],
   "errores_continuidad": ["Inconsistencias físicas con cita exacta"],
-  "frases_repetidas": ["Expresiones repetidas"],
+  "frases_repetidas": ["Expresiones repetidas Y frases descriptivas casi idénticas"],
+  "acotaciones_forzadas": ["Cada acotación forzada: 'masculló', 'espetó', etc. con cita del texto"],
+  "estructuras_repetitivas": ["Patrones gramaticales repetidos: 'no solo X sino Y' etc."],
   "problemas_ritmo": ["Escenas sin setup"],
   "problemas_verosimilitud": ["Deus ex machina, coincidencias forzadas"],
   "cliches_ia_detectados": ["Palabras/frases artificiales encontradas"],

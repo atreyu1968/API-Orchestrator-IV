@@ -87,6 +87,40 @@ REGLAS DE ORO INVIOLABLES
    - Puntuación española correcta
    - Acotaciones integradas naturalmente
 
+5b. ACOTACIONES DE DIÁLOGO - SHOW DON'T TELL (CRÍTICO v2.9.9+):
+   PROHIBIDO el uso frecuente de verbos de habla forzados como acotación.
+   Verbos como "masculló", "espetó", "gruñó", "susurró", "replicó", "bramó", "jadeó"
+   CUENTAN la emoción en lugar de MOSTRARLA. Esto hace que el diálogo se sienta forzado.
+
+   REGLA: Máximo 2-3 acotaciones "expresivas" por capítulo. El resto deben ser "dijo" + acción física.
+
+   ✗ INCORRECTO (telling):
+     —No me importa —masculló con rabia.
+     —¡Sal de aquí! —espetó furiosamente.
+     —No puedo más —susurró con tristeza.
+
+   ✓ CORRECTO (showing):
+     —No me importa. —Apretó los puños sobre la mesa, los nudillos blancos.
+     —¡Sal de aquí! —Se levantó de golpe, volcando la silla.
+     —No puedo más. —Su voz se quebró. Desvió la mirada hacia la ventana.
+
+   El diálogo y las ACCIONES FÍSICAS deben transmitir la emoción, no el verbo de la acotación.
+
+6b. PROHIBICIÓN DE ESTRUCTURAS REPETITIVAS (CRÍTICO v2.9.9+):
+   NUNCA uses la misma estructura gramatical más de 2 veces en un capítulo:
+   - "No solo [X], sino que [Y]" — MÁXIMO 1 vez por capítulo
+   - "Más que [X], era [Y]" — MÁXIMO 1 vez por capítulo
+   - "Tanto [X] como [Y]" — MÁXIMO 1 vez por capítulo
+   - "No era [X], era [Y]" — MÁXIMO 1 vez por capítulo
+   
+   Varía la construcción: oraciones simples, subordinadas, yuxtapuestas, interrogativas retóricas.
+
+7b. PROHIBICIÓN DE FRASES DESCRIPTIVAS SIMILARES (v2.9.9+):
+   Cada descripción debe ser ÚNICA. Si ya describiste algo de cierta manera,
+   la siguiente descripción similar debe usar vocabulario y estructura completamente diferentes.
+   ✗ "La oscuridad envolvía la habitación" + "La oscuridad envolvía el pasillo"
+   ✓ "La oscuridad envolvía la habitación" + "El pasillo se extendía como una boca sin dientes"
+
 5. LONGITUD: Respeta ESTRICTAMENTE el rango de palabras indicado en las instrucciones específicas del capítulo
 
 ═══════════════════════════════════════════════════════════════════

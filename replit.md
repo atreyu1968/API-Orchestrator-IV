@@ -67,6 +67,11 @@ Preferred communication style: Simple, everyday language.
 - **Architecture**: Scene-based writing pipeline optimized for DeepSeek AI models.
 - **Agents**: Global Architect, Chapter Architect, Ghostwriter V2, Smart Editor, Summarizer, Narrative Director.
 - **Patcher Utility**: Uses `fuse.js` for surgical JSON patching.
+- **Narrative Quality Guard (v2.9.9+)**: Four-layer prose quality detection system:
+  1. **Forced Dialogue Tags**: Detects "telling" verbs (masculló, espetó, gruñó, susurró, replicó) in dialogue tags. Flags when author "tells" emotions instead of "showing" them via physical actions. Threshold: 3+ triggers warning, 7+ causes rejection.
+  2. **Similar Phrase Detection**: Content-word overlap algorithm (Jaccard similarity ≥70%) identifies nearly identical descriptive phrases. Flags repetitive descriptions for reformulation.
+  3. **Repetitive Structural Patterns**: Regex detection of overused grammatical structures ("no solo X, sino que Y", "más que X, era Y", "tanto X como Y"). Each pattern allowed max 1x per chapter.
+  4. **Enhanced Anti-Cliché**: Expanded AI cliché patterns with accent-aware normalization for Spanish text.
 
 ## External Dependencies
 

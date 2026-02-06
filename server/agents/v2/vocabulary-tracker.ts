@@ -1,6 +1,6 @@
-// LitAgents 2.5 - Enhanced Vocabulary Tracker
+// LitAgents 2.9.9+ - Enhanced Vocabulary Tracker
 // Tracks used expressions and vocabulary to prevent semantic repetition
-// Improved: Lower thresholds, domain-specific word detection, transition tracking
+// v2.9.9+: Forced dialogue tag detection, similar phrase detection, repetitive structural patterns
 
 interface VocabularyReport {
   overusedWords: string[];
@@ -8,8 +8,11 @@ interface VocabularyReport {
   dialogueVerbs: { verb: string; count: number }[];
   paragraphStarters: string[];
   avoidInNextScene: string[];
-  domainWords: { word: string; count: number }[]; // Technical/domain-specific words
-  sceneTransitions: string[]; // Track how scenes end for transition quality
+  domainWords: { word: string; count: number }[];
+  sceneTransitions: string[];
+  forcedDialogueTags: { tag: string; count: number }[];
+  similarPhrases: { phrase: string; similar: string; similarity: number }[];
+  repetitiveStructures: { pattern: string; occurrences: string[] }[];
 }
 
 // Common words to ignore (articles, prepositions, etc.)
@@ -99,6 +102,50 @@ const AI_CLICHES = [
   /sin saber por qu[eé]/i
 ];
 
+const FORCED_DIALOGUE_TAGS = [
+  'mascullo', 'espeto', 'gruno', 'susurro', 'replico',
+  'bramo', 'jadeo', 'balbuceo', 'tartamudeo', 'siseo',
+  'rugio', 'vocifero', 'farfullo', 'cuchicheo', 'rezongo',
+  'bufo', 'chillo', 'gimio', 'sollozo', 'lamento',
+  'sentencio', 'ordeno', 'suplico', 'imploro', 'exigio'
+];
+
+const REPETITIVE_STRUCTURE_PATTERNS = [
+  { regex: /no solo (.{5,60}), sino (?:que )?(.{5,60})/gi, name: 'no solo X, sino que Y' },
+  { regex: /(?:no|ni) (?:era|fue|hab[ií]a sido) (.{5,40}), (?:era|fue|hab[ií]a sido) (.{5,40})/gi, name: 'no era X, era Y' },
+  { regex: /(?:m[aá]s|menos) que (.{5,40}), (?:era|fue|se trataba de) (.{5,40})/gi, name: 'más que X, era Y' },
+  { regex: /tanto (.{5,40}) como (.{5,40})/gi, name: 'tanto X como Y' },
+  { regex: /si (.{5,40}), entonces (.{5,40})/gi, name: 'si X, entonces Y' },
+  { regex: /no (?:era|había|fue) (.{5,40})[,.;] (?:sino|era|fue) (.{5,40})/gi, name: 'no era X, sino Y' },
+];
+
+function extractPhrases(text: string, minLen: number = 8, maxLen: number = 60): string[] {
+  const sentences = text.split(/[.!?;]+/).map(s => s.trim()).filter(s => s.length >= minLen);
+  const phrases: string[] = [];
+  for (const sentence of sentences) {
+    const clauses = sentence.split(/[,—]+/).map(c => c.trim()).filter(c => c.length >= minLen && c.length <= maxLen);
+    phrases.push(...clauses);
+  }
+  return phrases;
+}
+
+function phraseSimilarity(a: string, b: string): number {
+  const normalize = (s: string) => normalizeText(s).replace(/[^a-z0-9\s]/g, '').trim();
+  const na = normalize(a);
+  const nb = normalize(b);
+  if (na === nb) return 1.0;
+  const wordsA = na.split(/\s+/);
+  const wordsB = nb.split(/\s+/);
+  if (wordsA.length < 3 || wordsB.length < 3) return 0;
+  const setA = new Set(wordsA);
+  const setB = new Set(wordsB);
+  const intersection = Array.from(setA).filter(w => setB.has(w) && !STOP_WORDS.has(w));
+  const contentWordsA = wordsA.filter(w => !STOP_WORDS.has(w));
+  const contentWordsB = wordsB.filter(w => !STOP_WORDS.has(w));
+  if (contentWordsA.length === 0 || contentWordsB.length === 0) return 0;
+  return (intersection.length * 2) / (contentWordsA.length + contentWordsB.length);
+}
+
 export class VocabularyTracker {
   
   analyzeText(text: string): VocabularyReport {
@@ -167,6 +214,51 @@ export class VocabularyTracker {
       }
     }
     
+    // v2.9.9+: Detect forced dialogue tags ("telling" instead of "showing")
+    const forcedTagCount = new Map<string, number>();
+    for (const tag of FORCED_DIALOGUE_TAGS) {
+      const tagRegex = new RegExp(`\\b${tag}\\b`, 'gi');
+      const tagMatches = normalizedText.match(tagRegex);
+      if (tagMatches && tagMatches.length > 0) {
+        forcedTagCount.set(tag, tagMatches.length);
+      }
+    }
+    const forcedDialogueTags = Array.from(forcedTagCount.entries())
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count);
+    const totalForcedTags = forcedDialogueTags.reduce((sum, t) => sum + t.count, 0);
+
+    // v2.9.9+: Detect similar/nearly identical descriptive phrases
+    const phrases = extractPhrases(text);
+    const similarPhrases: { phrase: string; similar: string; similarity: number }[] = [];
+    for (let i = 0; i < phrases.length && i < 200; i++) {
+      for (let j = i + 1; j < phrases.length && j < 200; j++) {
+        const sim = phraseSimilarity(phrases[i], phrases[j]);
+        if (sim >= 0.7 && phrases[i] !== phrases[j]) {
+          similarPhrases.push({
+            phrase: phrases[i].substring(0, 80),
+            similar: phrases[j].substring(0, 80),
+            similarity: Math.round(sim * 100)
+          });
+        }
+      }
+    }
+    const uniqueSimilar = similarPhrases.slice(0, 10);
+
+    // v2.9.9+: Detect repetitive structural patterns
+    const repetitiveStructures: { pattern: string; occurrences: string[] }[] = [];
+    for (const { regex, name } of REPETITIVE_STRUCTURE_PATTERNS) {
+      regex.lastIndex = 0;
+      const matches: string[] = [];
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        matches.push(match[0].substring(0, 100));
+      }
+      if (matches.length >= 2) {
+        repetitiveStructures.push({ pattern: name, occurrences: matches });
+      }
+    }
+
     // Generate avoid list for next scene
     const avoidInNextScene: string[] = [];
     
@@ -175,6 +267,24 @@ export class VocabularyTracker {
       .filter(v => v.count >= 1)
       .forEach(v => avoidInNextScene.push(`verbo "${v.verb}" (ya usado ${v.count}x)`));
     
+    // v2.9.9+: Flag forced dialogue tags
+    if (totalForcedTags >= 3) {
+      avoidInNextScene.push(`⚠️ ACOTACIONES FORZADAS (${totalForcedTags}x): ${forcedDialogueTags.map(t => `"${t.tag}"(${t.count}x)`).join(', ')} — MUESTRA emociones con acciones físicas, no con verbos de habla forzados`);
+    }
+    forcedDialogueTags
+      .filter(t => t.count >= 2)
+      .forEach(t => avoidInNextScene.push(`acotación forzada "${t.tag}" (${t.count}x) — usa "dijo" + acción física`));
+
+    // v2.9.9+: Flag similar phrases
+    uniqueSimilar.forEach(sp =>
+      avoidInNextScene.push(`frases casi idénticas: "${sp.phrase}" ≈ "${sp.similar}" (${sp.similarity}% similitud) — reformula completamente`)
+    );
+
+    // v2.9.9+: Flag repetitive structures
+    repetitiveStructures.forEach(rs =>
+      avoidInNextScene.push(`estructura repetitiva "${rs.pattern}" usada ${rs.occurrences.length}x — varía la construcción gramatical`)
+    );
+
     // Add repeated paragraph starters
     const starterCounts = new Map<string, number>();
     starters.forEach(s => starterCounts.set(s.toLowerCase(), (starterCounts.get(s.toLowerCase()) || 0) + 1));
@@ -200,7 +310,10 @@ export class VocabularyTracker {
       paragraphStarters: starters,
       avoidInNextScene,
       domainWords,
-      sceneTransitions
+      sceneTransitions,
+      forcedDialogueTags,
+      similarPhrases: uniqueSimilar,
+      repetitiveStructures
     };
   }
 
@@ -220,7 +333,7 @@ export class VocabularyTracker {
       return '';
     }
     
-    return `
+    let prompt = `
 +------------------------------------------------------------------+
 | VOCABULARIO A EVITAR EN ESTA ESCENA (ya sobreutilizado):         |
 +------------------------------------------------------------------+
@@ -231,6 +344,48 @@ ${allAvoid.map(item => `| - ${item}`).join('\n')}
 | -> Busca descripciones originales para las emociones             |
 +------------------------------------------------------------------+
 `;
+
+    if (currentAnalysis.forcedDialogueTags.length > 0) {
+      const total = currentAnalysis.forcedDialogueTags.reduce((s, t) => s + t.count, 0);
+      prompt += `
++------------------------------------------------------------------+
+| ⚠️ ACOTACIONES DE DIÁLOGO FORZADAS (${total} detectadas)           |
++------------------------------------------------------------------+
+| PROBLEMA: Usar verbos como "masculló", "espetó", "gruñó" es     |
+| "CONTAR" las emociones en vez de "MOSTRARLAS".                   |
+| SOLUCIÓN: Usa "dijo" + acción física que MUESTRE la emoción:     |
+|   ✗ "—No me importa —masculló con rabia."                       |
+|   ✓ "—No me importa. —Apretó los puños sobre la mesa."          |
+|   ✗ "—¡Sal de aquí! —espetó furiosamente."                      |
+|   ✓ "—¡Sal de aquí! —Se levantó de golpe, volcando la silla."   |
++------------------------------------------------------------------+
+`;
+    }
+
+    if (currentAnalysis.similarPhrases.length > 0) {
+      prompt += `
++------------------------------------------------------------------+
+| ⚠️ FRASES DESCRIPTIVAS CASI IDÉNTICAS DETECTADAS                  |
++------------------------------------------------------------------+
+${currentAnalysis.similarPhrases.map(sp => `| "${sp.phrase}" ≈ "${sp.similar}" (${sp.similarity}%)`).join('\n')}
+| -> Cada descripción debe ser ÚNICA. Reformula completamente.     |
++------------------------------------------------------------------+
+`;
+    }
+
+    if (currentAnalysis.repetitiveStructures.length > 0) {
+      prompt += `
++------------------------------------------------------------------+
+| ⚠️ ESTRUCTURAS GRAMATICALES REPETITIVAS                           |
++------------------------------------------------------------------+
+${currentAnalysis.repetitiveStructures.map(rs => `| Patrón "${rs.pattern}" usado ${rs.occurrences.length}x`).join('\n')}
+| -> Varía la construcción: usa oraciones simples, subordinadas,   |
+|    yuxtapuestas, interrogativas retóricas, etc.                  |
++------------------------------------------------------------------+
+`;
+    }
+
+    return prompt;
   }
 
   generateQuickAvoidList(recentText: string): string[] {
