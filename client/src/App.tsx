@@ -32,6 +32,7 @@ import CorrectedManuscriptsPage from "@/pages/corrected-manuscripts";
 import StyleGuidesPage from "@/pages/style-guides";
 import AuditorPage from "@/pages/auditor";
 import WritingLessonsPage from "@/pages/writing-lessons";
+import AutoCorrectorPage from "@/pages/auto-corrector";
 import asdLogo from "@assets/ASD_1766442257801.png";
 
 interface AuthStatus {
@@ -61,6 +62,7 @@ function Router() {
       <Route path="/auditor" component={AuditorPage} />
       <Route path="/corrected-manuscripts" component={CorrectedManuscriptsPage} />
       <Route path="/writing-lessons" component={WritingLessonsPage} />
+      <Route path="/auto-corrector" component={AutoCorrectorPage} />
       <Route path="/config" component={ConfigPage} />
       <Route component={NotFound} />
     </Switch>

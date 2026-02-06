@@ -1119,4 +1119,63 @@ export const insertWritingLessonSchema = createInsertSchema(writingLessons).omit
 export type InsertWritingLesson = z.infer<typeof insertWritingLessonSchema>;
 export type WritingLesson = typeof writingLessons.$inferSelect;
 
+// =============================================
+// AUTO-CORRECTION RUNS - Autonomous Audit+Correction Orchestrator
+// =============================================
+
+export const autoCorrectionRuns = pgTable("auto_correction_runs", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"), // pending, auditing, correcting, approving, finalizing, re_auditing, completed, failed, cancelled
+  currentCycle: integer("current_cycle").notNull().default(1),
+  maxCycles: integer("max_cycles").notNull().default(3),
+  targetScore: integer("target_score").notNull().default(85),
+  maxCriticalIssues: integer("max_critical_issues").notNull().default(0),
+
+  currentAuditId: integer("current_audit_id"),
+  currentManuscriptId: integer("current_manuscript_id"),
+
+  cycleHistory: jsonb("cycle_history").$type<AutoCorrectionCycle[]>().default([]),
+  progressLog: jsonb("progress_log").$type<AutoCorrectionLogEntry[]>().default([]),
+
+  finalScore: integer("final_score"),
+  finalCriticalIssues: integer("final_critical_issues"),
+  totalIssuesFixed: integer("total_issues_fixed").default(0),
+  totalStructuralChanges: integer("total_structural_changes").default(0),
+
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export interface AutoCorrectionCycle {
+  cycle: number;
+  auditId: number;
+  manuscriptId?: number;
+  overallScore: number;
+  criticalIssues: number;
+  totalIssues: number;
+  issuesFixed: number;
+  structuralChanges: number;
+  startedAt: string;
+  completedAt?: string;
+  result: 'threshold_met' | 'corrected' | 'no_issues' | 'max_cycles' | 'error' | 'cancelled';
+}
+
+export interface AutoCorrectionLogEntry {
+  timestamp: string;
+  phase: string;
+  message: string;
+  details?: Record<string, any>;
+}
+
+export const insertAutoCorrectionRunSchema = createInsertSchema(autoCorrectionRuns).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+
+export type AutoCorrectionRun = typeof autoCorrectionRuns.$inferSelect;
+export type InsertAutoCorrectionRun = z.infer<typeof insertAutoCorrectionRunSchema>;
+
 export * from "./models/chat";

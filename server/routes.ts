@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { OrchestratorV2 } from "./orchestrator-v2";
 import { queueManager } from "./queue-manager";
-import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema, consistencyViolations, worldEntities, worldRulesTable, worldBibles, chapterAnnotations, insertChapterAnnotationSchema, chapters as chaptersTable, generationLocks, manuscriptAudits, correctedManuscripts, projects, type AgentReport, type FinalAudit } from "@shared/schema";
+import { insertProjectSchema, insertPseudonymSchema, insertStyleGuideSchema, insertSeriesSchema, insertReeditProjectSchema, consistencyViolations, worldEntities, worldRulesTable, worldBibles, chapterAnnotations, insertChapterAnnotationSchema, chapters as chaptersTable, generationLocks, manuscriptAudits, correctedManuscripts, autoCorrectionRuns, projects, type AgentReport, type FinalAudit } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import multer from "multer";
 import mammoth from "mammoth";
@@ -11696,6 +11696,134 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
 
     try {
       await db.delete(correctedManuscripts).where(eq(correctedManuscripts.id, id));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // =============================================
+  // AUTO-CORRECTOR ORCHESTRATOR ENDPOINTS
+  // =============================================
+
+  app.post("/api/projects/:id/auto-correct", async (req: Request, res: Response) => {
+    const projectId = parseInt(req.params.id);
+    const { maxCycles, targetScore, maxCriticalIssues } = req.body || {};
+
+    try {
+      const { startAutoCorrectionRun } = await import("./orchestrators/auto-corrector");
+      const result = await startAutoCorrectionRun(projectId, {
+        maxCycles: maxCycles || 3,
+        targetScore: targetScore || 85,
+        maxCriticalIssues: maxCriticalIssues || 0,
+      });
+
+      if (result.success) {
+        res.json({ success: true, runId: result.runId });
+      } else {
+        res.status(400).json({ error: result.error });
+      }
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/projects/:id/auto-correct/runs", async (req: Request, res: Response) => {
+    const projectId = parseInt(req.params.id);
+
+    try {
+      const runs = await db.select().from(autoCorrectionRuns)
+        .where(eq(autoCorrectionRuns.projectId, projectId))
+        .orderBy(desc(autoCorrectionRuns.createdAt));
+      res.json(runs);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/auto-correct/runs/:id", async (req: Request, res: Response) => {
+    const runId = parseInt(req.params.id);
+
+    try {
+      const [run] = await db.select().from(autoCorrectionRuns)
+        .where(eq(autoCorrectionRuns.id, runId));
+      if (!run) {
+        return res.status(404).json({ error: "Run no encontrado" });
+      }
+      res.json(run);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/auto-correct/runs/:id/stream", async (req: Request, res: Response) => {
+    const runId = parseInt(req.params.id);
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+
+    const sendEvent = (data: any) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    const interval = setInterval(async () => {
+      try {
+        const [run] = await db.select().from(autoCorrectionRuns)
+          .where(eq(autoCorrectionRuns.id, runId));
+        if (!run) {
+          sendEvent({ phase: 'error', message: 'Run no encontrado' });
+          clearInterval(interval);
+          res.end();
+          return;
+        }
+
+        sendEvent({
+          status: run.status,
+          currentCycle: run.currentCycle,
+          maxCycles: run.maxCycles,
+          targetScore: run.targetScore,
+          finalScore: run.finalScore,
+          finalCriticalIssues: run.finalCriticalIssues,
+          totalIssuesFixed: run.totalIssuesFixed,
+          totalStructuralChanges: run.totalStructuralChanges,
+          cycleHistory: run.cycleHistory,
+          progressLog: ((run.progressLog as any[]) || []).slice(-20),
+          errorMessage: run.errorMessage,
+        });
+
+        if (['completed', 'failed', 'cancelled'].includes(run.status)) {
+          clearInterval(interval);
+          res.end();
+        }
+      } catch (err) {
+        console.error('[AutoCorrector SSE] Error:', err);
+      }
+    }, 3000);
+
+    req.on('close', () => {
+      clearInterval(interval);
+    });
+  });
+
+  app.post("/api/auto-correct/runs/:id/cancel", async (req: Request, res: Response) => {
+    const runId = parseInt(req.params.id);
+
+    try {
+      const { cancelAutoCorrectionRun } = await import("./orchestrators/auto-corrector");
+      const cancelled = await cancelAutoCorrectionRun(runId);
+      res.json({ success: true, message: "Cancelación solicitada" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/auto-correct/runs/:id", async (req: Request, res: Response) => {
+    const runId = parseInt(req.params.id);
+
+    try {
+      await db.delete(autoCorrectionRuns).where(eq(autoCorrectionRuns.id, runId));
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });

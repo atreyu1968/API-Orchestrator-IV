@@ -61,6 +61,7 @@ const translationsNavItems = [
   { title: "Reeditar Manuscrito", url: "/reedit", icon: Edit3 },
   { title: "Auditor Literario", url: "/auditor", icon: Microscope },
   { title: "Manuscritos Corregidos", url: "/corrected-manuscripts", icon: Scissors },
+  { title: "Auto-Corrector", url: "/auto-corrector", icon: Zap },
 ];
 
 const settingsNavItems = [
