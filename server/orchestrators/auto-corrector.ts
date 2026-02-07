@@ -25,6 +25,56 @@ export type AutoCorrectorProgressCallback = (event: {
   details?: Record<string, any>;
 }) => void;
 
+export async function cleanupZombieRuns(): Promise<number> {
+  const activeStatuses = ['pending', 'auditing', 'correcting', 'approving', 'finalizing', 're_auditing'];
+  const allRuns = await db.select().from(autoCorrectionRuns);
+  let cleaned = 0;
+  const now = Date.now();
+  const GRACE_PERIOD_MS = 60_000;
+  for (const run of allRuns) {
+    if (activeStatuses.includes(run.status) && !activeRuns.has(run.id)) {
+      const createdAt = new Date(run.createdAt).getTime();
+      if (now - createdAt < GRACE_PERIOD_MS) {
+        console.log(`[AutoCorrector] Run #${run.id} is recent (${Math.round((now - createdAt) / 1000)}s old), skipping cleanup`);
+        continue;
+      }
+      console.log(`[AutoCorrector] Zombie run #${run.id} detected (status: ${run.status}). Marking as failed.`);
+      const logs = (run.progressLog as AutoCorrectionLogEntry[]) || [];
+      logs.push({
+        timestamp: new Date().toISOString(),
+        phase: 'error',
+        message: 'Run interrumpido por reinicio del servidor. Usa "Reintentar" para volver a ejecutar.',
+      });
+      await db.update(autoCorrectionRuns)
+        .set({ status: 'failed', errorMessage: 'Interrumpido por reinicio del servidor', progressLog: logs })
+        .where(eq(autoCorrectionRuns.id, run.id));
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    console.log(`[AutoCorrector] Cleaned up ${cleaned} zombie run(s)`);
+  }
+  return cleaned;
+}
+
+export async function retryAutoCorrectionRun(
+  runId: number,
+  onProgress?: AutoCorrectorProgressCallback
+): Promise<{ success: boolean; runId?: number; error?: string }> {
+  const [oldRun] = await db.select().from(autoCorrectionRuns).where(eq(autoCorrectionRuns.id, runId));
+  if (!oldRun) {
+    return { success: false, error: 'Run no encontrado' };
+  }
+  if (!['failed', 'cancelled'].includes(oldRun.status)) {
+    return { success: false, error: 'Solo se pueden reintentar runs fallidos o cancelados' };
+  }
+  return startAutoCorrectionRun(oldRun.projectId, {
+    maxCycles: oldRun.maxCycles || 3,
+    targetScore: oldRun.targetScore || 85,
+    maxCriticalIssues: oldRun.maxCriticalIssues || 0,
+  }, onProgress);
+}
+
 export async function cancelAutoCorrectionRun(runId: number): Promise<boolean> {
   const run = activeRuns.get(runId);
   if (run) {

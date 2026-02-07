@@ -11819,6 +11819,18 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
     }
   });
 
+  app.post("/api/auto-correct/runs/:id/retry", async (req: Request, res: Response) => {
+    const runId = parseInt(req.params.id);
+
+    try {
+      const { retryAutoCorrectionRun } = await import("./orchestrators/auto-corrector");
+      const result = await retryAutoCorrectionRun(runId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.delete("/api/auto-correct/runs/:id", async (req: Request, res: Response) => {
     const runId = parseInt(req.params.id);
 

@@ -198,6 +198,24 @@ export default function AutoCorrectorPage() {
     },
   });
 
+  const retryMutation = useMutation({
+    mutationFn: async (runId: number) => {
+      const res = await apiRequest('POST', `/api/auto-correct/runs/${runId}/retry`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.success) {
+        toast({ title: "Reintentando", description: `Nuevo run #${data.runId} creado` });
+        queryClient.invalidateQueries({ queryKey: ['/api/projects', currentProject?.id, 'auto-correct/runs'] });
+      } else {
+        toast({ title: "Error", description: data.error, variant: "destructive" });
+      }
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (runId: number) => {
       return apiRequest('DELETE', `/api/auto-correct/runs/${runId}`);
@@ -458,6 +476,18 @@ export default function AutoCorrectorPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
+                    {(run.status === 'failed' || run.status === 'cancelled') && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => retryMutation.mutate(run.id)}
+                        disabled={retryMutation.isPending}
+                        data-testid={`button-retry-run-${run.id}`}
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        Reintentar
+                      </Button>
+                    )}
                     {!isActiveStatus(run.status) && (
                       <Button
                         size="icon"

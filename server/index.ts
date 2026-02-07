@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { queueManager } from "./queue-manager";
 import { autoResumeReeditProjects, startWatchdog } from "./reedit-auto-resume";
 import { autoResumeTranslations, startTranslationWatchdog } from "./translation-auto-resume";
+import { cleanupZombieRuns } from "./orchestrators/auto-corrector";
 
 // Production diagnostics: Log process signals and memory usage
 process.on("SIGTERM", () => {
@@ -143,6 +144,16 @@ app.use((req, res, next) => {
         log(`Queue manager initialization error: ${error}`, "queue");
       }
       
+      // Cleanup zombie auto-correction runs from previous server session
+      try {
+        const zombiesCleaned = await cleanupZombieRuns();
+        if (zombiesCleaned > 0) {
+          log(`Auto-corrector: cleaned ${zombiesCleaned} zombie run(s)`, "auto-corrector");
+        }
+      } catch (error) {
+        log(`Auto-corrector zombie cleanup error: ${error}`, "auto-corrector");
+      }
+
       // Auto-resume reedit projects and translations that were in processing state
       try {
         setTimeout(async () => {
