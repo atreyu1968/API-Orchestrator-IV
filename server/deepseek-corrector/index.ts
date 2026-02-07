@@ -1413,41 +1413,163 @@ FRASE ALTERNATIVA:`;
   }
 }
 
-function extractTargetFromLocation(novelContent: string, location: string, description: string): string | null {
+function extractChapterContentByLocation(novelContent: string, location: string): string | null {
+  const locLower = location.toLowerCase();
+
+  if (locLower.includes('prólogo') || locLower.includes('prologo')) {
+    const data = extractChapterContent2(novelContent, 'prólogo');
+    return data?.content || null;
+  }
+
+  if (locLower.includes('epílogo') || locLower.includes('epilogo')) {
+    const epiloguePattern = /(?:^|\n)((?:EPÍLOGO|Epílogo|EPILOGO|Epilogo)[^\n]*\n)([\s\S]*?)(?=\n(?:Capítulo|CAPÍTULO|CAP\.)\s*\d+|$)/i;
+    const match = novelContent.match(epiloguePattern);
+    return match ? match[2].trim() : null;
+  }
+
   const chapterMatch = location.match(/Cap[íi]tulo\s*(\d+)/i);
-  if (!chapterMatch) return null;
-  
-  const chapterNum = parseInt(chapterMatch[1]);
-  const chapterPattern = new RegExp(`===\\s*(?:CAPÍTULO|Capítulo|Cap\\.?)\\s*${chapterNum}[^=]*===([\\s\\S]*?)(?====|$)`, 'i');
-  const chapterContentMatch = novelContent.match(chapterPattern);
-  
-  if (!chapterContentMatch) return null;
-  
-  const chapterContent = chapterContentMatch[1];
-  
+  if (chapterMatch) {
+    const chapterNum = parseInt(chapterMatch[1]);
+    const data = extractChapterContent2(novelContent, chapterNum);
+    return data?.content || null;
+  }
+
+  return null;
+}
+
+function extractTargetFromLocation(novelContent: string, location: string, description: string): string | null {
+  const chapterContent = extractChapterContentByLocation(novelContent, location);
+  if (!chapterContent) return null;
+
   const sentences = chapterContent.match(/[^.!?]+[.!?]+/g) || [];
-  const keywords = description.toLowerCase().split(/\s+/).filter(w => w.length > 4);
-  
+  if (sentences.length === 0) return null;
+
+  const stopWords = new Set(['como', 'para', 'pero', 'más', 'entre', 'sobre', 'tiene', 'puede', 'desde', 'hasta', 'esta', 'este', 'estos', 'estas', 'también', 'donde', 'cuando', 'porque', 'aunque', 'mientras', 'durante', 'según', 'dentro', 'fuera', 'antes', 'después', 'hacia', 'menos', 'mayor', 'menor', 'mejor', 'peor', 'cada', 'todo', 'toda', 'todos', 'todas', 'otro', 'otra', 'otros', 'otras', 'mismo', 'misma', 'those', 'these', 'which', 'where', 'about', 'after', 'being', 'could', 'would', 'should', 'their', 'there', 'these', 'through', 'before', 'between', 'under', 'above']);
+  const keywords = description.toLowerCase()
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !stopWords.has(w));
+
+  if (keywords.length === 0) return null;
+
+  const quotedPhrases: string[] = [];
+  const quotedMatches = description.match(/["'«»""'']([^"'«»""'']+)["'«»""'']/g);
+  if (quotedMatches) {
+    for (const qm of quotedMatches) {
+      const cleaned = qm.replace(/["'«»""'']/g, '').trim();
+      if (cleaned.length >= 5) quotedPhrases.push(cleaned.toLowerCase());
+    }
+  }
+
   let bestMatch = '';
   let bestScore = 0;
-  
+
   for (let i = 0; i < sentences.length; i++) {
     const context = sentences.slice(Math.max(0, i - 1), i + 2).join(' ');
+    const contextLower = context.toLowerCase();
     let score = 0;
-    
+
+    for (const qp of quotedPhrases) {
+      if (contextLower.includes(qp)) {
+        score += 5;
+      }
+    }
+
     for (const keyword of keywords) {
-      if (context.toLowerCase().includes(keyword)) {
+      if (contextLower.includes(keyword)) {
         score++;
       }
     }
-    
-    if (score > bestScore) {
+
+    const minScore = Math.max(2, Math.floor(keywords.length * 0.15));
+    if (score > bestScore && score >= minScore) {
       bestScore = score;
       bestMatch = sentences[i].trim();
     }
   }
-  
-  return bestMatch.length > 20 ? bestMatch : null;
+
+  if (bestMatch.length > 20 && bestMatch.length < 500) return bestMatch;
+
+  return null;
+}
+
+async function findTargetWithAI(chapterContent: string, issueDescription: string, chapterRef: string): Promise<string | null> {
+  if (!GEMINI_API_KEY) return null;
+
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const prompt = `Eres un editor literario. Analiza el siguiente capítulo y encuentra la frase o párrafo EXACTO que presenta el problema descrito.
+
+PROBLEMA:
+${issueDescription}
+
+CAPÍTULO (${chapterRef}):
+---
+${chapterContent.substring(0, 15000)}
+---
+
+INSTRUCCIONES:
+1. Encuentra el fragmento de texto EXACTO (tal como aparece en el capítulo) que contiene el problema descrito.
+2. El fragmento debe ser una frase completa o un párrafo corto (entre 30 y 300 caracteres).
+3. Copia el texto EXACTAMENTE como aparece, sin modificarlo.
+4. Si no encuentras el problema específico en este capítulo, responde solo: NO_ENCONTRADO
+
+Responde SOLO con el fragmento exacto del texto problemático, sin explicaciones ni comillas adicionales.`;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response.text().trim();
+
+    if (response === 'NO_ENCONTRADO' || response.length < 15 || response.length > 500) {
+      return null;
+    }
+
+    if (chapterContent.includes(response)) {
+      console.log(`[AI-Target] Encontrado exacto en ${chapterRef}: "${response.substring(0, 60)}..."`);
+      return response;
+    }
+
+    const normalized = response.replace(/\s+/g, ' ').trim();
+    const contentNormalized = chapterContent.replace(/\s+/g, ' ');
+    if (contentNormalized.includes(normalized)) {
+      const idx = contentNormalized.indexOf(normalized);
+      let charCount = 0;
+      let realStart = 0;
+      for (let i = 0; i < chapterContent.length && charCount < idx; i++) {
+        if (!/\s/.test(chapterContent[i]) || (i > 0 && !/\s/.test(chapterContent[i - 1]))) {
+          charCount++;
+        }
+        realStart = i;
+      }
+      const extracted = chapterContent.substring(realStart, realStart + response.length + 50).trim();
+      if (extracted.length > 20) {
+        console.log(`[AI-Target] Encontrado normalizado en ${chapterRef}: "${extracted.substring(0, 60)}..."`);
+        return extracted;
+      }
+    }
+
+    console.log(`[AI-Target] ${chapterRef}: IA devolvió texto que no coincide exactamente. Intentando fuzzy match...`);
+
+    const words = response.split(/\s+/).slice(0, 5).join('\\s+');
+    if (words.length > 10) {
+      const fuzzyPattern = new RegExp(words.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\s\+/g, '\\s+'), 'i');
+      const fuzzyMatch = chapterContent.match(fuzzyPattern);
+      if (fuzzyMatch) {
+        const matchIdx = fuzzyMatch.index || 0;
+        const endIdx = Math.min(chapterContent.length, matchIdx + response.length + 20);
+        const sentenceEnd = chapterContent.indexOf('.', matchIdx + 20);
+        const actualEnd = sentenceEnd > matchIdx && sentenceEnd < endIdx + 100 ? sentenceEnd + 1 : endIdx;
+        const extracted = chapterContent.substring(matchIdx, actualEnd).trim();
+        if (extracted.length > 20 && extracted.length < 500) {
+          console.log(`[AI-Target] Encontrado por fuzzy en ${chapterRef}: "${extracted.substring(0, 60)}..."`);
+          return extracted;
+        }
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`[AI-Target] Error en findTargetWithAI:`, error);
+    return null;
+  }
 }
 
 export async function startCorrectionProcess(
@@ -1576,7 +1698,21 @@ export async function startCorrectionProcess(
         }
       }
 
-      const targetText = extractTargetFromLocation(correctedContent, issue.location, issue.description);
+      let targetText = extractTargetFromLocation(correctedContent, issue.location, issue.description);
+
+      if (!targetText) {
+        const chapterContent = extractChapterContentByLocation(correctedContent, issue.location);
+        if (chapterContent) {
+          console.log(`[DeepSeek] Keyword matching falló para issue ${i + 1}. Intentando con IA en "${issue.location}"...`);
+          onProgress?.({
+            phase: 'analyzing',
+            current: i + 1,
+            total: allIssues.length,
+            message: `Buscando texto problemático con IA en ${issue.location}...`
+          });
+          targetText = await findTargetWithAI(chapterContent, issue.description, issue.location);
+        }
+      }
       
       if (targetText) {
         const result = await correctSingleIssue({
@@ -2269,16 +2405,18 @@ export async function startCorrectionProcess(
         }
       }
 
+      console.log(`[DeepSeek] Issue ${i + 1} NO CORREGIDO: ningún método encontró el texto problemático. Location: "${issue.location}", Severity: ${issue.severity}, Desc: "${issue.description.substring(0, 100)}"`);
+      
       pendingCorrections.push({
         id: `correction-${Date.now()}-${i}`,
         issueId: `issue-${i}`,
         location: issue.location,
         chapterNumber: parseInt(issue.location.match(/\d+/)?.[0] || '0'),
-        originalText: '[Edita manualmente el texto original aquí]',
-        correctedText: '[Escribe aquí la corrección]',
-        instruction: `[REQUIERE EDICIÓN MANUAL] ${issue.description}`,
+        originalText: '[No se pudo localizar el texto exacto]',
+        correctedText: '',
+        instruction: `[NO LOCALIZABLE] ${issue.description}`,
         severity: issue.severity,
-        status: 'pending',
+        status: 'rejected',
         diffStats: { wordsAdded: 0, wordsRemoved: 0, lengthChange: 0 },
         createdAt: new Date().toISOString()
       });
