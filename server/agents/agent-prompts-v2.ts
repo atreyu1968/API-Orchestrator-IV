@@ -775,6 +775,27 @@ export const PROMPTS_V2 = {
     ║ protagonista no aparezca en suficientes capítulos.              ║
     ╚══════════════════════════════════════════════════════════════════╝
 
+    ${chapters > 20 ? `
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║ FORMATO COMPACTO OBLIGATORIO (NOVELA DE ${chapters} CAPÍTULOS)            ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║ ATENCIÓN: Con ${chapters} capítulos, tu respuesta JSON será MUY larga.    ║
+    ║ Para evitar truncamiento, usa el FORMATO COMPACTO:              ║
+    ║                                                                  ║
+    ║ 1. En "outline": SOLO usa chapter_num, title, act, summary,     ║
+    ║    key_event. NO incluyas emotional_arc, temporal_notes,         ║
+    ║    location, ni character_states_entering.                       ║
+    ║ 2. En "summary": máximo 1 línea (40-60 palabras).               ║
+    ║ 3. En "key_event": máximo 15 palabras.                          ║
+    ║ 4. "timeline_master": SOLO story_duration, start_date, y        ║
+    ║    key_events (máx 8-10 eventos clave). NO chapter_timeline.    ║
+    ║ 5. "character_tracking": OMITIR completamente.                  ║
+    ║ 6. Personajes: máximo 5-6 líneas cada uno.                      ║
+    ║ 7. PRIORIDAD ABSOLUTA: Generar los ${chapters} capítulos COMPLETOS.      ║
+    ║    Si dudas entre más detalle o más capítulos, SIEMPRE elige    ║
+    ║    completar TODOS los capítulos.                               ║
+    ╚══════════════════════════════════════════════════════════════════╝
+    ` : ''}
     SALIDA REQUERIDA (JSON Estricto):
     {
       "world_bible": { 
@@ -818,7 +839,14 @@ export const PROMPTS_V2 = {
       "plot_threads": [ 
         { "name": "Nombre del hilo narrativo", "description": "Qué impulsa este hilo", "goal": "Resolución esperada" }
       ],
-      "timeline_master": {
+      ${chapters > 20 ? `"timeline_master": {
+        "story_duration": "X días/semanas/meses",
+        "start_date": "Día 1 (o fecha concreta si aplica)",
+        "key_events": [
+          {"date": "Día 1", "event": "Evento clave", "chapter": 1}
+        ],
+        "key_temporal_constraints": ["Restricción temporal importante"]
+      },` : `"timeline_master": {
         "story_duration": "X días/semanas/meses",
         "start_date": "Día 1 (o fecha concreta si aplica)",
         "chapter_timeline": [
@@ -836,8 +864,8 @@ export const PROMPTS_V2 = {
           "Entre Cap 5 y Cap 6: personaje se recupera de herida (mínimo 3 días)",
           "Cap 10: debe coincidir con evento lunar/festivo/fecha límite"
         ]
-      },
-      "character_tracking": [
+      },`}
+      ${chapters <= 20 ? `"character_tracking": [
         {
           "character": "Protagonista",
           "chapter_states": [
@@ -845,9 +873,15 @@ export const PROMPTS_V2 = {
             {"chapter": 5, "location": "Barcelona, hospital", "physical_state": "Herida en hombro izquierdo", "emotional_state": "Frustrado", "key_possessions": ["Pistola confiscada", "Móvil destruido"]}
           ]
         }
-      ],
+      ],` : ''}
       "outline": [
-        { 
+        ${chapters > 20 ? `{ 
+          "chapter_num": 1, 
+          "title": "Título evocador", 
+          "act": 1,
+          "summary": "Sinopsis concisa de 1 línea", 
+          "key_event": "Evento principal del capítulo"
+        }` : `{ 
           "chapter_num": 1, 
           "title": "Título evocador del capítulo", 
           "act": 1,
@@ -857,7 +891,7 @@ export const PROMPTS_V2 = {
           "temporal_notes": "Día X, mañana/tarde/noche, X horas después del capítulo anterior",
           "location": "Ciudad/lugar principal donde transcurre",
           "character_states_entering": "Estado relevante de personajes al empezar (heridas, ubicación previa)"
-        }
+        }`}
       ],
       "three_act_structure": {
         "act1": { "chapters": [1, 2, 3], "goal": "Establecer mundo y conflicto" },
@@ -866,6 +900,10 @@ export const PROMPTS_V2 = {
       }
     }
 
+    ${chapters > 20 ? `
+    RECORDATORIO FINAL: Tu outline DEBE tener EXACTAMENTE ${chapters} entradas (chapter_num 1 a ${chapters}).
+    Sé CONCISO en cada entrada. Prioriza COMPLETAR TODOS LOS CAPÍTULOS sobre el detalle.
+    ` : ''}
     Piensa paso a paso en la estructura de 3 actos antes de generar el JSON.
     Asegúrate de que cada capítulo tenga un propósito claro y avance la trama.
   `,

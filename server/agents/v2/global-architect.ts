@@ -170,7 +170,9 @@ export class GlobalArchitectAgent extends BaseAgent {
       input.isKindleUnlimited
     );
 
-    const response = await this.generateContent(prompt);
+    // For large chapter counts, request more output tokens to avoid truncation
+    const maxTokens = input.chapterCount > 20 ? 32000 : 16000;
+    const response = await this.generateContent(prompt, undefined, { maxCompletionTokens: maxTokens });
     
     if (response.error) {
       return response;
@@ -240,6 +242,19 @@ export class GlobalArchitectAgent extends BaseAgent {
       parseError = `Error de parsing: ${e}`;
     }
     
+    // Strategy 5: Truncation repair - if JSON was cut off mid-stream, try to close it
+    if (!parsed && content.includes('"outline"')) {
+      console.log("[GlobalArchitect] Attempting truncation repair...");
+      try {
+        parsed = this.repairTruncatedJson(content) as GlobalArchitectOutput;
+        if (parsed) {
+          console.log(`[GlobalArchitect] Truncation repair succeeded! Outline has ${parsed.outline?.length || 0} entries`);
+        }
+      } catch (repairErr) {
+        console.warn("[GlobalArchitect] Truncation repair failed:", repairErr);
+      }
+    }
+    
     // Validate parsed result
     if (!parsed) {
       console.error("[GlobalArchitect] Failed to parse JSON response:", parseError);
@@ -271,21 +286,118 @@ export class GlobalArchitectAgent extends BaseAgent {
     }
     
     // Validate chapter count - count only regular chapters (1-N, excluding 0, 998, 999)
-    const regularChapters = parsed.outline.filter(ch => 
+    let regularChapters = parsed.outline.filter(ch => 
       ch.chapter_num > 0 && ch.chapter_num < 998
     );
     const expectedChapters = input.chapterCount;
     
     if (regularChapters.length !== expectedChapters) {
-      console.error(`[GlobalArchitect] CHAPTER COUNT MISMATCH: Expected ${expectedChapters} regular chapters, got ${regularChapters.length}`);
-      console.error(`[GlobalArchitect] Outline chapter_nums: ${parsed.outline.map(ch => ch.chapter_num).join(', ')}`);
+      console.warn(`[GlobalArchitect] CHAPTER COUNT MISMATCH: Expected ${expectedChapters} regular chapters, got ${regularChapters.length}`);
+      console.warn(`[GlobalArchitect] Outline chapter_nums: ${parsed.outline.map(ch => ch.chapter_num).join(', ')}`);
       
-      // Return error to trigger retry or manual intervention
-      return {
-        ...response,
-        error: `El outline generado tiene ${regularChapters.length} capítulos regulares pero se solicitaron ${expectedChapters}. Por favor, regenere el proyecto.`,
-        parsed: undefined
-      };
+      // If we got SOME chapters (at least 25% of expected), try to complete the missing ones
+      if (regularChapters.length >= Math.max(3, Math.floor(expectedChapters * 0.25)) && regularChapters.length < expectedChapters) {
+        console.log(`[GlobalArchitect] Attempting to complete missing chapters (${regularChapters.length}/${expectedChapters})...`);
+        
+        const existingNums = new Set(regularChapters.map(ch => ch.chapter_num));
+        const missingNums: number[] = [];
+        for (let i = 1; i <= expectedChapters; i++) {
+          if (!existingNums.has(i)) missingNums.push(i);
+        }
+        
+        const completionPrompt = `
+Tienes un outline PARCIAL de una novela de ${expectedChapters} capítulos. Faltan ${missingNums.length} capítulos.
+
+CAPÍTULOS EXISTENTES:
+${regularChapters.map(ch => `Cap ${ch.chapter_num}: "${ch.title}" - ${ch.summary}`).join('\n')}
+
+THREE ACT STRUCTURE:
+${parsed.three_act_structure ? JSON.stringify(parsed.three_act_structure) : 'No disponible'}
+
+PLOT THREADS:
+${(parsed.plot_threads || []).map(t => `- ${t.name}: ${t.goal}`).join('\n')}
+
+GENERA SOLO LOS CAPÍTULOS FALTANTES: ${missingNums.join(', ')}
+
+Responde SOLO con un JSON array de los capítulos faltantes:
+[
+  {"chapter_num": ${missingNums[0]}, "title": "...", "act": 1, "summary": "...", "key_event": "..."},
+  ...
+]
+
+REGLAS:
+- Mantén coherencia con los capítulos existentes
+- Cada capítulo debe avanzar la trama
+- Usa formato compacto: summary máximo 1 línea, key_event máximo 15 palabras
+- GENERA EXACTAMENTE ${missingNums.length} capítulos (nums: ${missingNums.join(', ')})
+`;
+        
+        try {
+          const completionResponse = await this.generateContent(completionPrompt, undefined, { maxCompletionTokens: maxTokens });
+          if (completionResponse.content && !completionResponse.error) {
+            const completionContent = completionResponse.content;
+            // Try to parse the completion array
+            const arrayMatch = completionContent.match(/\[[\s\S]*\]/);
+            if (arrayMatch) {
+              const cleanedArray = arrayMatch[0]
+                .replace(/```json\s*/gi, '').replace(/```\s*/g, '')
+                .replace(/,(\s*[\]}])/g, '$1')
+                .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+                .trim();
+              const missingChapters = JSON.parse(cleanedArray);
+              if (Array.isArray(missingChapters) && missingChapters.length > 0) {
+                // Merge missing chapters into the outline
+                parsed.outline = [...parsed.outline, ...missingChapters];
+                parsed.outline.sort((a, b) => a.chapter_num - b.chapter_num);
+                
+                // Update three_act_structure to include new chapters
+                if (parsed.three_act_structure) {
+                  const allRegularNums = parsed.outline
+                    .filter(ch => ch.chapter_num > 0 && ch.chapter_num < 998)
+                    .map(ch => ch.chapter_num);
+                  
+                  for (const ch of missingChapters) {
+                    if (ch.act && ch.chapter_num > 0 && ch.chapter_num < 998) {
+                      const actKey = `act${ch.act}` as 'act1' | 'act2' | 'act3';
+                      if (parsed.three_act_structure[actKey] && 
+                          !parsed.three_act_structure[actKey].chapters.includes(ch.chapter_num)) {
+                        parsed.three_act_structure[actKey].chapters.push(ch.chapter_num);
+                        parsed.three_act_structure[actKey].chapters.sort((a, b) => a - b);
+                      }
+                    }
+                  }
+                }
+                
+                // Re-validate
+                regularChapters = parsed.outline.filter(ch => ch.chapter_num > 0 && ch.chapter_num < 998);
+                console.log(`[GlobalArchitect] After completion: ${regularChapters.length}/${expectedChapters} chapters`);
+                
+                // Merge token usage
+                if (completionResponse.tokenUsage) {
+                  response.tokenUsage = {
+                    inputTokens: (response.tokenUsage?.inputTokens || 0) + (completionResponse.tokenUsage?.inputTokens || 0),
+                    outputTokens: (response.tokenUsage?.outputTokens || 0) + (completionResponse.tokenUsage?.outputTokens || 0),
+                    thinkingTokens: (response.tokenUsage?.thinkingTokens || 0) + (completionResponse.tokenUsage?.thinkingTokens || 0),
+                  };
+                }
+              }
+            }
+          }
+        } catch (completionError) {
+          console.error(`[GlobalArchitect] Completion attempt failed:`, completionError);
+        }
+      }
+      
+      // Final check after completion attempt
+      regularChapters = parsed.outline.filter(ch => ch.chapter_num > 0 && ch.chapter_num < 998);
+      if (regularChapters.length !== expectedChapters) {
+        console.error(`[GlobalArchitect] Still ${regularChapters.length}/${expectedChapters} chapters after completion attempt`);
+        return {
+          ...response,
+          error: `El outline generado tiene ${regularChapters.length} capítulos regulares pero se solicitaron ${expectedChapters}. Por favor, regenere el proyecto.`,
+          parsed: undefined
+        };
+      }
     }
     
     console.log(`[GlobalArchitect] Successfully parsed and validated: ${regularChapters.length} regular chapters, ${parsed.plot_threads?.length || 0} threads`);
@@ -305,6 +417,63 @@ export class GlobalArchitectAgent extends BaseAgent {
     }
     
     return { ...response, parsed };
+  }
+
+  /**
+   * Repair truncated JSON by finding the last valid entry in the outline array
+   * and closing all open brackets/braces. This salvages partial responses.
+   */
+  private repairTruncatedJson(content: string): any | null {
+    const cleanedContent = content
+      .replace(/```json\s*/gi, '').replace(/```\s*/g, '')
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+    
+    const firstBrace = cleanedContent.indexOf('{');
+    if (firstBrace === -1) return null;
+    
+    let json = cleanedContent.substring(firstBrace);
+    
+    // Find the last complete outline entry by looking for the last complete object pattern
+    // Look for the last "chapter_num": N pattern that has a closing }
+    const lastCompleteEntry = json.lastIndexOf('"}');
+    if (lastCompleteEntry === -1) return null;
+    
+    // Truncate to last complete entry
+    json = json.substring(0, lastCompleteEntry + 2);
+    
+    // Count unclosed brackets/braces
+    let openBraces = 0;
+    let openBrackets = 0;
+    let inStr = false;
+    let esc = false;
+    
+    for (const ch of json) {
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (!inStr) {
+        if (ch === '{') openBraces++;
+        else if (ch === '}') openBraces--;
+        else if (ch === '[') openBrackets++;
+        else if (ch === ']') openBrackets--;
+      }
+    }
+    
+    // Remove trailing commas
+    json = json.replace(/,(\s*)$/, '$1');
+    
+    // Close open brackets and braces
+    for (let i = 0; i < openBrackets; i++) json += ']';
+    for (let i = 0; i < openBraces; i++) json += '}';
+    
+    // Clean trailing commas before closers
+    json = json.replace(/,(\s*[}\]])/g, '$1');
+    
+    try {
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
   }
 
   /**

@@ -304,7 +304,7 @@ export abstract class BaseAgent {
     return this.config.role;
   }
 
-  protected async generateContent(prompt: string, projectId?: number, options?: { temperature?: number; forceProvider?: AIProvider }): Promise<AgentResponse> {
+  protected async generateContent(prompt: string, projectId?: number, options?: { temperature?: number; forceProvider?: AIProvider; maxCompletionTokens?: number }): Promise<AgentResponse> {
     console.log(`[${this.config.name}] generateContent() called (prompt: ${prompt.length} chars)`);
     const provider = options?.forceProvider || getAIProvider();
     console.log(`[${this.config.name}] AI provider: ${provider}${options?.forceProvider ? ' (forced)' : ''}`);
@@ -317,7 +317,7 @@ export abstract class BaseAgent {
     return this.generateWithGemini(prompt, projectId, options);
   }
 
-  private async generateWithDeepSeek(prompt: string, projectId?: number, options?: { temperature?: number }): Promise<AgentResponse> {
+  private async generateWithDeepSeek(prompt: string, projectId?: number, options?: { temperature?: number; maxCompletionTokens?: number }): Promise<AgentResponse> {
     // Use dedicated client if configured (translator or re-editor)
     let deepseek: OpenAI | null;
     let keyName: string;
@@ -390,7 +390,8 @@ export abstract class BaseAgent {
         
         if (isReasonerModel) {
           // R1 uses max_completion_tokens and doesn't support temperature
-          requestParams.max_completion_tokens = 16000;
+          // Allow override for large outputs (e.g., 40-chapter outlines)
+          requestParams.max_completion_tokens = options?.maxCompletionTokens || 16000;
         } else {
           // V3: max_tokens limit is 8192 - this is a hard API limit
           // For large outputs like World Bible, we need to use streaming or split requests

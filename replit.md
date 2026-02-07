@@ -66,6 +66,8 @@ Preferred communication style: Simple, everyday language.
 - **Structural Checkpoint System**: Every 5 chapters, Gemini compares written chapters against the original plan to detect structural deviations. Deviated chapters are automatically rewritten (max 5 per checkpoint) with incremental analysis, tracking of already-corrected chapters, minimum word count verification, retry logic, and post-rewrite verification. Includes a full-novel final structural review.
 - **Accumulated Learning System**: Lessons from Bible validation, structural checkpoints, and correction cycles are stored per-project and injected into every subsequent Ghostwriter call, creating a feedback loop for preventing recurring problems.
 
+- **Global Architect Large Novel Support (v2.9.10)**: For novels with 20+ chapters, the Global Architect uses a compact output format (fewer fields per chapter, concise summaries) to prevent token limit truncation. Features: (1) Compact prompt format omitting optional per-chapter fields for large novels. (2) Increased max_completion_tokens (32K for 20+ chapters). (3) Smart chapter completion - if the AI returns fewer chapters than requested but at least 25%, automatically makes a focused follow-up call to generate ONLY the missing chapters and merges them. (4) Truncation repair - salvages partially-truncated JSON responses by closing unclosed brackets/braces.
+
 ### LitAgents 2.0 (Scene-Based Pipeline)
 - **Architecture**: Scene-based writing pipeline optimized for DeepSeek AI models.
 - **Agents**: Global Architect, Chapter Architect, Ghostwriter V2, Smart Editor, Summarizer, Narrative Director.
