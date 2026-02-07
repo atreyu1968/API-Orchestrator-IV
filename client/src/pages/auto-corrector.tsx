@@ -87,12 +87,28 @@ function getCycleResultLabel(result: string) {
     case 'threshold_met': return 'Umbral alcanzado';
     case 'corrected': return 'Corregido';
     case 'no_issues': return 'Sin issues';
-    case 'max_cycles': return 'Max ciclos';
+    case 'max_cycles': return 'Máx. ciclos alcanzado';
     case 'error': return 'Error';
     case 'cancelled': return 'Cancelado';
-    case 'score_drop_reverted': return 'Revertido (score bajó)';
+    case 'score_drop_reverted': return 'Revertido (score empeoró)';
     case 'no_critical_issues': return 'Sin issues críticos';
     default: return result;
+  }
+}
+
+function getRunFinishReason(run: AutoCorrectionRun): string | null {
+  if (run.status === 'failed') return 'Error';
+  if (run.status === 'cancelled') return 'Cancelado';
+  if (!run.cycleHistory || run.cycleHistory.length === 0) return null;
+  const lastCycle = run.cycleHistory[run.cycleHistory.length - 1];
+  switch (lastCycle.result) {
+    case 'threshold_met': return 'Objetivo alcanzado';
+    case 'no_issues': return 'Sin problemas';
+    case 'max_cycles': return `${run.maxCycles} ciclos completados`;
+    case 'score_drop_reverted': return 'Detenido (score empeoró)';
+    case 'no_critical_issues': return 'Sin issues críticos';
+    case 'corrected': return 'Correcciones aplicadas';
+    default: return null;
   }
 }
 
@@ -469,7 +485,7 @@ export default function AutoCorrectorPage() {
                     {getStatusBadge(run.status)}
                     {run.finalScore != null && (
                       <Badge variant={run.finalScore >= (run.targetScore || 85) ? "default" : "outline"} data-testid={`badge-run-score-${run.id}`}>
-                        Score: {run.finalScore}
+                        Score: {run.finalScore}/{run.targetScore || 85}
                       </Badge>
                     )}
                     {run.finalCriticalIssues != null && (
@@ -482,9 +498,17 @@ export default function AutoCorrectorPage() {
                     )}
                     {run.cycleHistory && run.cycleHistory.length > 0 && (
                       <span className="text-muted-foreground text-xs" data-testid={`text-run-cycles-${run.id}`}>
-                        {run.cycleHistory.length} ciclo{run.cycleHistory.length !== 1 ? 's' : ''}
+                        {run.cycleHistory.length}/{run.maxCycles} ciclos
                       </span>
                     )}
+                    {(() => {
+                      const reason = getRunFinishReason(run);
+                      return reason ? (
+                        <span className="text-muted-foreground text-xs italic" data-testid={`text-run-reason-${run.id}`}>
+                          — {reason}
+                        </span>
+                      ) : null;
+                    })()}
                     <span className="text-muted-foreground text-xs">
                       {new Date(run.createdAt).toLocaleDateString()} {new Date(run.createdAt).toLocaleTimeString()}
                     </span>

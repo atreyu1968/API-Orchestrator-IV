@@ -279,55 +279,6 @@ async function executeAutoCorrectionLoop(
 
       await addLog(runId, 'audit_complete', `Ciclo ${cycle}: Score=${overallScore}, Críticos=${criticalIssues}, Total=${totalIssues}${previousCycleScore > 0 ? ` (anterior: ${previousCycleScore})` : ''}`);
 
-      // SCORE-DROP GUARD: If score dropped from previous cycle, REVERT to best snapshot and stop
-      if (cycle > 1 && previousCycleScore > 0 && overallScore < previousCycleScore - 2) {
-        const scoreDelta = overallScore - previousCycleScore;
-        console.log(`[AutoCorrector] SCORE DROP DETECTED: ${previousCycleScore} → ${overallScore} (delta: ${scoreDelta})`);
-        await addLog(runId, 'score_drop', `Ciclo ${cycle}: Score bajó de ${previousCycleScore} a ${overallScore} (delta: ${scoreDelta}). Revirtiendo al mejor estado (score ${bestScore}).`);
-
-        onProgress?.({
-          phase: 'reverting',
-          message: `Score bajó (${previousCycleScore}→${overallScore}). Revirtiendo al mejor estado (score ${bestScore})...`,
-          cycle,
-          score: overallScore,
-        });
-
-        if (bestCycleSnapshot) {
-          await restoreChapterContents(projectId, bestCycleSnapshot);
-          console.log(`[AutoCorrector] Restored to best cycle snapshot (score ${bestScore})`);
-        }
-
-        const cycleRecord: AutoCorrectionCycle = {
-          cycle,
-          auditId,
-          overallScore,
-          criticalIssues,
-          totalIssues,
-          issuesFixed: 0,
-          structuralChanges: 0,
-          startedAt: cycleStart,
-          completedAt: new Date().toISOString(),
-          result: 'score_drop_reverted',
-        };
-        await appendCycleHistory(runId, cycleRecord);
-
-        await updateRunStatus(runId, 'completed', {
-          finalScore: bestScore,
-          finalCriticalIssues: criticalIssues,
-          totalIssuesFixed: totalFixed,
-          totalStructuralChanges: totalStructural,
-          completedAt: new Date(),
-          currentAuditId: bestAuditId,
-        });
-        await addLog(runId, 'completed', `Detenido por degradación de score. Mejor score: ${bestScore}. Contenido restaurado al mejor ciclo.`);
-        onProgress?.({
-          phase: 'completed',
-          message: `Auto-corrección detenida. Contenido restaurado al mejor estado (score ${bestScore}).`,
-          score: bestScore,
-        });
-        break;
-      }
-
       // Check if quality threshold is already met
       if (overallScore >= targetScore && criticalIssues <= maxCritical) {
         const cycleRecord: AutoCorrectionCycle = {
@@ -386,7 +337,7 @@ async function executeAutoCorrectionLoop(
         break;
       }
 
-      // PHASE 3: Run corrections (only critical/high severity in auto-mode for cycles > 1)
+      // PHASE 3: Run corrections for ALL detected issues
       if (await isCancelled(runId, control)) {
         await finishCancelled(runId, cycle, cycleStart, auditResult);
         break;
@@ -394,45 +345,15 @@ async function executeAutoCorrectionLoop(
 
       await updateRunStatus(runId, 'correcting', { currentAuditId: auditId });
 
-      // Filter audit to only critical/high issues for cycle > 1 to prevent style degradation
-      const filteredAuditId = cycle > 1
-        ? await filterAuditToHighSeverity(auditId, cycle, onProgress)
-        : auditId;
-
-      const effectiveIssueCount = cycle > 1
-        ? await countFilteredIssues(filteredAuditId)
-        : totalIssues;
-
-      if (effectiveIssueCount === 0 && cycle > 1) {
-        await addLog(runId, 'completed', `Ciclo ${cycle}: No hay issues críticos/altos restantes. Finalizando.`);
-        const cycleRecord: AutoCorrectionCycle = {
-          cycle, auditId, overallScore, criticalIssues, totalIssues,
-          issuesFixed: 0, structuralChanges: 0,
-          startedAt: cycleStart, completedAt: new Date().toISOString(),
-          result: 'no_critical_issues',
-        };
-        await appendCycleHistory(runId, cycleRecord);
-        await updateRunStatus(runId, 'completed', {
-          finalScore: overallScore,
-          finalCriticalIssues: criticalIssues,
-          totalIssuesFixed: totalFixed,
-          totalStructuralChanges: totalStructural,
-          completedAt: new Date(),
-          currentAuditId: auditId,
-        });
-        onProgress?.({ phase: 'completed', message: `Sin issues críticos restantes. Score final: ${overallScore}` });
-        break;
-      }
-
       onProgress?.({
         phase: 'correcting',
-        message: `Ciclo ${cycle}: Corrigiendo ${effectiveIssueCount} issues${cycle > 1 ? ' (solo críticos/altos)' : ''} con DeepSeek...`,
+        message: `Ciclo ${cycle}: Corrigiendo ${totalIssues} issues con DeepSeek...`,
         cycle,
         maxCycles,
       });
-      await addLog(runId, 'correcting', `Ciclo ${cycle}: Iniciando corrección de ${effectiveIssueCount} issues${cycle > 1 ? ' (filtrado: solo críticos/altos)' : ''}`);
+      await addLog(runId, 'correcting', `Ciclo ${cycle}: Iniciando corrección de ${totalIssues} issues`);
 
-      const correctionResult = await runCorrections(runId, filteredAuditId, cycle, onProgress);
+      const correctionResult = await runCorrections(runId, auditId, cycle, onProgress);
 
       if (await isCancelled(runId, control)) {
         await finishCancelled(runId, cycle, cycleStart, auditResult);
@@ -503,15 +424,60 @@ async function executeAutoCorrectionLoop(
       await applyCorrectionsToChapters(projectId, manuscriptId);
 
       totalFixed += approvedCount;
-      previousCycleScore = overallScore;
 
-      // Capture best-scoring snapshot for potential rollback
+      // Capturar snapshot del mejor estado post-corrección
       if (overallScore >= bestScore) {
         bestScore = overallScore;
         bestAuditId = auditId;
         bestCycleSnapshot = await backupChapterContents(projectId);
-        console.log(`[AutoCorrector] New best score: ${bestScore} at cycle ${cycle}. Snapshot captured.`);
+        console.log(`[AutoCorrector] Nuevo mejor score: ${bestScore} en ciclo ${cycle}. Snapshot capturado.`);
       }
+
+      // SCORE-DROP GUARD: Si el score empeoró respecto al ciclo anterior,
+      // revertir al mejor estado y detener
+      if (cycle > 1 && previousCycleScore > 0 && overallScore < previousCycleScore - 2) {
+        const scoreDelta = overallScore - previousCycleScore;
+        console.log(`[AutoCorrector] SCORE DROP: ${previousCycleScore} → ${overallScore} (delta: ${scoreDelta})`);
+        await addLog(runId, 'score_drop', `Ciclo ${cycle}: Score bajó de ${previousCycleScore} a ${overallScore}. Revirtiendo al mejor estado (score ${bestScore}).`);
+
+        onProgress?.({
+          phase: 'reverting',
+          message: `Score bajó (${previousCycleScore}→${overallScore}). Revirtiendo al mejor estado (score ${bestScore})...`,
+          cycle,
+          score: overallScore,
+        });
+
+        if (bestCycleSnapshot) {
+          await restoreChapterContents(projectId, bestCycleSnapshot);
+          console.log(`[AutoCorrector] Restaurado al mejor snapshot (score ${bestScore})`);
+        }
+
+        const cycleRecord: AutoCorrectionCycle = {
+          cycle, auditId, manuscriptId, overallScore, criticalIssues, totalIssues,
+          issuesFixed: approvedCount, structuralChanges: structuralCount,
+          startedAt: cycleStart, completedAt: new Date().toISOString(),
+          result: 'score_drop_reverted',
+        };
+        await appendCycleHistory(runId, cycleRecord);
+
+        await updateRunStatus(runId, 'completed', {
+          finalScore: bestScore,
+          finalCriticalIssues: criticalIssues,
+          totalIssuesFixed: totalFixed,
+          totalStructuralChanges: totalStructural,
+          completedAt: new Date(),
+          currentAuditId: bestAuditId,
+        });
+        await addLog(runId, 'completed', `Detenido: las correcciones empeoraron el score. Mejor score: ${bestScore}.`);
+        onProgress?.({
+          phase: 'completed',
+          message: `Auto-corrección detenida. Restaurado al mejor estado (score ${bestScore}).`,
+          score: bestScore,
+        });
+        break;
+      }
+
+      previousCycleScore = overallScore;
 
       const cycleRecord: AutoCorrectionCycle = {
         cycle,
@@ -528,11 +494,11 @@ async function executeAutoCorrectionLoop(
       };
       await appendCycleHistory(runId, cycleRecord);
 
-      await addLog(runId, 'cycle_complete', `Ciclo ${cycle}: ${approvedCount} correcciones aplicadas, ${structuralCount} cambios estructurales`);
+      await addLog(runId, 'cycle_complete', `Ciclo ${cycle}: ${approvedCount} correcciones, ${structuralCount} estructurales. Score: ${overallScore}`);
 
       onProgress?.({
         phase: 'cycle_complete',
-        message: `Ciclo ${cycle} completado. ${approvedCount} correcciones, ${structuralCount} estructurales. Score previo: ${overallScore}`,
+        message: `Ciclo ${cycle} completado. ${approvedCount} correcciones, ${structuralCount} estructurales. Score: ${overallScore}`,
         cycle,
         maxCycles,
         details: { approvedCount, structuralCount },
@@ -549,7 +515,7 @@ async function executeAutoCorrectionLoop(
           currentAuditId: bestAuditId || auditId,
           currentManuscriptId: manuscriptId,
         });
-        await addLog(runId, 'completed', `Máximo de ciclos alcanzado (${maxCycles}). Score: ${finalBestScore}. Total fixed: ${totalFixed}`);
+        await addLog(runId, 'completed', `Máximo de ciclos alcanzado (${maxCycles}). Score: ${finalBestScore}. Total corregidos: ${totalFixed}`);
         onProgress?.({
           phase: 'completed',
           message: `Auto-corrección completada tras ${maxCycles} ciclos. Score: ${finalBestScore}. Total corregidos: ${totalFixed}`,

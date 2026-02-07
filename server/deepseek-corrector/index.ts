@@ -1479,6 +1479,25 @@ export async function startCorrectionProcess(
       return { success: false, error: 'No hay issues para corregir' };
     }
 
+    const severityOrder: Record<string, number> = {
+      'structural': 0, 'estructural': 0,
+      'critical': 1, 'crítico': 1, 'critico': 1, 'grave': 1,
+      'high': 2, 'alto': 2, 'alta': 2,
+      'medium': 3, 'medio': 3, 'media': 3,
+      'low': 4, 'bajo': 4, 'baja': 4,
+      'minor': 5, 'menor': 5,
+    };
+
+    allIssues.sort((a, b) => {
+      const sevA = (a.severity || '').toLowerCase().trim();
+      const sevB = (b.severity || '').toLowerCase().trim();
+      const orderA = severityOrder[sevA] ?? 3;
+      const orderB = severityOrder[sevB] ?? 3;
+      return orderA - orderB;
+    });
+
+    console.log(`[DeepSeek] Issues ordenados por severidad: ${allIssues.map(i => i.severity).join(', ')}`);
+
     const [manuscript] = await db.insert(correctedManuscripts).values({
       auditId,
       projectId: audit.projectId,
@@ -1504,7 +1523,7 @@ export async function startCorrectionProcess(
         phase: 'correcting',
         current: i + 1,
         total: allIssues.length,
-        message: `Corrigiendo issue ${i + 1}/${allIssues.length}: ${issue.severity}`
+        message: `Corrigiendo issue ${i + 1}/${allIssues.length} [${(issue.severity || 'medium').toUpperCase()}]: ${(issue.description || '').substring(0, 80)}`
       });
 
       if (isNarrativeTransitionIssue(issue.description)) {
