@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Download, BookOpen, MessageSquare, PenTool, ChevronDown, Wand2, Loader2, Type, ShieldCheck } from "lucide-react";
+import { Download, BookOpen, MessageSquare, PenTool, ChevronDown, Wand2, Loader2, Type, ShieldCheck, Zap } from "lucide-react";
 import { useProject } from "@/lib/project-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -256,9 +256,12 @@ export default function ManuscriptPage() {
             <Badge variant="secondary">{currentProject.genre}</Badge>
             <Badge variant="outline">{currentProject.tone}</Badge>
             {approvedManuscript && (
-              <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-white">
-                <ShieldCheck className="h-3 w-3 mr-1" />
-                Auditado y Aprobado
+              <Badge variant="default" className="bg-green-600 text-white">
+                {(approvedManuscript as any).source === 'auto' ? (
+                  <><Zap className="h-3 w-3 mr-1" />Auto-Corregido</>
+                ) : (
+                  <><ShieldCheck className="h-3 w-3 mr-1" />Auditado y Aprobado</>
+                )}
               </Badge>
             )}
             <span className="text-sm text-muted-foreground">
@@ -340,7 +343,7 @@ export default function ManuscriptPage() {
             data-testid="button-download-manuscript"
           >
             <Download className="h-4 w-4 mr-2" />
-            {approvedManuscript ? 'Descargar MD (Corregido)' : 'Descargar MD'}
+            {approvedManuscript ? ((approvedManuscript as any).source === 'auto' ? 'Descargar MD (Auto-Corregido)' : 'Descargar MD (Corregido)') : 'Descargar MD'}
           </Button>
           {currentProject.status === "completed" && (
             <Button

@@ -1057,6 +1057,7 @@ export const correctedManuscripts = pgTable("corrected_manuscripts", {
   auditId: integer("audit_id").notNull().references(() => manuscriptAudits.id, { onDelete: "cascade" }),
   projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   status: text("status").notNull().default("pending"), // pending, correcting, review, approved, error
+  source: text("source").notNull().default("manual"), // manual, auto
   originalContent: text("original_content").notNull(),
   correctedContent: text("corrected_content"),
   corrections: jsonb("corrections"), // Array of applied corrections

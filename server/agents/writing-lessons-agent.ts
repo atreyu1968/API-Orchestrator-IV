@@ -1,9 +1,9 @@
 import { BaseAgent } from "./base-agent";
 import { storage } from "../storage";
 import { db } from "../db";
-import { manuscriptAudits, reeditAuditReports, reeditProjects } from "@shared/schema";
+import { manuscriptAudits, reeditAuditReports, reeditProjects, autoCorrectionRuns, correctedManuscripts } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import type { WritingLesson, InsertWritingLesson } from "@shared/schema";
+import type { WritingLesson, InsertWritingLesson, AutoCorrectionCycle, CorrectionRecord } from "@shared/schema";
 
 interface AuditIssue {
   categoria: string;
@@ -52,6 +52,7 @@ CATEGORÍAS VÁLIDAS:
 - atmosfera: Títulos que no encajan, tono inconsistente
 - trama: Deus ex machina, agujeros de guion, resoluciones forzadas
 - transiciones: Saltos geográficos o temporales sin explicar
+- correccion_recurrente: Errores que el auto-corrector tuvo que arreglar repetidamente en múltiples novelas
 
 FORMATO DE RESPUESTA (JSON):
 {
@@ -233,6 +234,63 @@ export class WritingLessonsAgent extends BaseAgent {
       }
     } catch (e: any) {
       console.log(`[WritingLessonsAgent] Could not query reedit_audit_reports: ${e.message}`);
+    }
+
+    // === SOURCE 4: auto_correction_runs (Auto-Corrector) - only correction outcomes, not audit issues (already in Source 2) ===
+    try {
+      const autoRuns = await db.select().from(autoCorrectionRuns).where(eq(autoCorrectionRuns.status, "completed"));
+      console.log(`[WritingLessonsAgent] Found ${autoRuns.length} completed auto-correction runs`);
+
+      for (const run of autoRuns) {
+        const project = allProjects.find(p => p.id === run.projectId);
+        const title = project?.title || `Project ${run.projectId}`;
+        const genre = project?.genre || "unknown";
+        const existingEntry = auditData.find(d => d.projectId === run.projectId);
+        const issues: AuditIssue[] = existingEntry?.issues || [];
+
+        const cycles = (run.cycleHistory as AutoCorrectionCycle[]) || [];
+        for (const cycle of cycles) {
+          if (cycle.manuscriptId) {
+            try {
+              const [manuscript] = await db.select().from(correctedManuscripts).where(eq(correctedManuscripts.id, cycle.manuscriptId));
+              if (manuscript?.corrections) {
+                const corrections = manuscript.corrections as CorrectionRecord[];
+                for (const corr of corrections) {
+                  if (corr.status === 'applied' || corr.status === 'approved') {
+                    issues.push({
+                      categoria: corr.instruction?.includes('STRUCTURAL') ? 'estructura' : 'correccion_recurrente',
+                      severidad: this.severityMap(corr.severity || 'medium'),
+                      descripcion: `[Corrección auto-aplicada Ciclo ${cycle.cycle}] ${corr.instruction || corr.originalText?.substring(0, 200) || ""}`,
+                      instrucciones_correccion: corr.correctedText?.substring(0, 300) || "",
+                    });
+                  }
+                }
+              }
+            } catch {}
+          }
+        }
+
+        if (run.totalIssuesFixed && run.totalIssuesFixed > 0) {
+          issues.push({
+            categoria: "correccion_recurrente",
+            severidad: "media",
+            descripcion: `[Auto-Corrector] Resumen: ${run.totalIssuesFixed} problemas corregidos automáticamente en ${cycles.length} ciclos. Puntuación final: ${run.finalScore || 'N/A'}. Cambios estructurales: ${run.totalStructuralChanges || 0}.`,
+          });
+        }
+
+        if (issues.length > 0 && !existingEntry) {
+          console.log(`[WritingLessonsAgent] Auto-correction run ${run.id} for "${title}": ${issues.length} correction outcomes`);
+          auditData.push({
+            projectId: run.projectId, title, genre,
+            issues, puntuacion_global: run.finalScore || 0,
+          });
+        } else if (existingEntry) {
+          existingEntry.issues = issues;
+          console.log(`[WritingLessonsAgent] Auto-correction run ${run.id} merged into "${title}": now ${issues.length} total issues`);
+        }
+      }
+    } catch (e: any) {
+      console.log(`[WritingLessonsAgent] Could not query auto_correction_runs: ${e.message}`);
     }
 
     const totalSources = auditData.length;

@@ -640,7 +640,7 @@ async function runCorrections(
         cycle,
         details: { correctionPhase: progress.phase, current: progress.current, total: progress.total },
       });
-    });
+    }, { source: 'auto' });
 
     return result;
   } catch (error) {

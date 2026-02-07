@@ -1445,7 +1445,8 @@ function extractTargetFromLocation(novelContent: string, location: string, descr
 
 export async function startCorrectionProcess(
   auditId: number,
-  onProgress?: (progress: { phase: string; current: number; total: number; message: string }) => void
+  onProgress?: (progress: { phase: string; current: number; total: number; message: string }) => void,
+  options?: { source?: string }
 ): Promise<{ success: boolean; manuscriptId?: number; error?: string }> {
   try {
     const [audit] = await db.select().from(manuscriptAudits).where(eq(manuscriptAudits.id, auditId));
@@ -1475,6 +1476,7 @@ export async function startCorrectionProcess(
       auditId,
       projectId: audit.projectId,
       status: 'correcting',
+      source: options?.source || 'manual',
       originalContent: audit.novelContent,
       totalIssues: allIssues.length,
       pendingCorrections: []
