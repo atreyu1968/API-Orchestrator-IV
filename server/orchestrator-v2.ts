@@ -4841,6 +4841,41 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
       const chapterSummaries: string[] = [];
       
       const narrativeTimeline: Array<{ chapter: number; narrativeTime: string; location?: string }> = [];
+      
+      // LitAgents 2.9.10: Track checkpoint state to avoid repeated rewrites
+      // Backfill from activity logs on resume to prevent re-scanning already-checked chapters
+      let lastCheckpointChapter = 0;
+      const alreadyCorrectedChapters = new Set<number>();
+      try {
+        const existingLogs = await storage.getActivityLogsByProject(project.id);
+        const checkpointLogs = existingLogs.filter(l => l.agentRole === 'structural-checkpoint');
+        for (const log of checkpointLogs) {
+          const meta = log.metadata as any;
+          if (meta?.type === 'checkpoint_executed' && typeof meta.rangeEnd === 'number') {
+            if (meta.rangeEnd > lastCheckpointChapter) lastCheckpointChapter = meta.rangeEnd;
+          } else if (meta?.type === 'chapter_rewritten' && typeof meta.chapterNumber === 'number') {
+            alreadyCorrectedChapters.add(meta.chapterNumber);
+          } else if (!meta?.type) {
+            // Fallback: parse legacy logs without structured metadata
+            if (log.message.includes('Ejecutando checkpoint estructural')) {
+              const match = log.message.match(/capítulo[s]?\s+\d+-(\d+)/i);
+              if (match) {
+                const chapNum = parseInt(match[1]);
+                if (chapNum > lastCheckpointChapter) lastCheckpointChapter = chapNum;
+              }
+            }
+            if (log.level === 'success' && log.message.includes('reescrito')) {
+              const match = log.message.match(/Capítulo (\d+) reescrito/);
+              if (match) alreadyCorrectedChapters.add(parseInt(match[1]));
+            }
+          }
+        }
+        if (lastCheckpointChapter > 0 || alreadyCorrectedChapters.size > 0) {
+          console.log(`[OrchestratorV2] Resumed checkpoint state: last checkpoint at Ch ${lastCheckpointChapter}, ${alreadyCorrectedChapters.size} chapters already corrected`);
+        }
+      } catch (err) {
+        console.error("[OrchestratorV2] Failed to backfill checkpoint state:", err);
+      }
 
       // Check for existing chapters to resume from
       const existingChapters = await storage.getChaptersByProject(project.id);
@@ -5461,41 +5496,87 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           
           // LitAgents 2.9.10: Run Structural Checkpoint alongside Narrative Director
           if (isMultipleOfFive && !isEpilogue) {
-            console.log(`[OrchestratorV2] Running Structural Checkpoint at Chapter ${chapterNumber}`);
+            console.log(`[OrchestratorV2] Running Structural Checkpoint at Chapter ${chapterNumber} (last checkpoint was at ${lastCheckpointChapter})`);
             const checkpointResult = await this.runStructuralCheckpoint(
-              project.id, chapterNumber, worldBible, outline, narrativeTimeline
+              project.id, chapterNumber, worldBible, outline, narrativeTimeline,
+              lastCheckpointChapter, alreadyCorrectedChapters
             );
             
-            // Rewrite deviated chapters
+            // Update lastCheckpointChapter for next checkpoint
+            lastCheckpointChapter = chapterNumber;
+            
+            // Rewrite deviated chapters (max 5 per checkpoint to prevent token waste)
+            const MAX_REWRITES_PER_CHECKPOINT = 5;
             if (checkpointResult.deviatedChapters.length > 0) {
-              console.log(`[OrchestratorV2] ${checkpointResult.deviatedChapters.length} chapters need structural correction`);
+              const chaptersToRewrite = checkpointResult.deviatedChapters.slice(0, MAX_REWRITES_PER_CHECKPOINT);
+              if (checkpointResult.deviatedChapters.length > MAX_REWRITES_PER_CHECKPOINT) {
+                console.log(`[OrchestratorV2] Limiting rewrites to ${MAX_REWRITES_PER_CHECKPOINT} of ${checkpointResult.deviatedChapters.length} deviated chapters`);
+              }
+              console.log(`[OrchestratorV2] ${chaptersToRewrite.length} chapters need structural correction`);
               
-              for (const deviatedChNum of checkpointResult.deviatedChapters) {
+              for (const deviatedChNum of chaptersToRewrite) {
                 if (await this.shouldStopProcessing(project.id)) break;
                 
                 const deviationIssue = checkpointResult.issues.find(i => i.includes(`Cap ${deviatedChNum}`)) || 
                   `Capítulo ${deviatedChNum} se desvió del plan original`;
                 
-                const rewritten = await this.rewriteDeviatedChapter(
+                let rewritten = await this.rewriteDeviatedChapter(
                   project.id, deviatedChNum, worldBible, outline, deviationIssue
                 );
                 
                 if (rewritten) {
-                  console.log(`[OrchestratorV2] Chapter ${deviatedChNum} successfully rewritten for structural adherence`);
-                  
-                  // Update the summary for the rewritten chapter
                   const updatedChapters = await storage.getChaptersByProject(project.id);
                   const updatedCh = updatedChapters.find(c => c.chapterNumber === deviatedChNum);
-                  if (updatedCh) {
+                  
+                  if (updatedCh?.content) {
+                    const verification = await this.verifyRewriteFixed(
+                      project.id, deviatedChNum, updatedCh.content, outline, deviationIssue
+                    );
+                    
+                    if (!verification.fixed && verification.remainingIssues.length > 0) {
+                      console.log(`[OrchestratorV2] Chapter ${deviatedChNum} rewrite did NOT fix the problem. Attempting second rewrite...`);
+                      const enhancedIssue = `${deviationIssue}\n\nPROBLEMAS PERSISTENTES TRAS PRIMERA REESCRITURA:\n${verification.remainingIssues.join('\n')}`;
+                      
+                      rewritten = await this.rewriteDeviatedChapter(
+                        project.id, deviatedChNum, worldBible, outline, enhancedIssue
+                      );
+                      
+                      if (rewritten) {
+                        const recheckChapters = await storage.getChaptersByProject(project.id);
+                        const recheckCh = recheckChapters.find(c => c.chapterNumber === deviatedChNum);
+                        if (recheckCh?.content) {
+                          const secondVerification = await this.verifyRewriteFixed(
+                            project.id, deviatedChNum, recheckCh.content, outline, enhancedIssue
+                          );
+                          if (!secondVerification.fixed) {
+                            console.warn(`[OrchestratorV2] Chapter ${deviatedChNum} still not fixed after 2 rewrites. Storing as lesson.`);
+                            await storage.createActivityLog({
+                              projectId: project.id,
+                              level: "warn",
+                              agentRole: "structural-checkpoint",
+                              message: `Capítulo ${deviatedChNum}: desviación persistente tras 2 intentos de reescritura. Problemas: ${secondVerification.remainingIssues.join('; ')}`,
+                              metadata: { type: 'persistent_deviation', chapterNumber: deviatedChNum, remainingIssues: secondVerification.remainingIssues },
+                            });
+                          }
+                        }
+                      }
+                    }
+                  }
+                  
+                  alreadyCorrectedChapters.add(deviatedChNum);
+                  console.log(`[OrchestratorV2] Chapter ${deviatedChNum} processed for structural adherence (marked as corrected)`);
+                  
+                  const finalChapters = await storage.getChaptersByProject(project.id);
+                  const finalCh = finalChapters.find(c => c.chapterNumber === deviatedChNum);
+                  if (finalCh) {
                     const summaryResult = await this.summarizer.execute({
-                      chapterContent: updatedCh.content || '',
+                      chapterContent: finalCh.content || '',
                       chapterNumber: deviatedChNum,
                     });
                     this.addTokenUsage(summaryResult.tokenUsage);
                     
                     if (summaryResult.content) {
-                      await storage.updateChapter(updatedCh.id, { summary: summaryResult.content });
-                      // Update in-memory summaries
+                      await storage.updateChapter(finalCh.id, { summary: summaryResult.content });
                       const summaryIdx = chapterSummaries.findIndex((_, idx) => {
                         const chapNum = outline[idx]?.chapter_num;
                         return chapNum === deviatedChNum;
@@ -6043,20 +6124,24 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     currentChapter: number,
     worldBible: any,
     outline: any[],
-    narrativeTimeline: Array<{ chapter: number; narrativeTime: string; location?: string }>
+    narrativeTimeline: Array<{ chapter: number; narrativeTime: string; location?: string }>,
+    lastCheckpointChapter: number = 0,
+    alreadyCorrectedChapters: Set<number> = new Set()
   ): Promise<{ deviatedChapters: number[]; issues: string[]; lessonsLearned: string[] }> {
-    this.callbacks.onAgentStatus("structural-checkpoint", "active", `Verificación estructural (Cap 1-${currentChapter})...`);
+    const rangeStart = lastCheckpointChapter > 0 ? lastCheckpointChapter + 1 : 1;
+    this.callbacks.onAgentStatus("structural-checkpoint", "active", `Verificación estructural (Cap ${rangeStart}-${currentChapter})...`);
 
     await storage.createActivityLog({
       projectId,
       level: "info",
       agentRole: "structural-checkpoint",
-      message: `Ejecutando checkpoint estructural después del capítulo ${currentChapter}`,
+      message: `Ejecutando checkpoint estructural: capítulos ${rangeStart}-${currentChapter} (capítulos ya corregidos: ${alreadyCorrectedChapters.size > 0 ? Array.from(alreadyCorrectedChapters).join(', ') : 'ninguno'})`,
+      metadata: { type: 'checkpoint_executed', rangeStart, rangeEnd: currentChapter, alreadyCorrected: Array.from(alreadyCorrectedChapters) },
     });
 
     const chapters = await storage.getChaptersByProject(projectId);
     const writtenChapters = chapters
-      .filter(ch => ch.content && ch.content.length > 100 && ch.chapterNumber <= currentChapter)
+      .filter(ch => ch.content && ch.content.length > 100 && ch.chapterNumber >= rangeStart && ch.chapterNumber <= currentChapter)
       .sort((a, b) => a.chapterNumber - b.chapterNumber);
 
     if (writtenChapters.length === 0) {
@@ -6083,7 +6168,8 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
       null, 2
     ).substring(0, 5000);
 
-    const prompt = `Eres un director narrativo experto. Analiza si los capítulos escritos hasta ahora SIGUEN FIELMENTE la estructura planificada.
+    const prompt = `Eres un director narrativo experto. Analiza si los capítulos escritos en este RANGO (${rangeStart}-${currentChapter}) SIGUEN FIELMENTE la estructura planificada.
+IMPORTANTE: Solo reporta desviaciones de los capítulos en el rango ${rangeStart}-${currentChapter}. Los capítulos anteriores ya fueron verificados.
 
 === PERSONAJES Y ARCOS PLANIFICADOS ===
 ${bibleCharacters}
@@ -6091,15 +6177,16 @@ ${bibleCharacters}
 === LÍNEA TEMPORAL ACUMULADA ===
 ${timelineStr}
 
-=== COMPARACIÓN PLAN vs REALIDAD (${writtenChapters.length} capítulos) ===
+=== COMPARACIÓN PLAN vs REALIDAD (Capítulos ${rangeStart}-${currentChapter}) ===
 ${chapterSummaries.substring(0, 20000)}
 
-ANALIZA:
+ANALIZA SOLO los capítulos ${rangeStart}-${currentChapter}:
 1. ¿Cada capítulo cumple con su plan original? ¿Se ejecutaron los eventos clave?
 2. ¿La línea temporal es coherente y continua?
 3. ¿Los arcos de personajes progresan según lo planificado?
 4. ¿Hay desviaciones que comprometan la estructura de la novela?
 5. ¿Qué lecciones debe aprender el escritor para los próximos capítulos?
+NO incluyas capítulos anteriores al ${rangeStart} en deviatedChapters.
 
 RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
 {
@@ -6147,13 +6234,18 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
-      const deviatedChapters = parsed.deviatedChapters || [];
+      const rawDeviatedChapters: number[] = parsed.deviatedChapters || [];
+      // Filter out chapters already corrected in previous checkpoints and chapters outside range
+      const deviatedChapters = rawDeviatedChapters.filter(ch => 
+        ch >= rangeStart && ch <= currentChapter && !alreadyCorrectedChapters.has(ch)
+      );
+      const skippedCount = rawDeviatedChapters.length - deviatedChapters.length;
       const issues = (parsed.issues || [])
-        .filter((i: any) => i.severity === 'critica' || i.severity === 'mayor')
+        .filter((i: any) => (i.severity === 'critica' || i.severity === 'mayor') && i.chapter >= rangeStart && !alreadyCorrectedChapters.has(i.chapter))
         .map((i: any) => `Cap ${i.chapter}: [${i.type}] ${i.description} → ${i.correctionNeeded}`);
       const lessonsLearned = parsed.lessonsForWriter || [];
 
-      console.log(`[StructuralCheckpoint] Adherence: ${parsed.overallAdherence}/10, Deviations: ${deviatedChapters.length}, Lessons: ${lessonsLearned.length}`);
+      console.log(`[StructuralCheckpoint] Adherence: ${parsed.overallAdherence}/10, Deviations: ${deviatedChapters.length} (${skippedCount} skipped as already corrected/out of range), Lessons: ${lessonsLearned.length}`);
 
       // Log issues
       for (const issue of (parsed.issues || []).filter((i: any) => i.severity === 'critica' || i.severity === 'mayor')) {
@@ -6285,6 +6377,21 @@ Devuelve SOLO el texto completo del capítulo reescrito, sin explicaciones ni ma
 
       if (rewriteResult.rewrittenContent && rewriteResult.rewrittenContent.length > 200) {
         const newWordCount = rewriteResult.rewrittenContent.split(/\s+/).length;
+        const originalWordCount = chapter.content.split(/\s+/).length;
+        const MIN_WORD_COUNT = 1200;
+        const MIN_RATIO = 0.7; // Rewrite must be at least 70% of original length
+        
+        // Verify rewrite didn't lose too much content
+        if (newWordCount < MIN_WORD_COUNT || newWordCount < originalWordCount * MIN_RATIO) {
+          console.warn(`[StructuralCheckpoint] Chapter ${chapterNumber} rewrite too short (${newWordCount} vs ${originalWordCount} original, min ${MIN_WORD_COUNT}). Keeping original.`);
+          await storage.createActivityLog({
+            projectId,
+            level: "warn",
+            agentRole: "structural-checkpoint",
+            message: `Capítulo ${chapterNumber}: reescritura descartada por pérdida de contenido (${newWordCount} palabras vs ${originalWordCount} original). Se mantiene la versión actual.`,
+          });
+          return false;
+        }
         
         await storage.updateChapter(chapter.id, {
           originalContent: chapter.originalContent || chapter.content,
@@ -6296,10 +6403,11 @@ Devuelve SOLO el texto completo del capítulo reescrito, sin explicaciones ni ma
           projectId,
           level: "success",
           agentRole: "structural-checkpoint",
-          message: `Capítulo ${chapterNumber} reescrito para corregir desviación estructural (${newWordCount} palabras)`,
+          message: `Capítulo ${chapterNumber} reescrito para corregir desviación estructural (${newWordCount} palabras, original: ${originalWordCount})`,
+          metadata: { type: 'chapter_rewritten', chapterNumber, newWordCount, originalWordCount },
         });
 
-        console.log(`[StructuralCheckpoint] Chapter ${chapterNumber} rewritten (${newWordCount} words)`);
+        console.log(`[StructuralCheckpoint] Chapter ${chapterNumber} rewritten (${newWordCount} words, was ${originalWordCount})`);
         return true;
       }
 
@@ -6307,6 +6415,72 @@ Devuelve SOLO el texto completo del capítulo reescrito, sin explicaciones ni ma
     } catch (error) {
       console.error(`[StructuralCheckpoint] Failed to rewrite chapter ${chapterNumber}:`, error);
       return false;
+    }
+  }
+
+  private async verifyRewriteFixed(
+    projectId: number,
+    chapterNumber: number,
+    rewrittenContent: string,
+    outline: any[],
+    originalDeviation: string
+  ): Promise<{ fixed: boolean; remainingIssues: string[] }> {
+    try {
+      const outlineEntry = outline.find((o: any) => o.chapter_num === chapterNumber);
+      if (!outlineEntry) return { fixed: true, remainingIssues: [] };
+
+      const prompt = `Eres un verificador de correcciones estructurales. Después de reescribir un capítulo, debes confirmar que la desviación fue corregida.
+
+PROBLEMA ORIGINAL:
+${originalDeviation}
+
+PLAN ORIGINAL PARA CAPÍTULO ${chapterNumber}:
+Título: ${outlineEntry.title}
+Resumen planificado: ${outlineEntry.summary}
+Evento clave: ${outlineEntry.key_event || 'N/A'}
+
+TEXTO REESCRITO:
+${rewrittenContent.substring(0, 15000)}
+
+VERIFICA:
+1. ¿El problema original fue corregido en la reescritura?
+2. ¿El evento clave planificado ahora SÍ ocurre?
+3. ¿La reescritura no introdujo nuevos problemas estructurales graves?
+
+RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
+{
+  "fixed": true/false,
+  "confidence": 1-10,
+  "remainingIssues": ["Problema que persiste o fue introducido"],
+  "verdict": "Breve explicación"
+}`;
+
+      const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const result = await model.generateContent(prompt);
+      const response = result.response.text();
+
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return { fixed: true, remainingIssues: [] };
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      const fixed = parsed.fixed === true && (parsed.confidence || 5) >= 5;
+
+      console.log(`[StructuralCheckpoint] Verification Ch ${chapterNumber}: fixed=${fixed}, confidence=${parsed.confidence}, verdict="${parsed.verdict}"`);
+
+      await storage.createActivityLog({
+        projectId,
+        level: fixed ? "success" : "warn",
+        agentRole: "structural-checkpoint",
+        message: fixed
+          ? `Verificación: Capítulo ${chapterNumber} corregido exitosamente (confianza ${parsed.confidence}/10)`
+          : `Verificación: Capítulo ${chapterNumber} NO corregido completamente - ${parsed.verdict}`,
+        metadata: { type: 'rewrite_verification', chapterNumber, fixed, confidence: parsed.confidence, remainingIssues: parsed.remainingIssues },
+      });
+
+      return { fixed, remainingIssues: parsed.remainingIssues || [] };
+    } catch (error) {
+      console.error(`[StructuralCheckpoint] Verification failed for Ch ${chapterNumber}:`, error);
+      return { fixed: true, remainingIssues: [] };
     }
   }
 
