@@ -191,6 +191,7 @@ export class GlobalArchitectAgent extends BaseAgent {
         .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
         .trim();
       
+      cleaned = this.fixNewlinesInStrings(cleaned);
       cleaned = this.fixUnquotedKeys(cleaned);
       cleaned = cleaned.replace(/:\s*'([^']*)'/g, ': "$1"');
       cleaned = cleaned.replace(/\t/g, '  ');
@@ -271,10 +272,19 @@ export class GlobalArchitectAgent extends BaseAgent {
       }
     }
     
-    // Validate parsed result
     if (!parsed) {
       console.error("[GlobalArchitect] Failed to parse JSON response:", parseError);
       console.error("[GlobalArchitect] Raw content preview:", content.substring(0, 500));
+      const posMatch = parseError?.match(/position\s+(\d+)/i);
+      if (posMatch) {
+        const pos = parseInt(posMatch[1]);
+        const contextStart = Math.max(0, pos - 100);
+        const contextEnd = Math.min(content.length, pos + 100);
+        console.error(`[GlobalArchitect] Content around error position ${pos}:`);
+        console.error(`  BEFORE: ...${JSON.stringify(content.substring(contextStart, pos))}`);
+        console.error(`  AT: ${JSON.stringify(content.substring(pos, pos + 20))}`);
+        console.error(`  AFTER: ${JSON.stringify(content.substring(pos, contextEnd))}...`);
+      }
       return {
         ...response,
         error: `Error al parsear respuesta del Global Architect: ${parseError}. La IA no devolvió JSON válido.`,
@@ -448,6 +458,7 @@ REGLAS:
     if (firstBrace === -1) return null;
     json = json.substring(firstBrace);
     
+    json = this.fixNewlinesInStrings(json);
     json = this.fixUnquotedKeys(json);
     json = json.replace(/:\s*'([^']*)'/g, ': "$1"');
     
@@ -518,6 +529,59 @@ REGLAS:
   }
 
   /**
+   * Fix literal newlines, tabs, and carriage returns inside JSON string values.
+   * The AI often produces multi-line string values which are invalid JSON.
+   * This walks through the text character by character to detect when we're inside 
+   * a quoted string, and replaces literal newlines with escaped \\n.
+   */
+  private fixNewlinesInStrings(json: string): string {
+    const result: string[] = [];
+    let inString = false;
+    let escaped = false;
+    
+    for (let i = 0; i < json.length; i++) {
+      const ch = json[i];
+      
+      if (escaped) {
+        result.push(ch);
+        escaped = false;
+        continue;
+      }
+      
+      if (ch === '\\' && inString) {
+        result.push(ch);
+        escaped = true;
+        continue;
+      }
+      
+      if (ch === '"') {
+        inString = !inString;
+        result.push(ch);
+        continue;
+      }
+      
+      if (inString) {
+        if (ch === '\n') {
+          result.push('\\n');
+          continue;
+        }
+        if (ch === '\r') {
+          result.push('\\r');
+          continue;
+        }
+        if (ch === '\t') {
+          result.push('\\t');
+          continue;
+        }
+      }
+      
+      result.push(ch);
+    }
+    
+    return result.join('');
+  }
+
+  /**
    * Fix unquoted property names in JSON strings.
    * Handles cases where the AI returns keys without quotes like { key: "value" }
    */
@@ -578,6 +642,7 @@ REGLAS:
       .replace(/```json\s*/gi, '').replace(/```\s*/g, '')
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
     
+    cleanedContent = this.fixNewlinesInStrings(cleanedContent);
     cleanedContent = this.fixUnquotedKeys(cleanedContent);
     
     const firstBrace = cleanedContent.indexOf('{');
