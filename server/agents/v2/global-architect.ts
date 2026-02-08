@@ -183,17 +183,21 @@ export class GlobalArchitectAgent extends BaseAgent {
     let parseError: string | null = null;
     const content = response.content || "";
     
-    // Helper to clean and repair common JSON issues
     const cleanJsonString = (str: string): string => {
-      return str
-        // Remove markdown code blocks
+      let cleaned = str
         .replace(/```json\s*/gi, '')
         .replace(/```\s*/g, '')
-        // Remove trailing commas before } or ]
         .replace(/,(\s*[}\]])/g, '$1')
-        // Remove control characters except valid whitespace
         .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
         .trim();
+      
+      cleaned = this.fixUnquotedKeys(cleaned);
+      cleaned = cleaned.replace(/:\s*'([^']*)'/g, ': "$1"');
+      cleaned = cleaned.replace(/\t/g, '  ');
+      cleaned = cleaned.replace(/([}\]])\s*\n\s*([{\[""])/g, '$1,\n$2');
+      cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+      
+      return cleaned;
     };
     
     try {
@@ -242,7 +246,6 @@ export class GlobalArchitectAgent extends BaseAgent {
       parseError = `Error de parsing: ${e}`;
     }
     
-    // Strategy 5: Truncation repair - if JSON was cut off mid-stream, try to close it
     if (!parsed && content.includes('"outline"')) {
       console.log("[GlobalArchitect] Attempting truncation repair...");
       try {
@@ -252,6 +255,19 @@ export class GlobalArchitectAgent extends BaseAgent {
         }
       } catch (repairErr) {
         console.warn("[GlobalArchitect] Truncation repair failed:", repairErr);
+      }
+    }
+    
+    if (!parsed) {
+      console.log("[GlobalArchitect] Attempting aggressive line-by-line JSON repair...");
+      try {
+        parsed = this.aggressiveJsonRepair(content) as GlobalArchitectOutput;
+        if (parsed) {
+          console.log(`[GlobalArchitect] Aggressive repair succeeded! Outline has ${parsed.outline?.length || 0} entries`);
+          parseError = null;
+        }
+      } catch (aggressiveErr) {
+        console.warn("[GlobalArchitect] Aggressive repair also failed:", aggressiveErr);
       }
     }
     
@@ -420,13 +436,149 @@ REGLAS:
   }
 
   /**
+   * Aggressive JSON repair: handles unquoted keys, single-quoted strings,
+   * newlines inside values, and other common AI output issues.
+   */
+  private aggressiveJsonRepair(content: string): any | null {
+    let json = content
+      .replace(/```json\s*/gi, '').replace(/```\s*/g, '')
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+    
+    const firstBrace = json.indexOf('{');
+    if (firstBrace === -1) return null;
+    json = json.substring(firstBrace);
+    
+    json = this.fixUnquotedKeys(json);
+    json = json.replace(/:\s*'([^']*)'/g, ': "$1"');
+    
+    json = json.replace(/,(\s*[}\]])/g, '$1');
+    
+    let openBraces = 0;
+    let openBrackets = 0;
+    let inStr = false;
+    let esc = false;
+    let lastValidPos = 0;
+    
+    for (let i = 0; i < json.length; i++) {
+      const ch = json[i];
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (!inStr) {
+        if (ch === '{') openBraces++;
+        else if (ch === '}') { openBraces--; if (openBraces === 0) lastValidPos = i; }
+        else if (ch === '[') openBrackets++;
+        else if (ch === ']') openBrackets--;
+      }
+    }
+    
+    if (openBraces === 0 && openBrackets === 0) {
+      if (lastValidPos > 0) {
+        json = json.substring(0, lastValidPos + 1);
+      }
+      try { return JSON.parse(json); } catch {}
+    }
+    
+    if (inStr) {
+      json += '"';
+      inStr = false;
+    }
+    
+    json = json.replace(/,(\s*)$/, '$1');
+    
+    openBraces = 0; openBrackets = 0; inStr = false; esc = false;
+    for (const ch of json) {
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (!inStr) {
+        if (ch === '{') openBraces++;
+        else if (ch === '}') openBraces--;
+        else if (ch === '[') openBrackets++;
+        else if (ch === ']') openBrackets--;
+      }
+    }
+    
+    for (let i = 0; i < openBrackets; i++) json += ']';
+    for (let i = 0; i < openBraces; i++) json += '}';
+    
+    json = json.replace(/,(\s*[}\]])/g, '$1');
+    
+    try { return JSON.parse(json); } catch {}
+    
+    const outlineMatch = json.match(/"outline"\s*:\s*\[[\s\S]*?\}\s*\]/);
+    const wbMatch = json.match(/"world_bible"\s*:\s*\{[\s\S]*?"rules"\s*:\s*\[[\s\S]*?\]\s*\}/);
+    
+    if (outlineMatch && wbMatch) {
+      const synthetic = `{ ${wbMatch[0]}, ${outlineMatch[0]} }`;
+      try { return JSON.parse(synthetic); } catch {}
+    }
+    
+    return null;
+  }
+
+  /**
+   * Fix unquoted property names in JSON strings.
+   * Handles cases where the AI returns keys without quotes like { key: "value" }
+   */
+  private fixUnquotedKeys(json: string): string {
+    let result = '';
+    let inString = false;
+    let escaped = false;
+    
+    for (let i = 0; i < json.length; i++) {
+      const ch = json[i];
+      
+      if (escaped) {
+        result += ch;
+        escaped = false;
+        continue;
+      }
+      
+      if (ch === '\\' && inString) {
+        result += ch;
+        escaped = true;
+        continue;
+      }
+      
+      if (ch === '"') {
+        inString = !inString;
+        result += ch;
+        continue;
+      }
+      
+      if (inString) {
+        result += ch;
+        continue;
+      }
+      
+      if ((ch === '{' || ch === ',' || ch === '\n') && !inString) {
+        result += ch;
+        const afterSep = json.substring(i + 1);
+        const keyMatch = afterSep.match(/^(\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*:\s*)/);
+        if (keyMatch) {
+          result += keyMatch[1] + '"' + keyMatch[2] + '"' + keyMatch[3];
+          i += keyMatch[0].length;
+        }
+        continue;
+      }
+      
+      result += ch;
+    }
+    
+    return result;
+  }
+
+  /**
    * Repair truncated JSON by finding the last valid entry in the outline array
    * and closing all open brackets/braces. This salvages partial responses.
    */
   private repairTruncatedJson(content: string): any | null {
-    const cleanedContent = content
+    let cleanedContent = content
       .replace(/```json\s*/gi, '').replace(/```\s*/g, '')
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+    
+    cleanedContent = this.fixUnquotedKeys(cleanedContent);
     
     const firstBrace = cleanedContent.indexOf('{');
     if (firstBrace === -1) return null;
