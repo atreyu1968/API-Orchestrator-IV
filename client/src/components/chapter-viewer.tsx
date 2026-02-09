@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, Clock, Loader2, Edit, Save, X, AlertTriangle, CheckCircle, MessageSquare, Trash2 } from "lucide-react";
+import { FileText, Clock, Loader2, Edit, Save, X, AlertTriangle, CheckCircle, MessageSquare, Trash2, Search, ChevronUp, ChevronDown, Replace } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Chapter, ChapterAnnotation } from "@shared/schema";
@@ -24,7 +24,14 @@ export function ChapterViewer({ chapter, projectId }: ChapterViewerProps) {
   const [selectionRange, setSelectionRange] = useState<{ start: number; end: number; text: string } | null>(null);
   const [annotationNote, setAnnotationNote] = useState("");
   const [showAnnotationDialog, setShowAnnotationDialog] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [replaceText, setReplaceText] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const [showReplace, setShowReplace] = useState(false);
+  const [searchMatches, setSearchMatches] = useState<number[]>([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -160,7 +167,98 @@ export function ChapterViewer({ chapter, projectId }: ChapterViewerProps) {
   const handleCancelEdit = () => {
     setEditedContent(chapter?.content || "");
     setIsEditing(false);
+    setShowSearch(false);
+    setShowReplace(false);
+    setSearchText("");
+    setReplaceText("");
+    setSearchMatches([]);
+    setCurrentMatchIndex(-1);
   };
+
+  const performSearch = (query: string, content: string) => {
+    if (!query || query.length < 1) {
+      setSearchMatches([]);
+      setCurrentMatchIndex(-1);
+      return;
+    }
+    const lowerContent = content.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const matches: number[] = [];
+    let pos = 0;
+    while (pos < lowerContent.length) {
+      const idx = lowerContent.indexOf(lowerQuery, pos);
+      if (idx === -1) break;
+      matches.push(idx);
+      pos = idx + 1;
+    }
+    setSearchMatches(matches);
+    if (matches.length > 0) {
+      setCurrentMatchIndex(0);
+      highlightMatch(matches[0], query.length);
+    } else {
+      setCurrentMatchIndex(-1);
+    }
+  };
+
+  const highlightMatch = (position: number, length: number) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.focus();
+    textarea.setSelectionRange(position, position + length);
+    const lineHeight = 32;
+    const charsPerLine = 80;
+    const approxLine = Math.floor(position / charsPerLine);
+    textarea.scrollTop = Math.max(0, approxLine * lineHeight - textarea.clientHeight / 3);
+  };
+
+  const goToNextMatch = () => {
+    if (searchMatches.length === 0) return;
+    const nextIndex = (currentMatchIndex + 1) % searchMatches.length;
+    setCurrentMatchIndex(nextIndex);
+    highlightMatch(searchMatches[nextIndex], searchText.length);
+  };
+
+  const goToPrevMatch = () => {
+    if (searchMatches.length === 0) return;
+    const prevIndex = currentMatchIndex <= 0 ? searchMatches.length - 1 : currentMatchIndex - 1;
+    setCurrentMatchIndex(prevIndex);
+    highlightMatch(searchMatches[prevIndex], searchText.length);
+  };
+
+  const handleReplaceCurrent = () => {
+    if (searchMatches.length === 0 || currentMatchIndex < 0) return;
+    const matchPos = searchMatches[currentMatchIndex];
+    const before = editedContent.substring(0, matchPos);
+    const after = editedContent.substring(matchPos + searchText.length);
+    const newContent = before + replaceText + after;
+    setEditedContent(newContent);
+    performSearch(searchText, newContent);
+  };
+
+  const handleReplaceAll = () => {
+    if (!searchText || searchMatches.length === 0) return;
+    let newContent = "";
+    let lastPos = 0;
+    for (const matchPos of searchMatches) {
+      newContent += editedContent.substring(lastPos, matchPos) + replaceText;
+      lastPos = matchPos + searchText.length;
+    }
+    newContent += editedContent.substring(lastPos);
+    const count = searchMatches.length;
+    setEditedContent(newContent);
+    setSearchMatches([]);
+    setCurrentMatchIndex(-1);
+    toast({
+      title: "Reemplazos completados",
+      description: `${count} coincidencias reemplazadas.`,
+    });
+  };
+
+  useEffect(() => {
+    if (showSearch && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [showSearch]);
 
   const handleCreateAnnotation = () => {
     if (!chapter || !selectionRange) return;
@@ -308,6 +406,24 @@ export function ChapterViewer({ chapter, projectId }: ChapterViewerProps) {
                 <>
                   <Button
                     size="sm"
+                    variant={showSearch ? "secondary" : "outline"}
+                    onClick={() => {
+                      setShowSearch(!showSearch);
+                      if (showSearch) {
+                        setShowReplace(false);
+                        setSearchText("");
+                        setReplaceText("");
+                        setSearchMatches([]);
+                        setCurrentMatchIndex(-1);
+                      }
+                    }}
+                    data-testid="button-toggle-search"
+                  >
+                    <Search className="h-4 w-4 mr-1" />
+                    Buscar
+                  </Button>
+                  <Button
+                    size="sm"
                     variant="default"
                     onClick={handleSave}
                     disabled={saveContentMutation.isPending}
@@ -409,6 +525,104 @@ export function ChapterViewer({ chapter, projectId }: ChapterViewerProps) {
         </div>
       )}
       
+      {isEditing && showSearch && (
+        <div className="mb-3 p-3 bg-muted/50 rounded-md border space-y-2" data-testid="search-panel">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 flex-1 min-w-[200px]">
+              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+              <Input
+                ref={searchInputRef}
+                value={searchText}
+                onChange={(e) => {
+                  setSearchText(e.target.value);
+                  performSearch(e.target.value, editedContent);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (e.shiftKey) goToPrevMatch();
+                    else goToNextMatch();
+                  }
+                  if (e.key === "Escape") {
+                    setShowSearch(false);
+                    setShowReplace(false);
+                    setSearchText("");
+                    setReplaceText("");
+                    setSearchMatches([]);
+                    setCurrentMatchIndex(-1);
+                  }
+                }}
+                placeholder="Buscar texto..."
+                className="h-8 text-sm"
+                data-testid="input-search-text"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              {searchText && (
+                <span className="text-xs text-muted-foreground whitespace-nowrap" data-testid="text-search-count">
+                  {searchMatches.length > 0
+                    ? `${currentMatchIndex + 1} de ${searchMatches.length}`
+                    : "Sin resultados"}
+                </span>
+              )}
+              <Button size="icon" variant="ghost" onClick={goToPrevMatch} disabled={searchMatches.length === 0} data-testid="button-search-prev">
+                <ChevronUp className="h-4 w-4" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={goToNextMatch} disabled={searchMatches.length === 0} data-testid="button-search-next">
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant={showReplace ? "secondary" : "ghost"}
+                onClick={() => setShowReplace(!showReplace)}
+                data-testid="button-toggle-replace"
+              >
+                <Replace className="h-4 w-4 mr-1" />
+                Reemplazar
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => {
+                setShowSearch(false);
+                setShowReplace(false);
+                setSearchText("");
+                setReplaceText("");
+                setSearchMatches([]);
+                setCurrentMatchIndex(-1);
+              }} data-testid="button-close-search">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          {showReplace && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1 flex-1 min-w-[200px]">
+                <Replace className="h-4 w-4 text-muted-foreground shrink-0" />
+                <Input
+                  value={replaceText}
+                  onChange={(e) => setReplaceText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleReplaceCurrent();
+                    }
+                  }}
+                  placeholder="Reemplazar con..."
+                  className="h-8 text-sm"
+                  data-testid="input-replace-text"
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="outline" onClick={handleReplaceCurrent} disabled={searchMatches.length === 0} data-testid="button-replace-one">
+                  Reemplazar
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleReplaceAll} disabled={searchMatches.length === 0} data-testid="button-replace-all">
+                  Reemplazar todo
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <ScrollArea className="flex-1">
         {chapter.content ? (
           isEditing ? (
