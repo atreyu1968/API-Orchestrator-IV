@@ -4084,25 +4084,11 @@ ${series.seriesGuide.substring(0, 50000)}`;
       }).join("\n\n");
       const totalWords = fullText.split(/\s+/).filter(Boolean).length;
 
-      // Create a translation record for the imported manuscript
-      const translation = await storage.createTranslation({
-        projectId: null,
-        reeditProjectId: null,
-        source: "imported",
-        projectTitle: manuscript.title,
-        sourceLanguage: manuscript.detectedLanguage || "es",
-        targetLanguage: targetLanguage || "es",
-        chaptersTranslated: 0,
-        totalWords,
-        markdown: "",
-        status: "pending",
-      });
-
       res.json({ 
         success: true, 
-        translationId: translation.id,
         importedManuscriptId: manuscriptId,
         totalWords,
+        message: "Manuscript ready for translation. Use the Export page to start translation.",
       });
     } catch (error: any) {
       console.error("Error sending imported manuscript to translation:", error);
@@ -7138,11 +7124,13 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         return;
       }
 
-      // Support both regular projects and reedit projects
+      // Support regular projects, reedit projects, and imported manuscripts
       const projectId = existingTranslation.projectId;
       const reeditProjectId = (existingTranslation as any).reeditProjectId;
+      const importedManuscriptId = (existingTranslation as any).importedManuscriptId;
+      const isImportedSource = existingTranslation.source === "imported" || !!importedManuscriptId;
       
-      if (!projectId && !reeditProjectId) {
+      if (!projectId && !reeditProjectId && !isImportedSource) {
         sendEvent("error", { error: "No project associated with this translation" });
         cleanup();
         res.end();
@@ -7151,9 +7139,33 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
 
       let project: any = null;
       let chaptersWithContent: any[] = [];
-      const isReeditProject = !!reeditProjectId && !projectId;
+      const isReeditProject = !!reeditProjectId && !projectId && !isImportedSource;
 
-      if (isReeditProject) {
+      if (isImportedSource) {
+        // Handle imported manuscript - use stored importedManuscriptId or fall back to title match
+        let manuscript: any = null;
+        if (importedManuscriptId) {
+          manuscript = await storage.getImportedManuscript(importedManuscriptId);
+        }
+        if (!manuscript) {
+          // Fallback for older translations that don't have importedManuscriptId
+          const allManuscripts = await storage.getAllImportedManuscripts();
+          manuscript = allManuscripts.find(m => m.title === existingTranslation.projectTitle);
+        }
+        if (!manuscript) {
+          sendEvent("error", { error: "Imported manuscript not found" });
+          cleanup();
+          res.end();
+          return;
+        }
+        project = { title: manuscript.title, language: manuscript.detectedLanguage || "es" };
+        const importedChapters = await storage.getImportedChaptersByManuscript(manuscript.id);
+        const getSortOrder = (n: number) => n === 0 ? -1000 : n === -1 ? 1000 : n === -2 ? 1001 : n;
+        const sortedChapters = [...importedChapters].sort((a, b) => getSortOrder(a.chapterNumber) - getSortOrder(b.chapterNumber));
+        chaptersWithContent = sortedChapters.filter(c =>
+          (c.editedContent || c.originalContent)?.trim().length > 0
+        );
+      } else if (isReeditProject) {
         // Handle reedit project
         project = await storage.getReeditProject(reeditProjectId);
         if (!project) {
@@ -7491,6 +7503,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       const translation = await storage.createTranslation({
         projectId: isImported ? null : (isReedit ? null : projectId),
         reeditProjectId: isReedit ? reeditProjectId : null,
+        importedManuscriptId: isImported ? importedManuscriptId : null,
         source: isImported ? "imported" : (isReedit ? "reedit" : "original"),
         projectTitle: project.title,
         sourceLanguage,

@@ -694,6 +694,7 @@ export const translations = pgTable("translations", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").references(() => projects.id, { onDelete: "cascade" }),
   reeditProjectId: integer("reedit_project_id").references(() => reeditProjects.id, { onDelete: "cascade" }),
+  importedManuscriptId: integer("imported_manuscript_id").references(() => importedManuscripts.id, { onDelete: "cascade" }),
   source: text("source").notNull().default("original"),
   projectTitle: text("project_title").notNull(),
   sourceLanguage: text("source_language").notNull(),

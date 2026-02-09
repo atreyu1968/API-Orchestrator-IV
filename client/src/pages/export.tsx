@@ -1289,7 +1289,7 @@ export default function ExportPage() {
                   ) : (
                     <Button
                       onClick={() => {
-                        if (useLitTranslators2) {
+                        if (useLitTranslators2 || selectedProject.source === "imported") {
                           startTranslationV2(selectedProject.id, sourceLanguage, targetLanguage, selectedProject.title, selectedProject.source);
                         } else {
                           startTranslation(selectedProject.id, sourceLanguage, targetLanguage, selectedProject.title, selectedProject.source);
@@ -1384,6 +1384,10 @@ export default function ExportPage() {
                         </Badge>
                       ) : translation.status === "error" ? (
                         <Badge variant="destructive">Error</Badge>
+                      ) : translation.status === "pending" ? (
+                        <Badge variant="outline" className="bg-muted text-muted-foreground">
+                          Pendiente
+                        </Badge>
                       ) : null}
                     </div>
                     <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
