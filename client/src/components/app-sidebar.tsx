@@ -56,6 +56,7 @@ const mainNavItems = [
 
 const translationsNavItems = [
   { title: "Importar Libros", url: "/translations", icon: Upload },
+  { title: "Libros Importados", url: "/imported-manuscripts", icon: BookOpen },
   { title: "Exportar y Traducir", url: "/export", icon: Download },
   { title: "Comparar Versiones", url: "/compare", icon: GitCompare },
   { title: "Reeditar Manuscrito", url: "/reedit", icon: Edit3 },

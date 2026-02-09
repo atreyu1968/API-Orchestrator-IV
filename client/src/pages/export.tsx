@@ -58,7 +58,8 @@ interface CompletedProject {
   totalWords: number;
   finalScore: number | null;
   createdAt: string;
-  source: "original" | "reedit";
+  source: "original" | "reedit" | "imported";
+  detectedLanguage?: string;
 }
 
 interface SavedTranslation {
@@ -226,7 +227,7 @@ export default function ExportPage() {
     }
   });
 
-  const startTranslation = useCallback((projectId: number, srcLang: string, tgtLang: string, projectTitle?: string, source: "original" | "reedit" = "original") => {
+  const startTranslation = useCallback((projectId: number, srcLang: string, tgtLang: string, projectTitle?: string, source: "original" | "reedit" | "imported" = "original") => {
     // Close any existing EventSource to prevent duplicate translations
     if (eventSourceRef) {
       eventSourceRef.close();
@@ -260,6 +261,8 @@ export default function ExportPage() {
 
     const baseUrl = source === "reedit" 
       ? `/api/reedit-projects/${projectId}/translate-stream`
+      : source === "imported"
+      ? `/api/projects/${projectId}/translate-stream`
       : `/api/projects/${projectId}/translate-stream`;
     const eventSource = new EventSource(
       `${baseUrl}?sourceLanguage=${srcLang}&targetLanguage=${tgtLang}`
@@ -447,7 +450,7 @@ export default function ExportPage() {
     };
   }, [toast, completedProjects, eventSourceRef]);
 
-  const startTranslationV2 = useCallback((projectId: number, srcLang: string, tgtLang: string, projectTitle?: string, source: "original" | "reedit" = "original") => {
+  const startTranslationV2 = useCallback((projectId: number, srcLang: string, tgtLang: string, projectTitle?: string, source: "original" | "reedit" | "imported" = "original") => {
     if (eventSourceRef) {
       eventSourceRef.close();
       setEventSourceRef(null);
@@ -480,6 +483,8 @@ export default function ExportPage() {
 
     const body = source === "reedit" 
       ? { reeditProjectId: projectId, targetLanguage: tgtLang }
+      : source === "imported"
+      ? { importedManuscriptId: projectId, targetLanguage: tgtLang }
       : { projectId, targetLanguage: tgtLang };
 
     fetch("/api/translations/v2/start", {
@@ -685,9 +690,11 @@ export default function ExportPage() {
   }, [eventSourceRef, toast]);
 
   const exportMutation = useMutation({
-    mutationFn: async ({ projectId, source, version }: { projectId: number; source: "original" | "reedit"; version?: "original" | "corrected" }) => {
+    mutationFn: async ({ projectId, source, version }: { projectId: number; source: "original" | "reedit" | "imported"; version?: "original" | "corrected" }) => {
       const baseEndpoint = source === "reedit" 
         ? `/api/reedit-projects/${projectId}/export-markdown`
+        : source === "imported"
+        ? `/api/imported-manuscripts/${projectId}/export-markdown`
         : `/api/projects/${projectId}/export-markdown`;
       const endpoint = version ? `${baseEndpoint}?version=${version}` : baseEndpoint;
       const response = await fetch(endpoint);
@@ -957,7 +964,12 @@ export default function ExportPage() {
                       className={`hover-elevate cursor-pointer transition-all ${
                         selectedProjectId === project.id ? "ring-2 ring-primary" : ""
                       }`}
-                      onClick={() => setSelectedProjectId(project.id)}
+                      onClick={() => {
+                        setSelectedProjectId(project.id);
+                        if (project.source === "imported" && (project as any).detectedLanguage) {
+                          setSourceLanguage((project as any).detectedLanguage);
+                        }
+                      }}
                       data-testid={`card-project-${project.source}-${project.id}`}
                     >
                       <CardHeader className="pb-2">
@@ -965,13 +977,18 @@ export default function ExportPage() {
                           <div className="flex-1 min-w-0">
                             <CardTitle className="text-base truncate">{project.title}</CardTitle>
                             <CardDescription className="text-xs">
-                              {project.genre || (project.source === "reedit" ? "Manuscrito re-editado" : "Sin género")}
+                              {project.genre || (project.source === "reedit" ? "Manuscrito re-editado" : project.source === "imported" ? "Libro importado" : "Sin género")}
                             </CardDescription>
                           </div>
                           <div className="flex flex-col items-end gap-1">
                             {project.source === "reedit" && (
                               <Badge variant="outline" className="text-xs">
                                 Re-editado
+                              </Badge>
+                            )}
+                            {project.source === "imported" && (
+                              <Badge variant="outline" className="text-xs">
+                                Importado
                               </Badge>
                             )}
                             <Badge variant="secondary" className="bg-green-500/10 text-green-600 dark:text-green-400">

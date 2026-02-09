@@ -356,8 +356,22 @@ export async function registerRoutes(
         })
       );
       
+      // Get imported manuscripts (all of them, since they're imported complete)
+      const allImportedManuscripts = await storage.getAllImportedManuscripts();
+      const importedProjectsWithStats = allImportedManuscripts.map(m => ({
+        id: m.id,
+        title: m.title,
+        genre: null,
+        chapterCount: m.totalChapters || 0,
+        totalWords: m.totalWordCount || 0,
+        finalScore: null,
+        createdAt: m.createdAt,
+        source: "imported" as const,
+        detectedLanguage: m.detectedLanguage,
+      }));
+
       // Combine and sort by createdAt descending
-      const allCompletedProjects = [...originalProjectsWithStats, ...reeditProjectsWithStats]
+      const allCompletedProjects = [...originalProjectsWithStats, ...reeditProjectsWithStats, ...importedProjectsWithStats]
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
       res.json(allCompletedProjects);
@@ -3924,6 +3938,178 @@ ${series.seriesGuide.substring(0, 50000)}`;
     }
   });
 
+  // Normalize imported manuscript chapter titles
+  app.post("/api/imported-manuscripts/:id/normalize-titles", async (req: Request, res: Response) => {
+    try {
+      const manuscriptId = parseInt(req.params.id);
+      const manuscript = await storage.getImportedManuscript(manuscriptId);
+      if (!manuscript) {
+        return res.status(404).json({ error: "Manuscript not found" });
+      }
+
+      const chapters = await storage.getImportedChaptersByManuscript(manuscriptId);
+      let chaptersUpdated = 0;
+
+      const toTitleCase = (str: string): string => {
+        return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+      };
+
+      for (const chapter of chapters) {
+        const content = chapter.editedContent || chapter.originalContent;
+        if (!content) continue;
+
+        let normalized = content.trim();
+        let headerFixed = false;
+
+        // Determine the correct header
+        let expectedHeader = '';
+        const lang = manuscript.detectedLanguage?.toLowerCase() || 'es';
+        const labels: Record<string, { chapter: string; prologue: string; epilogue: string; authorNote: string }> = {
+          en: { chapter: "Chapter", prologue: "Prologue", epilogue: "Epilogue", authorNote: "Author's Note" },
+          es: { chapter: "Capítulo", prologue: "Prólogo", epilogue: "Epílogo", authorNote: "Nota del Autor" },
+          fr: { chapter: "Chapitre", prologue: "Prologue", epilogue: "Épilogue", authorNote: "Note de l'auteur" },
+          de: { chapter: "Kapitel", prologue: "Prolog", epilogue: "Epilog", authorNote: "Nachwort" },
+          it: { chapter: "Capitolo", prologue: "Prologo", epilogue: "Epilogo", authorNote: "Nota dell'autore" },
+          pt: { chapter: "Capítulo", prologue: "Prólogo", epilogue: "Epílogo", authorNote: "Nota do Autor" },
+          ca: { chapter: "Capítol", prologue: "Pròleg", epilogue: "Epíleg", authorNote: "Nota de l'Autor" },
+        };
+        const l = labels[lang] || labels.es;
+
+        if (chapter.chapterNumber === 0) {
+          expectedHeader = chapter.title && chapter.title !== l.prologue ? `# ${l.prologue}: ${chapter.title}` : `# ${l.prologue}`;
+        } else if (chapter.chapterNumber === -1) {
+          expectedHeader = chapter.title && chapter.title !== l.epilogue ? `# ${l.epilogue}: ${chapter.title}` : `# ${l.epilogue}`;
+        } else if (chapter.chapterNumber === -2) {
+          expectedHeader = chapter.title && chapter.title !== l.authorNote ? `# ${l.authorNote}: ${chapter.title}` : `# ${l.authorNote}`;
+        } else {
+          const cleanTitle = chapter.title ? toTitleCase(chapter.title.replace(new RegExp(`^${l.chapter}\\s*\\d+\\s*:?\\s*`, 'i'), '').trim()) : '';
+          if (cleanTitle && cleanTitle.toLowerCase() !== `${l.chapter.toLowerCase()} ${chapter.chapterNumber}`) {
+            expectedHeader = `# ${l.chapter} ${chapter.chapterNumber}: ${cleanTitle}`;
+          } else {
+            expectedHeader = `# ${l.chapter} ${chapter.chapterNumber}`;
+          }
+        }
+
+        // Check if content already starts with the correct header
+        const firstLine = normalized.split('\n')[0].trim();
+        if (firstLine === expectedHeader) continue;
+
+        // Remove existing headers
+        const headerPatterns = [
+          /^#+ *(CHAPTER|CAPÍTULO|CAP\.?|Capítulo|Chapter|Chapitre|Kapitel|Capitolo|Capítol|PRÓLOGO|Prólogo|PROLOGUE|Prologue|Prolog|Prologo|Pròleg|EPÍLOGO|Epílogo|EPILOGUE|Epilogue|Épilogue|Epilog|Epilogo|Epíleg|NOTA DEL AUTOR|Nota del Autor|AUTHOR'?S?\s*NOTE|Author'?s?\s*Note|Note de l'auteur|Nachwort|Nota dell'autore|Nota de l'Autor|Nota do Autor)[^\n]*\n+/gi,
+        ];
+
+        let prevLength = 0;
+        while (normalized.length !== prevLength) {
+          prevLength = normalized.length;
+          for (const pattern of headerPatterns) {
+            pattern.lastIndex = 0;
+            normalized = normalized.replace(pattern, '');
+          }
+          normalized = normalized.trim();
+        }
+
+        normalized = `${expectedHeader}\n\n${normalized}`;
+        headerFixed = true;
+
+        if (headerFixed) {
+          await storage.updateImportedChapter(chapter.id, {
+            editedContent: normalized,
+          });
+          chaptersUpdated++;
+        }
+      }
+
+      res.json({ totalChapters: chapters.length, chaptersUpdated });
+    } catch (error: any) {
+      console.error("Error normalizing imported manuscript titles:", error);
+      res.status(500).json({ error: error.message || "Failed to normalize titles" });
+    }
+  });
+
+  // Export imported manuscript as markdown
+  app.get("/api/imported-manuscripts/:id/export-markdown", async (req: Request, res: Response) => {
+    try {
+      const manuscriptId = parseInt(req.params.id);
+      const manuscript = await storage.getImportedManuscript(manuscriptId);
+      if (!manuscript) {
+        return res.status(404).json({ error: "Manuscript not found" });
+      }
+
+      const chapters = await storage.getImportedChaptersByManuscript(manuscriptId);
+      const getSortOrder = (n: number) => n === 0 ? -1000 : n === -1 ? 1000 : n === -2 ? 1001 : n;
+      const sortedChapters = [...chapters].sort((a, b) => getSortOrder(a.chapterNumber) - getSortOrder(b.chapterNumber));
+
+      const markdown = sortedChapters.map(c => {
+        const content = c.editedContent || c.originalContent || "";
+        return content;
+      }).join("\n\n---\n\n");
+
+      const totalWords = markdown.split(/\s+/).filter(Boolean).length;
+
+      res.json({
+        title: manuscript.title,
+        markdown,
+        chapterCount: chapters.length,
+        totalWords,
+      });
+    } catch (error: any) {
+      console.error("Error exporting imported manuscript:", error);
+      res.status(500).json({ error: error.message || "Failed to export manuscript" });
+    }
+  });
+
+  // Send imported manuscript to translations section
+  app.post("/api/imported-manuscripts/:id/send-to-translation", async (req: Request, res: Response) => {
+    try {
+      const manuscriptId = parseInt(req.params.id);
+      const { targetLanguage } = req.body;
+      
+      const manuscript = await storage.getImportedManuscript(manuscriptId);
+      if (!manuscript) {
+        return res.status(404).json({ error: "Manuscript not found" });
+      }
+
+      const chapters = await storage.getImportedChaptersByManuscript(manuscriptId);
+      if (chapters.length === 0) {
+        return res.status(400).json({ error: "No chapters found in manuscript" });
+      }
+
+      // Build full text for word count
+      const getSortOrder = (n: number) => n === 0 ? -1000 : n === -1 ? 1000 : n === -2 ? 1001 : n;
+      const sortedChapters = [...chapters].sort((a, b) => getSortOrder(a.chapterNumber) - getSortOrder(b.chapterNumber));
+      const fullText = sortedChapters.map(c => {
+        const content = c.editedContent || c.originalContent || "";
+        return content;
+      }).join("\n\n");
+      const totalWords = fullText.split(/\s+/).filter(Boolean).length;
+
+      // Create a translation record for the imported manuscript
+      const translation = await storage.createTranslation({
+        projectId: null,
+        reeditProjectId: null,
+        source: "imported",
+        projectTitle: manuscript.title,
+        sourceLanguage: manuscript.detectedLanguage || "es",
+        targetLanguage: targetLanguage || "es",
+        chaptersTranslated: 0,
+        totalWords,
+        markdown: "",
+        status: "pending",
+      });
+
+      res.json({ 
+        success: true, 
+        translationId: translation.id,
+        importedManuscriptId: manuscriptId,
+        totalWords,
+      });
+    } catch (error: any) {
+      console.error("Error sending imported manuscript to translation:", error);
+      res.status(500).json({ error: error.message || "Failed to send to translation" });
+    }
+  });
+
   // Endpoint to reset a chapter to pending status for pipeline re-processing
   app.post("/api/projects/:projectId/chapters/:chapterNumber/reset-to-pending", async (req: Request, res: Response) => {
     try {
@@ -7228,7 +7414,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
 
   // LitTranslators 2.0 - Start translation with new orchestrator
   app.post("/api/translations/v2/start", async (req: Request, res: Response) => {
-    const { projectId, reeditProjectId, targetLanguage } = req.body;
+    const { projectId, reeditProjectId, importedManuscriptId, targetLanguage } = req.body;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -7251,8 +7437,20 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       let chapters: any[] = [];
       let sourceLanguage = "en";
       const isReedit = !!reeditProjectId;
+      const isImported = !!importedManuscriptId;
 
-      if (isReedit) {
+      if (isImported) {
+        const manuscript = await storage.getImportedManuscript(importedManuscriptId);
+        if (!manuscript) throw new Error("Imported manuscript not found");
+        project = { title: manuscript.title, language: manuscript.detectedLanguage || "es" };
+        const importedChapters = await storage.getImportedChaptersByManuscript(importedManuscriptId);
+        chapters = importedChapters.map(c => ({
+          chapterNumber: c.chapterNumber,
+          title: c.title,
+          content: c.editedContent || c.originalContent || "",
+        }));
+        sourceLanguage = manuscript.detectedLanguage || "es";
+      } else if (isReedit) {
         project = await storage.getReeditProject(reeditProjectId);
         if (!project) throw new Error("Reedit project not found");
         const reeditChapters = await storage.getReeditChaptersByProject(reeditProjectId);
@@ -7273,7 +7471,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         }));
         sourceLanguage = "es";
       } else {
-        throw new Error("Either projectId or reeditProjectId is required");
+        throw new Error("Either projectId, reeditProjectId, or importedManuscriptId is required");
       }
 
       // Build full text from chapters
@@ -7291,9 +7489,9 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
 
       // Create translation record
       const translation = await storage.createTranslation({
-        projectId: isReedit ? null : projectId,
+        projectId: isImported ? null : (isReedit ? null : projectId),
         reeditProjectId: isReedit ? reeditProjectId : null,
-        source: isReedit ? "reedit" : "original",
+        source: isImported ? "imported" : (isReedit ? "reedit" : "original"),
         projectTitle: project.title,
         sourceLanguage,
         targetLanguage,
