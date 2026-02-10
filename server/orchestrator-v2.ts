@@ -12117,6 +12117,19 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
           let currentContent = chapter.content;
           const unresolvedIssues: RepairIssue[] = [];
           for (const issue of planItem.issues) {
+            const isComplexIssue = ['arco_personaje', 'desarrollo_personaje', 'arcos_incompletos', 
+              'motivacion', 'profundidad_emocional', 'subtrama', 'foreshadowing', 'tema'].some(
+              t => issue.type.toLowerCase().includes(t) || issue.description.toLowerCase().includes(t)
+            );
+
+            const complexRules = isComplexIssue ? `
+NOTA IMPORTANTE: Este problema requiere ENRIQUECER el texto, no solo cambiar palabras.
+- Puedes EXPANDIR párrafos existentes para añadir profundidad emocional, reflexiones internas o consecuencias narrativas
+- Puedes INSERTAR nuevos párrafos cortos (2-5 frases) entre párrafos existentes si la corrección lo requiere
+- Los parches deben ser SUSTANCIALES (mínimo 100 palabras por parche si se añade contenido nuevo)
+- Usa el "find" para ubicar la zona EXACTA donde debe insertarse el contenido nuevo
+- El "replace" debe incluir el texto original + el nuevo contenido integrado orgánicamente` : '';
+
             const fixInstructions = `CORRECCIÓN QUIRÚRGICA ESPECÍFICA - CAPÍTULO ${planItem.chapter}
 
 PROBLEMA A CORREGIR:
@@ -12125,14 +12138,16 @@ PROBLEMA A CORREGIR:
 - Descripción: ${issue.description}
 - Lo esperado vs lo actual: ${issue.expectedVsActual}
 - Corrección específica: ${issue.suggestedFix}
+${complexRules}
 
 REGLAS ABSOLUTAS:
-1. Modifica SOLO lo estrictamente necesario para corregir ESTE problema
+1. Genera parches que corrijan EFECTIVAMENTE el problema descrito
 2. NO cambies el estilo, tono, ni voz narrativa
-3. NO añadas ni elimines escenas, personajes o eventos
+3. ${isComplexIssue ? 'Puedes añadir contenido nuevo (reflexiones, flashbacks breves, diálogo) si la corrección lo requiere' : 'NO añadas ni elimines escenas, personajes o eventos'}
 4. NO modifiques párrafos que no estén relacionados con el problema
 5. Mantén la coherencia con los capítulos adyacentes
-6. El resultado debe ser INDISTINGUIBLE del original excepto por la corrección
+6. Cada parche debe ser COMPLETO - no dejes frases o palabras cortadas
+7. El "find" debe ser lo suficientemente largo para ser único en el texto (mínimo 30 caracteres)
 
 ${adjacentContext.previousChapter ? `CONTEXTO (capítulo anterior): ${adjacentContext.previousChapter}` : ''}
 ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentContext.nextChapter}` : ''}`;
@@ -12147,9 +12162,46 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
             this.addTokenUsage(fixResult.tokenUsage);
             await this.logAiUsage(projectId, "targeted-repair", "deepseek-chat", fixResult.tokenUsage, planItem.chapter);
 
+            const isTruncated = (patches: any[]): boolean => {
+              for (const p of patches) {
+                const rep = (p.replace || p.replacement || '').trim();
+                if (rep.length > 20) {
+                  const lastWord = rep.split(/\s+/).pop() || '';
+                  const endsWithPunctuation = /[.!?»"'\)\]\—;:,\n]$/.test(rep);
+                  const lastWordTruncated = lastWord.length >= 3 && !endsWithPunctuation && /^[a-záéíóúñ]+$/i.test(lastWord) && lastWord.length <= 4;
+                  if (lastWordTruncated) return true;
+                }
+              }
+              return false;
+            };
+
             let patchedContent: string | null = null;
-            if (fixResult.patches && fixResult.patches.length > 0) {
-              const patchResult = applyPatches(currentContent, fixResult.patches);
+            let usedPatches = fixResult.patches || [];
+
+            if (usedPatches.length > 0 && isTruncated(usedPatches)) {
+              console.log(`[TargetedRepair] Cap ${planItem.chapter}: Detected truncated patch, retrying...`);
+              await storage.createActivityLog({
+                projectId, level: "warn", agentRole: "targeted-repair",
+                message: `Cap ${planItem.chapter}: parche truncado detectado para "${issue.type}", reintentando con instrucciones reforzadas`,
+              });
+
+              const retryInstructions = fixInstructions + `\n\nIMPORTANTE: Tu respuesta anterior fue TRUNCADA. Asegúrate de que CADA parche esté COMPLETO con frases terminadas correctamente (punto, coma, cierre de comillas). NO dejes palabras cortadas.`;
+              const retryResult = await this.smartEditor.surgicalFix({
+                chapterContent: currentContent,
+                errorDescription: retryInstructions,
+                worldBible,
+                chapterNumber: planItem.chapter,
+              });
+              this.addTokenUsage(retryResult.tokenUsage);
+              await this.logAiUsage(projectId, "targeted-repair", "deepseek-chat", retryResult.tokenUsage, planItem.chapter);
+
+              if (retryResult.patches && retryResult.patches.length > 0 && !isTruncated(retryResult.patches)) {
+                usedPatches = retryResult.patches;
+              }
+            }
+
+            if (usedPatches.length > 0) {
+              const patchResult = applyPatches(currentContent, usedPatches);
               if (patchResult.appliedPatches > 0) {
                 patchedContent = patchResult.patchedText;
               }
@@ -12217,23 +12269,34 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
 
               // Phase 2: Focused rewrite only for unresolved issues
               const contentToRewrite = correctedContent || chapter.content;
-              const unresolvedInstructions = worthFixing.unresolvedIssues.map((issue: RepairIssue) =>
-                `- [${issue.severity}] ${issue.type}: ${issue.description}\n  Corrección: ${issue.suggestedFix}`
-              ).join('\n');
+              const unresolvedInstructions = worthFixing.unresolvedIssues.map((issue: RepairIssue, idx: number) =>
+                `${idx + 1}. [${issue.severity.toUpperCase()}] ${issue.type}:
+   Problema: ${issue.description}
+   Esperado vs Actual: ${issue.expectedVsActual}
+   Corrección requerida: ${issue.suggestedFix}`
+              ).join('\n\n');
+
+              const hasComplexIssues = worthFixing.unresolvedIssues.some((issue: RepairIssue) =>
+                ['arco_personaje', 'desarrollo_personaje', 'arcos_incompletos', 'motivacion', 'profundidad_emocional', 'subtrama', 'foreshadowing'].some(
+                  t => issue.type.toLowerCase().includes(t) || issue.description.toLowerCase().includes(t)
+                )
+              );
 
               const rewriteInstructions = `REESCRITURA FOCALIZADA - CAPÍTULO ${planItem.chapter} (FALLBACK TRAS CIRUGÍA FALLIDA)
 
-PROBLEMAS ESPECÍFICOS QUE LA CIRUGÍA NO PUDO RESOLVER:
+CONTEXTO: La corrección quirúrgica (patches puntuales) no logró resolver estos problemas. Ahora debes reescribir las secciones relevantes del capítulo para corregirlos de forma definitiva.
+
+PROBLEMAS ESPECÍFICOS QUE DEBEN RESOLVERSE:
 ${unresolvedInstructions}
 
 REGLAS ABSOLUTAS:
-1. Modifica SOLO las secciones que contienen los problemas indicados
-2. Mantén INTACTOS todos los párrafos que no estén afectados
+1. Reescribe las secciones afectadas para que los problemas queden DEFINITIVAMENTE resueltos
+2. Mantén INTACTOS los párrafos que no necesitan cambios
 3. NO cambies el estilo, tono, ni voz narrativa
 4. Preserva las transiciones con los capítulos adyacentes
-5. El capítulo debe mantener su extensión similar (±10%)
-6. NO introduzcas nuevos elementos de trama, personajes ni conflictos
-7. Si una corrección requiere añadir contexto, hazlo de forma orgánica y mínima
+5. El capítulo debe mantener su extensión similar (±10%)${hasComplexIssues ? ' - puedes expandir hasta +20% si la corrección requiere añadir contenido emocional o narrativo' : ''}
+6. NO introduzcas nuevos elementos de trama, personajes ni conflictos${hasComplexIssues ? ' (pero SÍ puedes añadir reflexiones internas, flashbacks breves, o consecuencias emocionales si la corrección lo exige)' : ''}
+7. Si una corrección requiere añadir contexto, hazlo de forma orgánica
 
 ${adjacentContext.previousChapter ? `CONTEXTO (capítulo anterior): ${adjacentContext.previousChapter}` : ''}
 ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentContext.nextChapter}` : ''}`;
@@ -12503,6 +12566,41 @@ Responde SOLO en JSON:
     correctedContent: string,
     issue: RepairIssue
   ): Promise<{ fixed: boolean; newProblems: boolean; details?: string }> {
+    const extractRelevantSection = (text: string, keywords: string[], maxLen: number = 6000): string => {
+      if (text.length <= maxLen) return text;
+      const lowerText = text.toLowerCase();
+      const positions: number[] = [];
+      for (const kw of keywords) {
+        const kwLower = kw.toLowerCase();
+        let idx = lowerText.indexOf(kwLower);
+        while (idx !== -1) {
+          positions.push(idx);
+          idx = lowerText.indexOf(kwLower, idx + 1);
+        }
+      }
+      if (positions.length === 0) {
+        const mid = Math.floor(text.length / 2);
+        return `[INICIO]\n${text.substring(0, Math.floor(maxLen * 0.3))}\n\n[...]\n\n[ZONA MEDIA]\n${text.substring(Math.max(0, mid - Math.floor(maxLen * 0.2)), mid + Math.floor(maxLen * 0.2))}\n\n[...]\n\n[FINAL]\n${text.substring(text.length - Math.floor(maxLen * 0.3))}`;
+      }
+      const minPos = Math.min(...positions);
+      const maxPos = Math.max(...positions);
+      const contextStart = Math.max(0, minPos - 1500);
+      const contextEnd = Math.min(text.length, maxPos + 2500);
+      if (contextEnd - contextStart <= maxLen) {
+        return text.substring(contextStart, contextEnd);
+      }
+      return text.substring(contextStart, contextStart + maxLen);
+    };
+
+    const keywords = [
+      ...issue.description.split(/\s+/).filter(w => w.length > 5).slice(0, 8),
+      ...issue.suggestedFix.split(/\s+/).filter(w => w.length > 5).slice(0, 5),
+      issue.type,
+    ];
+
+    const originalSection = extractRelevantSection(originalContent, keywords);
+    const correctedSection = extractRelevantSection(correctedContent, keywords);
+
     const prompt = `Eres un verificador de correcciones literarias. Verifica si el problema ESPECÍFICO fue corregido sin introducir nuevos problemas.
 
 PROBLEMA QUE DEBÍA CORREGIRSE:
@@ -12511,22 +12609,23 @@ PROBLEMA QUE DEBÍA CORREGIRSE:
 - Descripción: ${issue.description}
 - Corrección esperada: ${issue.suggestedFix}
 
-TEXTO ORIGINAL (fragmento):
-${originalContent.substring(0, 4000)}
+TEXTO ORIGINAL (sección relevante):
+${originalSection}
 
-TEXTO CORREGIDO (fragmento):
-${correctedContent.substring(0, 4000)}
+TEXTO CORREGIDO (sección relevante):
+${correctedSection}
 
 INSTRUCCIONES:
-1. ¿El problema original fue corregido?
+1. Compara ambas secciones y determina si el problema original fue corregido
 2. ¿La corrección introdujo nuevos problemas GRAVES? (solo contradicciones, errores lógicos, inconsistencias)
 3. ¿Se mantuvo el estilo y tono originales?
+4. Busca evidencia CONCRETA de la corrección (nuevas frases, contenido añadido, texto modificado)
 
 Responde SOLO en JSON:
 {
   "problemFixed": true/false,
   "newGraveProblems": true/false,
-  "evidencia": "breve explicación de qué cambió",
+  "evidencia": "breve explicación de qué cambió con citas textuales",
   "newProblemsDescription": "descripción de nuevos problemas graves si los hay, o null"
 }`;
 
@@ -12560,23 +12659,67 @@ Responde SOLO en JSON:
       `${idx + 1}. [${issue.severity}] ${issue.type}: ${issue.description}`
     ).join('\n');
 
+    const extractRelevantSections = (text: string, allIssues: RepairIssue[], maxLen: number = 8000): string => {
+      if (text.length <= maxLen) return text;
+      const lowerText = text.toLowerCase();
+      const allKeywords: string[] = [];
+      for (const iss of allIssues) {
+        allKeywords.push(...iss.description.split(/\s+/).filter(w => w.length > 5).slice(0, 5));
+        allKeywords.push(...iss.suggestedFix.split(/\s+/).filter(w => w.length > 5).slice(0, 3));
+        allKeywords.push(iss.type);
+      }
+      const positions: number[] = [];
+      for (const kw of allKeywords) {
+        const kwLower = kw.toLowerCase();
+        let idx = lowerText.indexOf(kwLower);
+        while (idx !== -1) {
+          positions.push(idx);
+          idx = lowerText.indexOf(kwLower, idx + 1);
+        }
+      }
+      if (positions.length === 0) {
+        const third = Math.floor(maxLen / 3);
+        return `[INICIO]\n${text.substring(0, third)}\n\n[...]\n\n[MEDIO]\n${text.substring(Math.floor(text.length / 2) - Math.floor(third / 2), Math.floor(text.length / 2) + Math.floor(third / 2))}\n\n[...]\n\n[FINAL]\n${text.substring(text.length - third)}`;
+      }
+      positions.sort((a, b) => a - b);
+      const segments: string[] = [];
+      let totalLen = 0;
+      const budgetPerSegment = Math.floor(maxLen / Math.min(positions.length, 5));
+      const seen = new Set<number>();
+      for (const pos of positions) {
+        const bucket = Math.floor(pos / 2000);
+        if (seen.has(bucket)) continue;
+        seen.add(bucket);
+        const start = Math.max(0, pos - 800);
+        const end = Math.min(text.length, pos + budgetPerSegment - 800);
+        const segment = text.substring(start, end);
+        if (totalLen + segment.length > maxLen) break;
+        segments.push(segment);
+        totalLen += segment.length;
+      }
+      return segments.join('\n\n[...]\n\n');
+    };
+
+    const originalSection = extractRelevantSections(originalContent, issues);
+    const rewrittenSection = extractRelevantSections(rewrittenContent, issues);
+
     const prompt = `Eres un verificador de correcciones literarias. Verifica si los problemas fueron corregidos en la reescritura sin introducir nuevos problemas graves.
 
 PROBLEMAS QUE DEBÍAN CORREGIRSE:
 ${issueList}
 
-TEXTO ORIGINAL (fragmento):
-${originalContent.substring(0, 4000)}
+TEXTO ORIGINAL (secciones relevantes):
+${originalSection}
 
-TEXTO REESCRITO (fragmento):
-${rewrittenContent.substring(0, 4000)}
+TEXTO REESCRITO (secciones relevantes):
+${rewrittenSection}
 
-Para CADA problema, indica si fue resuelto. También verifica que no se hayan introducido nuevos problemas GRAVES.
+Para CADA problema, indica si fue resuelto comparando ambos textos. Busca evidencia CONCRETA (frases nuevas, contenido modificado, texto añadido). También verifica que no se hayan introducido nuevos problemas GRAVES.
 
 Responde SOLO en JSON:
 {
   "issueResults": [
-    { "index": 1, "fixed": true/false, "evidence": "breve explicación" }
+    { "index": 1, "fixed": true/false, "evidence": "cita textual de la corrección o explicación" }
   ],
   "newGraveProblems": false,
   "newProblemsDescription": null,
