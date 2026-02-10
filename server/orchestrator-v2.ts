@@ -12483,15 +12483,29 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
       const totalFixed = results.reduce((sum, r) => sum + r.issuesFixed, 0);
       const totalIssues = results.reduce((sum, r) => sum + r.issuesTotal, 0);
       const successCount = results.filter(r => r.success).length;
+      const failedChapters = results.filter(r => !r.success).map(r => r.chapter);
+
+      const summaryDetails = failedChapters.length > 0
+        ? `Capítulos sin modificar (protección anti-regresión): ${failedChapters.join(', ')}`
+        : 'Todos los capítulos corregidos y verificados';
 
       await storage.updateProject(projectId, {
         targetedRepairStatus: 'completed',
+        targetedRepairDiagnosis: null,
+        targetedRepairPlan: null,
         targetedRepairProgress: {
           current: plan.length, total: plan.length,
-          message: `Completado: ${totalFixed}/${totalIssues} problemas resueltos en ${successCount}/${plan.length} capítulos`,
+          message: `Completado: ${totalFixed}/${totalIssues} problemas resueltos en ${successCount}/${plan.length} capítulos. ${summaryDetails}`,
           results,
         },
       });
+
+      if (failedChapters.length > 0) {
+        await storage.createActivityLog({
+          projectId, level: "warn", agentRole: "targeted-repair",
+          message: `Protección anti-regresión: ${failedChapters.length} capítulos NO fueron modificados porque la corrección no resolvió todos los problemas. Capítulos: ${failedChapters.join(', ')}. Ejecuta un nuevo diagnóstico para intentar reparar estos capítulos con un enfoque diferente.`,
+        });
+      }
 
       await storage.createActivityLog({
         projectId, level: "success", agentRole: "targeted-repair",
