@@ -995,9 +995,28 @@ ${worldBibleContext}
     PERSONAJES DISPONIBLES: ${characterSummaries || 'No especificados'}
     UBICACIONES DISPONIBLES: ${locationNames || 'No especificadas'}
 
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║ ⚠️ ADHERENCIA ESTRICTA AL PLAN ORIGINAL (v2.9.10)               ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║ Las escenas que planifiques DEBEN cubrir EXACTAMENTE:           ║
+    ║ 1. El RESUMEN del capítulo → cada punto debe tener una escena  ║
+    ║ 2. El EVENTO CLAVE → DEBE ocurrir en una de las escenas       ║
+    ║ 3. El ARCO EMOCIONAL → debe reflejarse en los emotional_beats ║
+    ║                                                                 ║
+    ║ PROHIBIDO:                                                      ║
+    ║ - Inventar eventos que NO están en el resumen                  ║
+    ║ - Omitir el evento clave planificado                           ║
+    ║ - Cambiar el orden de eventos del resumen                      ║
+    ║ - Añadir subtramas no mencionadas en el plan                   ║
+    ║ - Sustituir el evento clave por otro diferente                 ║
+    ║                                                                 ║
+    ║ Tu trabajo es DESCOMPONER el plan en escenas, NO reinventarlo. ║
+    ╚══════════════════════════════════════════════════════════════════╝
+
     OBJETIVO: Desglosar este capítulo en 3-4 escenas escribibles que:
+    - Cubran TODOS los puntos del RESUMEN planificado
+    - Incluyan el EVENTO CLAVE como momento central
     - Mantengan el ritmo narrativo
-    - Avancen la trama según el resumen
     - Generen tensión y emoción
     - Terminen con hooks que impulsen a continuar
 
@@ -1436,7 +1455,7 @@ ${prohibitedVocab ? `    7. VOCABULARIO PROHIBIDO (NO USAR): ${prohibitedVocab}`
   },
 
   // 4. SMART EDITOR (V3) - Evalúa y genera parches
-  SMART_EDITOR: (chapterContent: string, sceneBreakdown: any, worldBible: any) => `
+  SMART_EDITOR: (chapterContent: string, sceneBreakdown: any, worldBible: any, chapterOutline?: { chapter_num: number; title: string; summary: string; key_event: string; emotional_arc?: string }) => `
     Eres un Editor Senior de novelas con 20 años de experiencia.
     
     TEXTO A EVALUAR:
@@ -1444,9 +1463,27 @@ ${prohibitedVocab ? `    7. VOCABULARIO PROHIBIDO (NO USAR): ${prohibitedVocab}`
     ${chapterContent}
     ═══════════════════════════════════════════════════════════════════
 
-    PLAN ORIGINAL DEL CAPÍTULO:
+    PLAN DE ESCENAS DEL CAPÍTULO:
     ${JSON.stringify(sceneBreakdown, null, 2)}
-
+${chapterOutline ? `
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║ 📋 PLAN ORIGINAL DEL GLOBAL ARCHITECT (ADHERENCIA OBLIGATORIA)  ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║ CAPÍTULO ${chapterOutline.chapter_num}: "${chapterOutline.title}"
+    ║ RESUMEN PLANIFICADO: ${chapterOutline.summary}
+    ║ EVENTO CLAVE: ${chapterOutline.key_event}
+    ${chapterOutline.emotional_arc ? `║ ARCO EMOCIONAL: ${chapterOutline.emotional_arc}` : ''}
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║ VERIFICACIÓN DE ADHERENCIA (CRÍTICA):                          ║
+    ║ Compara el texto escrito contra este plan original.             ║
+    ║ Si el capítulo NO cubre el RESUMEN o el EVENTO CLAVE:          ║
+    ║   → LÓGICA = 4 máximo (desviación del plan = error grave)      ║
+    ║ Si el capítulo inventa eventos NO planificados:                ║
+    ║   → LÓGICA = 5 máximo                                         ║
+    ║ Si el evento clave está ausente o sustituido:                  ║
+    ║   → LÓGICA = 3 máximo (fallo crítico de adherencia)            ║
+    ╚══════════════════════════════════════════════════════════════════╝
+` : ''}
     PERSONAJES CANÓNICOS (verificar continuidad):
     ${JSON.stringify((worldBible.characters || worldBible.personajes || []).map((c: any) => ({ name: c.name || c.nombre, appearance: c.appearance || c.descripcion })))}
 

@@ -19,6 +19,7 @@ export interface GhostwriterV2Input {
   seriesWorldBible?: any; // Accumulated knowledge from previous volumes in the series
   errorHistory?: string; // LitAgents 2.9: Past errors to avoid in this project
   lastSceneEndState?: string; // LitAgents 2.9.5: Physical state at end of previous scene
+  chapterOutline?: { chapter_num: number; title: string; summary: string; key_event: string; emotional_arc?: string }; // v2.9.10: Original outline for strict adherence
 }
 
 const SYSTEM_PROMPT = `
@@ -130,6 +131,28 @@ export class GhostwriterV2Agent extends BaseAgent {
     if (input.errorHistory) {
       prompt = `${input.errorHistory}\n\n${prompt}`;
       console.log(`[GhostwriterV2] Injected error history (${input.errorHistory.length} chars)`);
+    }
+
+    // LitAgents 2.9.10: Inject original chapter outline for strict adherence
+    if (input.chapterOutline) {
+      const outlineBlock = `
+╔══════════════════════════════════════════════════════════════════╗
+║ 📋 PLAN ORIGINAL DEL CAPÍTULO ${input.chapterOutline.chapter_num} (ADHERENCIA OBLIGATORIA)    ║
+╠══════════════════════════════════════════════════════════════════╣
+║ TÍTULO: ${input.chapterOutline.title}
+║ RESUMEN PLANIFICADO: ${input.chapterOutline.summary}
+║ EVENTO CLAVE QUE DEBE OCURRIR: ${input.chapterOutline.key_event}
+${input.chapterOutline.emotional_arc ? `║ ARCO EMOCIONAL: ${input.chapterOutline.emotional_arc}` : ''}
+╠══════════════════════════════════════════════════════════════════╣
+║ ⚠️ REGLA INVIOLABLE: Esta escena es PARTE de este capítulo.     ║
+║ El capítulo COMPLETO debe cubrir el RESUMEN y el EVENTO CLAVE  ║
+║ descritos arriba. NO inventes eventos diferentes ni omitas     ║
+║ el evento clave planificado. NO cambies el orden de eventos.   ║
+║ NO añadas subtramas o personajes no mencionados en el plan.    ║
+║ SIGUE EL PLAN EXACTAMENTE.                                    ║
+╚══════════════════════════════════════════════════════════════════╝`;
+      prompt = `${outlineBlock}\n\n${prompt}`;
+      console.log(`[GhostwriterV2] Injected original chapter outline for strict adherence`);
     }
 
     // LitAgents 2.9.5: Inject proactive pacing guidance based on scene type

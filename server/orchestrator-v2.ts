@@ -5593,6 +5593,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             currentChapterText: fullChapterText, // LitAgents 2.2: Current chapter so far
             seriesWorldBible, // Series World Bible: Accumulated knowledge from previous volumes
             errorHistory, // LitAgents 2.9: Past errors to avoid
+            chapterOutline, // LitAgents 2.9.10: Original outline for strict adherence
           });
 
           if (sceneResult.error) {
@@ -5638,6 +5639,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           chapterContent: fullChapterText,
           sceneBreakdown,
           worldBible,
+          chapterOutline,
         });
 
         this.addTokenUsage(editResult.tokenUsage);
@@ -6996,9 +6998,15 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
         }
 
         const parsed = JSON.parse(jsonMatch[0]);
-        const deviatedChapters: number[] = (parsed.deviatedChapters || []).filter(
-          (ch: number) => !alreadyCorrectedChapters.has(ch)
-        );
+        // LitAgents 2.9.10: Final review DOES NOT filter out previously-corrected chapters
+        // Previous checkpoints may have introduced new issues, so the final review must be able to re-correct them
+        const deviatedChapters: number[] = (parsed.deviatedChapters || []);
+        if (alreadyCorrectedChapters.size > 0) {
+          const reCorrected = deviatedChapters.filter((ch: number) => alreadyCorrectedChapters.has(ch));
+          if (reCorrected.length > 0) {
+            console.log(`[FinalStructuralReview] Will re-correct ${reCorrected.length} previously-corrected chapters: ${reCorrected.join(', ')}`);
+          }
+        }
         const issues = (parsed.issues || [])
           .filter((i: any) => i.severity === 'critica' || i.severity === 'mayor')
           .map((i: any) => `Cap ${i.chapter}: [${i.type}] ${i.description} → ${i.correctionNeeded}`);

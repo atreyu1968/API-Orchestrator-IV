@@ -10,6 +10,7 @@ export interface SmartEditorInput {
   sceneBreakdown: any;
   worldBible: any;
   additionalContext?: string;
+  chapterOutline?: { chapter_num: number; title: string; summary: string; key_event: string; emotional_arc?: string }; // v2.9.10: Original outline for adherence check
 }
 
 export interface SurgicalFixInput {
@@ -84,7 +85,8 @@ export class SmartEditorAgent extends BaseAgent {
     let prompt = PROMPTS_V2.SMART_EDITOR(
       input.chapterContent,
       input.sceneBreakdown,
-      input.worldBible
+      input.worldBible,
+      input.chapterOutline
     );
 
     // Add additional context if provided (e.g., issues from FinalReviewer)
