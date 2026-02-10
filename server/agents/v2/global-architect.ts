@@ -202,49 +202,66 @@ export class GlobalArchitectAgent extends BaseAgent {
     };
     
     try {
-      // Strategy 1: Match JSON object containing expected keys
-      const jsonMatch = content.match(/\{[\s\S]*"outline"[\s\S]*\}/);
+      // Strategy 1: Match JSON object containing expected keys (outline or alternatives)
+      const outlineKeyPattern = /\{[\s\S]*"(?:outline|chapters|capitulos|chapter_outline|estructura)"[\s\S]*\}/;
+      const jsonMatch = content.match(outlineKeyPattern);
       if (jsonMatch) {
         try {
           const cleanedJson = cleanJsonString(jsonMatch[0]);
           parsed = JSON.parse(cleanedJson) as GlobalArchitectOutput;
         } catch (e) {
-          // Strategy 2: Find first { and last } for malformed JSON
-          const firstBrace = content.indexOf('{');
-          const lastBrace = content.lastIndexOf('}');
-          if (firstBrace !== -1 && lastBrace > firstBrace) {
-            try {
-              const extracted = content.substring(firstBrace, lastBrace + 1);
-              const cleanedExtracted = cleanJsonString(extracted);
-              parsed = JSON.parse(cleanedExtracted) as GlobalArchitectOutput;
-            } catch (e2) {
-              // Strategy 3: Try to find balanced braces
-              try {
-                const balanced = this.extractBalancedJson(content);
-                if (balanced) {
-                  parsed = JSON.parse(cleanJsonString(balanced)) as GlobalArchitectOutput;
-                } else {
-                  parseError = `JSON malformado: ${e2}`;
-                }
-              } catch (e3) {
-                parseError = `JSON malformado después de limpieza: ${e3}`;
-              }
-            }
+          parseError = `Strategy 1 failed: ${e}`;
+        }
+      }
+      
+      // Strategy 2: Find first { and last } for malformed JSON
+      if (!parsed) {
+        const firstBrace = content.indexOf('{');
+        const lastBrace = content.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+          try {
+            const extracted = content.substring(firstBrace, lastBrace + 1);
+            const cleanedExtracted = cleanJsonString(extracted);
+            parsed = JSON.parse(cleanedExtracted) as GlobalArchitectOutput;
+          } catch (e2) {
+            parseError = `Strategy 2 failed: ${e2}`;
           }
         }
-      } else {
-        // Strategy 4: Try parsing the entire content
+      }
+      
+      // Strategy 3: Try to find balanced braces
+      if (!parsed) {
+        try {
+          const balanced = this.extractBalancedJson(content);
+          if (balanced) {
+            parsed = JSON.parse(cleanJsonString(balanced)) as GlobalArchitectOutput;
+          }
+        } catch (e3) {
+          parseError = `Strategy 3 failed: ${e3}`;
+        }
+      }
+      
+      // Strategy 4: Try parsing the entire content after cleaning
+      if (!parsed) {
         try {
           const trimmed = cleanJsonString(content);
-          if (trimmed.startsWith('{')) {
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
             parsed = JSON.parse(trimmed) as GlobalArchitectOutput;
+          } else {
+            parseError = `No JSON structure found. Content starts with: "${content.substring(0, 100).replace(/\n/g, '\\n')}"`;
           }
         } catch (e) {
-          parseError = "No se encontró estructura JSON válida en la respuesta";
+          parseError = `Strategy 4 failed: ${e}`;
         }
       }
     } catch (e) {
       parseError = `Error de parsing: ${e}`;
+    }
+    
+    if (!parsed) {
+      console.error(`[GlobalArchitect] Content length: ${content.length}, has braces: ${content.includes('{')}, has outline: ${content.includes('"outline"')}`);
+      console.error(`[GlobalArchitect] Content first 300 chars: ${content.substring(0, 300)}`);
+      console.error(`[GlobalArchitect] Content last 300 chars: ${content.substring(Math.max(0, content.length - 300))}`);
     }
     
     if (!parsed && content.includes('"outline"')) {
@@ -298,11 +315,61 @@ export class GlobalArchitectAgent extends BaseAgent {
         console.error(`  AT: ${JSON.stringify(content.substring(pos, pos + 20))}`);
         console.error(`  AFTER: ${JSON.stringify(content.substring(pos, contextEnd))}...`);
       }
-      return {
-        ...response,
-        error: `Error al parsear respuesta del Global Architect: ${parseError}. La IA no devolvió JSON válido.`,
-        parsed: undefined
-      };
+      
+      // RETRY: Make a second API call since parsing completely failed
+      console.log(`[GlobalArchitect] RETRYING due to complete parse failure (content length: ${content.length})...`);
+      const retryResponse = await this.generateContent(prompt, undefined, { maxCompletionTokens: maxTokens });
+      
+      if (!retryResponse.error && retryResponse.content) {
+        const retryContent = retryResponse.content;
+        console.log(`[GlobalArchitect] Retry response length: ${retryContent.length}`);
+        
+        // Try all parsing strategies on retry content
+        const retryStrategies = [
+          () => {
+            const m = retryContent.match(/\{[\s\S]*"(?:outline|chapters|capitulos|chapter_outline|estructura)"[\s\S]*\}/);
+            return m ? JSON.parse(cleanJsonString(m[0])) : null;
+          },
+          () => {
+            const f = retryContent.indexOf('{');
+            const l = retryContent.lastIndexOf('}');
+            return (f !== -1 && l > f) ? JSON.parse(cleanJsonString(retryContent.substring(f, l + 1))) : null;
+          },
+          () => {
+            const b = this.extractBalancedJson(retryContent);
+            return b ? JSON.parse(cleanJsonString(b)) : null;
+          },
+          () => this.repairTruncatedJson(retryContent),
+          () => this.aggressiveJsonRepair(retryContent),
+          () => this.iterativeJsonRepair(retryContent),
+        ];
+        
+        for (let i = 0; i < retryStrategies.length; i++) {
+          try {
+            const result = retryStrategies[i]();
+            if (result) {
+              parsed = result as GlobalArchitectOutput;
+              console.log(`[GlobalArchitect] RETRY parse succeeded with strategy ${i + 1}!`);
+              if (retryResponse.tokenUsage) {
+                response.tokenUsage = {
+                  inputTokens: (response.tokenUsage?.inputTokens || 0) + (retryResponse.tokenUsage?.inputTokens || 0),
+                  outputTokens: (response.tokenUsage?.outputTokens || 0) + (retryResponse.tokenUsage?.outputTokens || 0),
+                  thinkingTokens: (response.tokenUsage?.thinkingTokens || 0) + (retryResponse.tokenUsage?.thinkingTokens || 0),
+                };
+              }
+              break;
+            }
+          } catch {}
+        }
+      }
+      
+      if (!parsed) {
+        return {
+          ...response,
+          error: `Error al parsear respuesta del Global Architect: ${parseError || 'La IA no devolvió JSON válido'}. Se reintentó sin éxito. Por favor, regenere el proyecto.`,
+          parsed: undefined
+        };
+      }
     }
     
     // Normalize alternative key names the AI might use
