@@ -12115,6 +12115,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
         if (planItem.approach === 'surgical') {
           // Fix each issue individually with verification
           let currentContent = chapter.content;
+          const unresolvedIssues: RepairIssue[] = [];
           for (const issue of planItem.issues) {
             const fixInstructions = `CORRECCIÓN QUIRÚRGICA ESPECÍFICA - CAPÍTULO ${planItem.chapter}
 
@@ -12155,6 +12156,7 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
             }
 
             if (!patchedContent || patchedContent === currentContent) {
+              unresolvedIssues.push(issue);
               await storage.createActivityLog({
                 projectId, level: "warn", agentRole: "targeted-repair",
                 message: `Cap ${planItem.chapter}: parche no aplicado para "${issue.type}: ${issue.description.substring(0, 80)}"`,
@@ -12175,12 +12177,13 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
                 message: `Cap ${planItem.chapter}: VERIFICADO - "${issue.type}" corregido correctamente`,
               });
             } else if (verification.fixed && verification.newProblems) {
-              // Fixed but introduced problems - reject
+              unresolvedIssues.push(issue);
               await storage.createActivityLog({
                 projectId, level: "warn", agentRole: "targeted-repair",
                 message: `Cap ${planItem.chapter}: RECHAZADO - "${issue.type}" corregido pero introdujo nuevos problemas: ${verification.details}`,
               });
             } else {
+              unresolvedIssues.push(issue);
               await storage.createActivityLog({
                 projectId, level: "warn", agentRole: "targeted-repair",
                 message: `Cap ${planItem.chapter}: NO VERIFICADO - "${issue.type}" no se resolvió. ${verification.details || ''}`,
@@ -12191,6 +12194,112 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
           if (currentContent !== chapter.content) {
             correctedContent = currentContent;
             method = 'surgical';
+          }
+
+          // FALLBACK: If surgical failed for any issues, evaluate escalation to rewrite
+          if (unresolvedIssues.length > 0) {
+            console.log(`[TargetedRepair] Cap ${planItem.chapter}: ${unresolvedIssues.length}/${planItem.issues.length} issues unresolved after surgery. Evaluating fallback...`);
+            
+            // Phase 1: Ask Gemini if the unresolved issues are worth a full rewrite
+            const worthFixing = await this.evaluateRewriteWorthiness(
+              projectId, planItem.chapter, correctedContent || chapter.content, unresolvedIssues
+            );
+
+            if (worthFixing.worthIt) {
+              console.log(`[TargetedRepair] Cap ${planItem.chapter}: Fallback rewrite approved - ${worthFixing.reason}`);
+              await storage.createActivityLog({
+                projectId, level: "info", agentRole: "targeted-repair",
+                message: `Cap ${planItem.chapter}: Escalando a reescritura focalizada (${unresolvedIssues.length} problemas sin resolver). Razón: ${worthFixing.reason}`,
+              });
+
+              this.callbacks.onAgentStatus("targeted-repair", "active",
+                `Cap ${planItem.chapter}: Reescritura focalizada (fallback)...`);
+
+              // Phase 2: Focused rewrite only for unresolved issues
+              const contentToRewrite = correctedContent || chapter.content;
+              const unresolvedInstructions = worthFixing.unresolvedIssues.map((issue: RepairIssue) =>
+                `- [${issue.severity}] ${issue.type}: ${issue.description}\n  Corrección: ${issue.suggestedFix}`
+              ).join('\n');
+
+              const rewriteInstructions = `REESCRITURA FOCALIZADA - CAPÍTULO ${planItem.chapter} (FALLBACK TRAS CIRUGÍA FALLIDA)
+
+PROBLEMAS ESPECÍFICOS QUE LA CIRUGÍA NO PUDO RESOLVER:
+${unresolvedInstructions}
+
+REGLAS ABSOLUTAS:
+1. Modifica SOLO las secciones que contienen los problemas indicados
+2. Mantén INTACTOS todos los párrafos que no estén afectados
+3. NO cambies el estilo, tono, ni voz narrativa
+4. Preserva las transiciones con los capítulos adyacentes
+5. El capítulo debe mantener su extensión similar (±10%)
+6. NO introduzcas nuevos elementos de trama, personajes ni conflictos
+7. Si una corrección requiere añadir contexto, hazlo de forma orgánica y mínima
+
+${adjacentContext.previousChapter ? `CONTEXTO (capítulo anterior): ${adjacentContext.previousChapter}` : ''}
+${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentContext.nextChapter}` : ''}`;
+
+              const rewriteResult = await this.smartEditor.fullRewrite({
+                chapterContent: contentToRewrite,
+                errorDescription: rewriteInstructions,
+                worldBible: {
+                  characters: (worldBible.characters || worldBible.personajes || []) as any[],
+                  locations: (worldBible.locations || worldBible.lugares || []) as any[],
+                  worldRules: (worldBible.rules || worldBible.reglas || worldBible.worldRules || []) as any[],
+                  persistentInjuries: (worldBible.persistentInjuries || worldBible.lesiones || []) as any[],
+                  plotDecisions: (worldBible.plotDecisions || worldBible.decisiones || []) as any[],
+                },
+                chapterNumber: planItem.chapter,
+                chapterTitle: planItem.chapterTitle,
+                previousChapterSummary: adjacentContext.previousChapter || "",
+                nextChapterSummary: adjacentContext.nextChapter || "",
+              });
+
+              this.addTokenUsage(rewriteResult.tokenUsage);
+              await this.logAiUsage(projectId, "targeted-repair", "deepseek-chat", rewriteResult.tokenUsage, planItem.chapter);
+
+              if (rewriteResult.rewrittenContent && rewriteResult.rewrittenContent.length > 200) {
+                const newWordCount = rewriteResult.rewrittenContent.split(/\s+/).length;
+                const originalWordCount = chapter.content.split(/\s+/).length;
+
+                if (newWordCount >= originalWordCount * 0.85 && newWordCount >= 800) {
+                  // Phase 3: Verify rewrite didn't introduce new problems
+                  const verification = await this.verifyTargetedRewrite(
+                    projectId, planItem.chapter, chapter.content, rewriteResult.rewrittenContent, planItem.issues
+                  );
+
+                  if (verification.overallFixed && !verification.details) {
+                    correctedContent = rewriteResult.rewrittenContent;
+                    method = 'rewrite';
+                    issuesFixed = verification.fixedCount;
+                    await storage.createActivityLog({
+                      projectId, level: "success", agentRole: "targeted-repair",
+                      message: `Cap ${planItem.chapter}: FALLBACK REESCRITURA VERIFICADA - ${verification.fixedCount}/${planItem.issues.length} problemas resueltos`,
+                    });
+                  } else if (verification.details) {
+                    await storage.createActivityLog({
+                      projectId, level: "warn", agentRole: "targeted-repair",
+                      message: `Cap ${planItem.chapter}: Fallback rechazado - introdujo nuevos problemas: ${verification.details}`,
+                    });
+                  } else {
+                    await storage.createActivityLog({
+                      projectId, level: "warn", agentRole: "targeted-repair",
+                      message: `Cap ${planItem.chapter}: Fallback insuficiente (${verification.fixedCount}/${planItem.issues.length} resueltos)`,
+                    });
+                  }
+                } else {
+                  await storage.createActivityLog({
+                    projectId, level: "warn", agentRole: "targeted-repair",
+                    message: `Cap ${planItem.chapter}: Fallback rechazado por pérdida de contenido (${newWordCount} vs ${originalWordCount} palabras)`,
+                  });
+                }
+              }
+            } else {
+              console.log(`[TargetedRepair] Cap ${planItem.chapter}: Fallback not worth it - ${worthFixing.reason}`);
+              await storage.createActivityLog({
+                projectId, level: "info", agentRole: "targeted-repair",
+                message: `Cap ${planItem.chapter}: ${unresolvedIssues.length} problemas sin resolver - no ameritan reescritura: ${worthFixing.reason}`,
+              });
+            }
           }
 
         } else {
@@ -12318,6 +12427,73 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
     } finally {
       if (endCorrection) endCorrection(projectId);
     }
+  }
+
+  private async evaluateRewriteWorthiness(
+    projectId: number,
+    chapterNumber: number,
+    chapterContent: string,
+    unresolvedIssues: RepairIssue[]
+  ): Promise<{ worthIt: boolean; reason: string; unresolvedIssues: RepairIssue[] }> {
+    if (unresolvedIssues.length === 0) {
+      return { worthIt: false, reason: "No hay problemas sin resolver", unresolvedIssues: [] };
+    }
+
+    const hasCritical = unresolvedIssues.some(i => i.severity === 'critica');
+    if (hasCritical) {
+      return { worthIt: true, reason: "Contiene problemas críticos que deben resolverse", unresolvedIssues };
+    }
+
+    const issueDescriptions = unresolvedIssues.map(i =>
+      `- [${i.severity}] ${i.type}: ${i.description}`
+    ).join('\n');
+
+    const prompt = `Eres un editor literario senior. Evalúa si los siguientes problemas detectados en un capítulo ameritan una reescritura focalizada, considerando el riesgo de introducir nuevos problemas.
+
+CAPÍTULO ${chapterNumber} (fragmento):
+${chapterContent.substring(0, 2000)}
+
+PROBLEMAS SIN RESOLVER TRAS CIRUGÍA:
+${issueDescriptions}
+
+CRITERIOS DE DECISIÓN:
+- ¿Los problemas afectan significativamente la experiencia del lector?
+- ¿Son problemas reales o son opiniones estilísticas discutibles?
+- ¿El riesgo de una reescritura (perder calidad, coherencia, voz) supera el beneficio de corregir estos problemas?
+- ¿Los problemas rompen la lógica narrativa o son detalles menores?
+
+Responde SOLO en JSON:
+{
+  "worthRewriting": true/false,
+  "reason": "explicación concisa de por qué sí o no vale la pena",
+  "realIssueCount": número de problemas que realmente afectan la calidad (no opiniones),
+  "riskLevel": "bajo" | "medio" | "alto"
+}`;
+
+    try {
+      const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const result = await model.generateContent(prompt);
+      const response = result.response.text();
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        const worthIt = parsed.worthRewriting === true && parsed.riskLevel !== 'alto';
+        return {
+          worthIt,
+          reason: parsed.reason || 'Sin razón especificada',
+          unresolvedIssues,
+        };
+      }
+    } catch (error) {
+      console.warn(`[TargetedRepair] Worthiness evaluation failed for chapter ${chapterNumber}:`, error);
+    }
+
+    const hasMajor = unresolvedIssues.some(i => i.severity === 'mayor');
+    return {
+      worthIt: hasMajor,
+      reason: hasMajor ? 'Evaluación falló pero hay problemas mayores - intentando reescritura' : 'Evaluación falló y solo hay problemas menores - no vale la pena',
+      unresolvedIssues,
+    };
   }
 
   private async verifyTargetedFix(
