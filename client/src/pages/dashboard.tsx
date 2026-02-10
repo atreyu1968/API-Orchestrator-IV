@@ -569,6 +569,64 @@ export default function Dashboard() {
     },
   });
 
+  // ==================== TARGETED REPAIR SYSTEM ====================
+  const [showRepairPlanDialog, setShowRepairPlanDialog] = useState(false);
+  const [repairPlanData, setRepairPlanData] = useState<any>(null);
+
+  const diagnoseMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/projects/${id}/targeted-repair/diagnose`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({ title: "Diagnóstico iniciado", description: "Analizando la novela para detectar desviaciones..." });
+      addLog("thinking", "Diagnosticando novela completa para reparación dirigida...", "targeted-repair");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "No se pudo iniciar el diagnóstico", variant: "destructive" });
+    },
+  });
+
+  const fetchRepairPlan = async (projectId: number) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/targeted-repair/plan`);
+      const data = await response.json();
+      setRepairPlanData(data);
+      setShowRepairPlanDialog(true);
+    } catch {
+      toast({ title: "Error", description: "No se pudo obtener el plan de reparación", variant: "destructive" });
+    }
+  };
+
+  const executeRepairMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/projects/${id}/targeted-repair/execute`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setShowRepairPlanDialog(false);
+      toast({ title: "Reparación iniciada", description: "Ejecutando correcciones dirigidas con verificación..." });
+      addLog("thinking", "Ejecutando plan de reparación dirigida...", "targeted-repair");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "No se pudo ejecutar la reparación", variant: "destructive" });
+    },
+  });
+
+  const cancelRepairMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/projects/${id}/targeted-repair/cancel`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setRepairPlanData(null);
+      toast({ title: "Reparación cancelada" });
+    },
+  });
+
   const resumeProjectMutation = useMutation({
     mutationFn: async (id: number) => {
       console.log("[Resume] Sending resume request for project:", id);
@@ -745,6 +803,23 @@ export default function Dashboard() {
               title: "Detección y Corrección completada",
               description: `Resueltos: ${data.totalResolved}/${data.totalDetected}, Escalados: ${data.totalEscalated}`,
             });
+          } else if (data.type === "targeted_repair_diagnosis_complete") {
+            queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+            toast({
+              title: "Diagnóstico completado",
+              description: `Se encontraron ${data.planLength} capítulos con problemas`,
+            });
+            addLog("success", `Diagnóstico completado: ${data.planLength} capítulos necesitan reparación`, "targeted-repair");
+          } else if (data.type === "targeted_repair_complete") {
+            queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/projects", activeProject?.id, "chapters"] });
+            toast({
+              title: "Reparación dirigida completada",
+              description: `${data.totalFixed}/${data.totalIssues} problemas resueltos`,
+            });
+            addLog("success", `Reparación completada: ${data.totalFixed}/${data.totalIssues} problemas resueltos`, "targeted-repair");
+          } else if (data.type === "targeted_repair_chapter_progress") {
+            addLog("info", `Reparando capítulo ${data.chapterNumber}: ${data.message}`, "targeted-repair");
           }
         } catch (e) {
           console.error("Error parsing SSE:", e);
@@ -1017,6 +1092,27 @@ export default function Dashboard() {
                           ? "Procesando..." 
                           : correctionSystem === 'detect-fix' ? "Detect & Fix" : "Revisión Final"}
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => diagnoseMutation.mutate(currentProject.id)}
+                        disabled={diagnoseMutation.isPending}
+                        data-testid="button-diagnose-repair"
+                      >
+                        <Crosshair className="h-4 w-4 mr-2" />
+                        {diagnoseMutation.isPending ? "Diagnosticando..." : "Diagnosticar"}
+                      </Button>
+                      {currentProject.targetedRepairPlan && (currentProject.targetedRepairPlan as any[]).length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => fetchRepairPlan(currentProject.id)}
+                          data-testid="button-view-repair-plan"
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          Ver Plan ({(currentProject.targetedRepairPlan as any[]).length})
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
@@ -1470,6 +1566,27 @@ export default function Dashboard() {
                           ? "Procesando..." 
                           : correctionSystem === 'detect-fix' ? "Detect & Fix" : "Revisión Final"}
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => diagnoseMutation.mutate(currentProject.id)}
+                        disabled={diagnoseMutation.isPending}
+                        data-testid="button-diagnose-repair-paused"
+                      >
+                        <Crosshair className="h-4 w-4 mr-2" />
+                        {diagnoseMutation.isPending ? "Diagnosticando..." : "Diagnosticar"}
+                      </Button>
+                      {currentProject.targetedRepairPlan && (currentProject.targetedRepairPlan as any[]).length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => fetchRepairPlan(currentProject.id)}
+                          data-testid="button-view-repair-plan-paused"
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          Ver Plan ({(currentProject.targetedRepairPlan as any[]).length})
+                        </Button>
+                      )}
                     </>
                   )}
 
@@ -1885,6 +2002,78 @@ export default function Dashboard() {
       </Dialog>
 
       {/* Reset Reviewer Confirmation Dialog */}
+      <Dialog open={showRepairPlanDialog} onOpenChange={setShowRepairPlanDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Plan de Reparación Dirigida</DialogTitle>
+            <DialogDescription>
+              {repairPlanData?.diagnosis || "Análisis de desviaciones del manuscrito"}
+            </DialogDescription>
+          </DialogHeader>
+          {repairPlanData?.plan && (repairPlanData.plan as any[]).length > 0 ? (
+            <div className="space-y-3">
+              {(repairPlanData.plan as any[]).map((item: any, idx: number) => (
+                <Card key={idx}>
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                      <span className="font-medium text-sm">
+                        Capítulo {item.chapterNumber}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={item.priority === 'critical' ? 'destructive' : item.priority === 'high' ? 'default' : 'secondary'}>
+                          {item.priority}
+                        </Badge>
+                        <Badge variant="outline">
+                          {item.approach === 'surgical' ? 'Corrección quirúrgica' : 'Reescritura'}
+                        </Badge>
+                      </div>
+                    </div>
+                    {item.issues && (item.issues as any[]).length > 0 && (
+                      <ul className="text-xs text-muted-foreground space-y-1">
+                        {(item.issues as any[]).map((issue: any, iidx: number) => (
+                          <li key={iidx} className="flex items-start gap-1">
+                            <span className="text-destructive mt-0.5">-</span>
+                            <span>{typeof issue === 'string' ? issue : issue.description || issue.issue || JSON.stringify(issue)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {item.instructions && (
+                      <p className="text-xs text-muted-foreground mt-1 italic">{item.instructions}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No se encontraron problemas.</p>
+          )}
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowRepairPlanDialog(false)} data-testid="button-close-repair-plan">
+              Cerrar
+            </Button>
+            {repairPlanData?.plan && (repairPlanData.plan as any[]).length > 0 && currentProject && (
+              <Button
+                onClick={() => executeRepairMutation.mutate(currentProject.id)}
+                disabled={executeRepairMutation.isPending}
+                data-testid="button-execute-repair"
+              >
+                {executeRepairMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Ejecutando...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 mr-2" />
+                    Ejecutar Reparación
+                  </>
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ConfirmDialog
         open={showResetReviewerDialog}
         onOpenChange={setShowResetReviewerDialog}

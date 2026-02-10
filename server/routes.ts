@@ -1192,6 +1192,176 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== TARGETED REPAIR SYSTEM ====================
+
+  app.post("/api/projects/:id/targeted-repair/diagnose", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (isAnyCorrectionActive(id)) {
+        return res.status(409).json({ error: "Ya hay un proceso activo para este proyecto" });
+      }
+
+      const chapters = await storage.getChaptersByProject(id);
+      if (chapters.length === 0) {
+        return res.status(400).json({ error: "El proyecto no tiene capítulos" });
+      }
+
+      res.json({ message: "Diagnóstico iniciado", projectId: id });
+
+      const sendToStreams = (data: any) => {
+        const streams = activeStreams.get(id);
+        if (streams) {
+          const message = `data: ${JSON.stringify(data)}\n\n`;
+          streams.forEach(stream => {
+            try { stream.write(message); } catch (e) { /* ignore */ }
+          });
+        }
+      };
+
+      const orchestrator = new OrchestratorV2({
+        onAgentStatus: async (role, status, message) => {
+          await storage.updateAgentStatus(id, role, { status, currentTask: message });
+          sendToStreams({ type: "agent_status", role, status, message });
+        },
+        onChapterComplete: async () => {},
+        onSceneComplete: async () => {},
+        onProjectComplete: async () => {},
+        onError: async (error) => {
+          sendToStreams({ type: "error", message: error });
+        },
+      });
+
+      orchestrator.diagnoseForTargetedRepair(project).then(async (result) => {
+        sendToStreams({
+          type: "targeted_repair_diagnosis_complete",
+          diagnosis: result.diagnosis,
+          planLength: result.plan.length,
+        });
+        await persistActivityLog(id, "success", `Diagnóstico completado: ${result.plan.length} capítulos a reparar`, "targeted-repair");
+      }).catch(async (error) => {
+        console.error("[TargetedRepair] Diagnosis error:", error);
+        await storage.updateProject(id, {
+          targetedRepairStatus: "error",
+          targetedRepairProgress: { message: error instanceof Error ? error.message : "Error en diagnóstico" },
+        });
+        sendToStreams({ type: "error", message: error instanceof Error ? error.message : "Error en diagnóstico" });
+      });
+
+    } catch (error) {
+      console.error("Error starting targeted repair diagnosis:", error);
+      res.status(500).json({ error: "Failed to start diagnosis" });
+    }
+  });
+
+  app.get("/api/projects/:id/targeted-repair/plan", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      res.json({
+        status: project.targetedRepairStatus || 'idle',
+        diagnosis: project.targetedRepairDiagnosis || null,
+        plan: project.targetedRepairPlan || [],
+        progress: project.targetedRepairProgress || null,
+      });
+    } catch (error) {
+      console.error("Error fetching repair plan:", error);
+      res.status(500).json({ error: "Failed to fetch repair plan" });
+    }
+  });
+
+  app.post("/api/projects/:id/targeted-repair/execute", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (!project.targetedRepairPlan || (project.targetedRepairPlan as any[]).length === 0) {
+        return res.status(400).json({ error: "No hay plan de reparación. Ejecuta el diagnóstico primero." });
+      }
+
+      if (isAnyCorrectionActive(id)) {
+        return res.status(409).json({ error: "Ya hay un proceso activo para este proyecto" });
+      }
+
+      res.json({ message: "Ejecutando plan de reparación", projectId: id });
+
+      const sendToStreams = (data: any) => {
+        const streams = activeStreams.get(id);
+        if (streams) {
+          const message = `data: ${JSON.stringify(data)}\n\n`;
+          streams.forEach(stream => {
+            try { stream.write(message); } catch (e) { /* ignore */ }
+          });
+        }
+      };
+
+      const orchestrator = new OrchestratorV2({
+        onAgentStatus: async (role, status, message) => {
+          await storage.updateAgentStatus(id, role, { status, currentTask: message });
+          sendToStreams({ type: "agent_status", role, status, message });
+        },
+        onChapterComplete: async () => {},
+        onSceneComplete: async () => {},
+        onProjectComplete: async () => {},
+        onError: async (error) => {
+          sendToStreams({ type: "error", message: error });
+        },
+      });
+
+      orchestrator.executeRepairPlan(project).then(async (results) => {
+        const totalFixed = results.reduce((sum, r) => sum + r.issuesFixed, 0);
+        const totalIssues = results.reduce((sum, r) => sum + r.issuesTotal, 0);
+        sendToStreams({
+          type: "targeted_repair_complete",
+          results,
+          totalFixed,
+          totalIssues,
+        });
+        await persistActivityLog(id, "success", `Reparación completada: ${totalFixed}/${totalIssues} problemas resueltos`, "targeted-repair");
+      }).catch(async (error) => {
+        console.error("[TargetedRepair] Execution error:", error);
+        await storage.updateProject(id, {
+          targetedRepairStatus: "error",
+          targetedRepairProgress: { message: error instanceof Error ? error.message : "Error en ejecución" },
+        });
+        sendToStreams({ type: "error", message: error instanceof Error ? error.message : "Error en ejecución" });
+      });
+
+    } catch (error) {
+      console.error("Error starting targeted repair execution:", error);
+      res.status(500).json({ error: "Failed to start repair execution" });
+    }
+  });
+
+  app.post("/api/projects/:id/targeted-repair/cancel", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.updateProject(id, {
+        targetedRepairStatus: "idle",
+        targetedRepairProgress: null,
+      });
+      endCorrection(id);
+      res.json({ success: true, message: "Reparación cancelada" });
+    } catch (error) {
+      console.error("Error cancelling targeted repair:", error);
+      res.status(500).json({ error: "Failed to cancel" });
+    }
+  });
+
   // LitAgents 2.0 - Plot Threads API
   app.get("/api/projects/:id/plot-threads", async (req: Request, res: Response) => {
     try {

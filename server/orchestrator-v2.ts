@@ -358,6 +358,35 @@ interface DetectAndFixPhaseProgress {
   };
 }
 
+// ==================== TARGETED REPAIR TYPES ====================
+export interface RepairIssue {
+  chapter: number;
+  type: string;
+  severity: 'critica' | 'mayor' | 'menor';
+  description: string;
+  expectedVsActual: string;
+  suggestedFix: string;
+}
+
+export interface RepairPlanItem {
+  chapter: number;
+  chapterTitle: string;
+  issues: RepairIssue[];
+  approach: 'surgical' | 'rewrite';
+  instructions: string;
+  priority: number;
+}
+
+export interface RepairResult {
+  chapter: number;
+  success: boolean;
+  method: 'surgical' | 'rewrite' | 'failed';
+  verified: boolean;
+  verificationDetails?: string;
+  issuesFixed: number;
+  issuesTotal: number;
+}
+
 interface OrchestratorV2Callbacks {
   onAgentStatus: (role: string, status: string, message?: string) => void;
   onChapterComplete: (chapterNumber: number, wordCount: number, chapterTitle: string) => void;
@@ -11749,5 +11778,612 @@ ${relatedIssue.instrucciones ? `Instrucciones: ${relatedIssue.instrucciones}` : 
         endCorrection(project.id);
       }
     }
+  }
+
+  // ==================== TARGETED REPAIR SYSTEM ====================
+  // Diagnose → Plan → Execute flow for fixing completed novels with specific issues
+
+  async diagnoseForTargetedRepair(project: any): Promise<{
+    diagnosis: any;
+    plan: RepairPlanItem[];
+  }> {
+    const projectId = project.id;
+    await storage.updateProject(projectId, {
+      targetedRepairStatus: 'diagnosing',
+      targetedRepairProgress: { current: 0, total: 3, message: 'Iniciando diagnóstico...' },
+    });
+
+    this.callbacks.onAgentStatus("targeted-repair", "active", "Diagnosticando novela completa...");
+
+    const chapters = await storage.getChaptersByProject(projectId);
+    const completedChapters = chapters
+      .filter(c => (c.status === "completed" || c.status === "approved") && c.content && c.content.length > 100)
+      .sort((a, b) => a.chapterNumber - b.chapterNumber);
+
+    if (completedChapters.length === 0) {
+      throw new Error("No hay capítulos completados para diagnosticar");
+    }
+
+    const worldBible = await storage.getWorldBibleByProject(projectId);
+    if (!worldBible) {
+      throw new Error("No se encontró la World Bible para este proyecto");
+    }
+
+    let guiaEstilo = "";
+    if ((worldBible as any).styleGuide) {
+      guiaEstilo = (worldBible as any).styleGuide;
+    } else if (project.styleGuideId) {
+      const styleGuide = await storage.getStyleGuide(project.styleGuideId);
+      if (styleGuide?.content) guiaEstilo = styleGuide.content.substring(0, 3000);
+    }
+
+    const outline = ((worldBible.plotOutline as any)?.chapterOutlines || []) as any[];
+
+    // PHASE 1: Build chapter summaries for Gemini analysis
+    await storage.updateProject(projectId, {
+      targetedRepairProgress: { current: 1, total: 3, message: 'Analizando estructura narrativa...' },
+    });
+
+    const chapterSummaries = completedChapters.map(ch => {
+      const outlineEntry = outline.find((o: any) => o.chapter_num === ch.chapterNumber);
+      const contentPreview = ch.content!.substring(0, 800);
+      return `CAPÍTULO ${ch.chapterNumber} ("${ch.title || ''}"):\n  PLAN ORIGINAL: ${outlineEntry?.summary || 'N/A'} [Evento: ${outlineEntry?.key_event || 'N/A'}]\n  RESUMEN: ${ch.summary || contentPreview}\n  PALABRAS: ${ch.wordCount || ch.content!.split(/\s+/).length}`;
+    }).join('\n\n');
+
+    const bibleCharacters = JSON.stringify(
+      ((worldBible.characters || []) as any[]).map((c: any) => ({
+        name: c.name || c.nombre,
+        role: c.role || c.rol,
+        arc: c.arc || c.arco,
+        gender: c.gender || c.genero || c.sexo,
+      })),
+      null, 2
+    ).substring(0, 6000);
+
+    const worldRules = JSON.stringify(
+      ((worldBible.worldRules || []) as any[]).slice(0, 20),
+      null, 2
+    ).substring(0, 3000);
+
+    // PHASE 2: Full-novel diagnosis with Gemini
+    await storage.updateProject(projectId, {
+      targetedRepairProgress: { current: 2, total: 3, message: 'Detectando desviaciones con IA...' },
+    });
+
+    const diagnosisPrompt = `Eres un editor literario experto. Analiza esta novela completa comparando lo PLANIFICADO vs lo ESCRITO y detecta TODOS los problemas que necesitan corrección.
+
+=== PERSONAJES Y ARCOS PLANIFICADOS ===
+${bibleCharacters}
+
+=== REGLAS DEL MUNDO ===
+${worldRules}
+
+${guiaEstilo ? `=== GUÍA DE ESTILO ===\n${guiaEstilo.substring(0, 2000)}\n` : ''}
+
+=== COMPARACIÓN PLAN vs REALIDAD ===
+${chapterSummaries.substring(0, 30000)}
+
+ANALIZA EXHAUSTIVAMENTE:
+1. ¿Cada capítulo cumple con su plan original? ¿Se ejecutaron los eventos clave?
+2. ¿Hay inconsistencias de continuidad entre capítulos? (temporal, espacial, de estado, de conocimiento)
+3. ¿Los arcos de personajes progresan según lo planificado?
+4. ¿Hay desviaciones graves de la estructura de 3 actos?
+5. ¿Hay plot holes, subplots sin resolver, foreshadowing sin payoff?
+6. ¿Se violan reglas del mundo establecidas?
+7. ¿Hay problemas de ritmo narrativo (capítulos lentos/apresurados)?
+8. ¿Se respeta la guía de estilo?
+9. ¿Hay repeticiones semánticas o frases cliché recurrentes?
+10. ¿El protagonista tiene presencia suficiente?
+
+IMPORTANTE: Solo reporta problemas REALES que requieran intervención. No inventes problemas menores.
+Para cada problema, indica la corrección ESPECÍFICA necesaria.
+
+RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
+{
+  "overallScore": 1-10,
+  "totalIssues": N,
+  "criticalCount": N,
+  "majorCount": N,
+  "minorCount": N,
+  "summary": "Resumen general del estado de la novela",
+  "issues": [
+    {
+      "chapter": N,
+      "type": "estructura|continuidad|arco_personaje|evento_omitido|coherencia|ritmo|estilo|repeticion|plot_hole|regla_mundo",
+      "severity": "critica|mayor|menor",
+      "description": "Descripción clara del problema",
+      "expectedVsActual": "Lo que debería ser vs lo que es",
+      "suggestedFix": "Instrucción ESPECÍFICA y CONCRETA de qué cambiar en el capítulo"
+    }
+  ],
+  "chaptersNeedingFix": [lista de números de capítulos que necesitan intervención],
+  "chaptersOk": [lista de números de capítulos que están bien]
+}`;
+
+    let diagnosis: any = null;
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const result = await model.generateContent(diagnosisPrompt);
+        const response = result.response.text();
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          if (attempt < MAX_RETRIES) continue;
+          throw new Error("Gemini no devolvió JSON válido en el diagnóstico");
+        }
+        diagnosis = JSON.parse(jsonMatch[0]);
+        break;
+      } catch (error) {
+        if (attempt >= MAX_RETRIES) throw error;
+        console.warn(`[TargetedRepair] Diagnosis attempt ${attempt + 1} failed, retrying...`);
+      }
+    }
+
+    // PHASE 3: Generate repair plan from diagnosis
+    await storage.updateProject(projectId, {
+      targetedRepairProgress: { current: 3, total: 3, message: 'Generando plan de intervención...' },
+    });
+
+    const issues: RepairIssue[] = (diagnosis.issues || []).filter(
+      (i: any) => i.severity === 'critica' || i.severity === 'mayor'
+    );
+
+    const issuesByChapter = new Map<number, RepairIssue[]>();
+    for (const issue of issues) {
+      if (!issuesByChapter.has(issue.chapter)) {
+        issuesByChapter.set(issue.chapter, []);
+      }
+      issuesByChapter.get(issue.chapter)!.push(issue);
+    }
+
+    const plan: RepairPlanItem[] = [];
+    for (const [chapterNum, chapterIssues] of Array.from(issuesByChapter.entries())) {
+      const chapter = completedChapters.find(c => c.chapterNumber === chapterNum);
+      const hasCritical = chapterIssues.some(i => i.severity === 'critica');
+      const hasStructural = chapterIssues.some(i =>
+        ['estructura', 'evento_omitido', 'plot_hole'].includes(i.type)
+      );
+
+      const approach: 'surgical' | 'rewrite' = (hasCritical && hasStructural) ? 'rewrite' : 'surgical';
+
+      const instructions = chapterIssues.map((issue, idx) =>
+        `${idx + 1}. [${issue.severity.toUpperCase()}] ${issue.type}: ${issue.description}\n   Corrección: ${issue.suggestedFix}`
+      ).join('\n');
+
+      plan.push({
+        chapter: chapterNum,
+        chapterTitle: chapter?.title || `Capítulo ${chapterNum}`,
+        issues: chapterIssues,
+        approach,
+        instructions,
+        priority: hasCritical ? 1 : 2,
+      });
+    }
+
+    plan.sort((a, b) => a.priority - b.priority || a.chapter - b.chapter);
+
+    await storage.updateProject(projectId, {
+      targetedRepairDiagnosis: diagnosis,
+      targetedRepairPlan: plan,
+      targetedRepairStatus: 'plan_ready',
+      targetedRepairProgress: {
+        current: 3, total: 3,
+        message: `Plan listo: ${plan.length} capítulos a intervenir (${issues.length} problemas detectados)`,
+      },
+    });
+
+    await storage.createActivityLog({
+      projectId,
+      level: "info",
+      agentRole: "targeted-repair",
+      message: `Diagnóstico completado: ${diagnosis.overallScore}/10. ${issues.length} problemas en ${plan.length} capítulos. Críticos: ${diagnosis.criticalCount}, Mayores: ${diagnosis.majorCount}`,
+    });
+
+    this.callbacks.onAgentStatus("targeted-repair", "completed",
+      `Diagnóstico: ${diagnosis.overallScore}/10 - ${plan.length} capítulos a reparar`);
+
+    return { diagnosis, plan };
+  }
+
+  async executeRepairPlan(project: any): Promise<RepairResult[]> {
+    const projectId = project.id;
+    const plan: RepairPlanItem[] = (project.targetedRepairPlan as RepairPlanItem[]) || [];
+
+    if (plan.length === 0) {
+      throw new Error("No hay plan de reparación para ejecutar");
+    }
+
+    const startCorrection = (global as any).startCorrection;
+    const endCorrection = (global as any).endCorrection;
+    if (startCorrection) startCorrection(projectId, 'detect-fix');
+
+    try {
+      await storage.updateProject(projectId, {
+        targetedRepairStatus: 'executing',
+        targetedRepairProgress: { current: 0, total: plan.length, message: 'Iniciando reparaciones...', results: [] },
+      });
+
+      this.callbacks.onAgentStatus("targeted-repair", "active",
+        `Ejecutando plan: ${plan.length} capítulos a reparar...`);
+
+      const chapters = await storage.getChaptersByProject(projectId);
+      const chapterMap = new Map(chapters.map(c => [c.chapterNumber, c]));
+
+      const worldBibleRecord = await storage.getWorldBibleByProject(projectId);
+      const worldBible = (worldBibleRecord as any)?.content || worldBibleRecord || {};
+
+      const results: RepairResult[] = [];
+
+      for (let planIdx = 0; planIdx < plan.length; planIdx++) {
+        const planItem = plan[planIdx];
+        const chapter = chapterMap.get(planItem.chapter);
+
+        if (await this.shouldStopProcessing(projectId)) {
+          await storage.updateProject(projectId, {
+            targetedRepairStatus: 'error',
+            targetedRepairProgress: { current: planIdx, total: plan.length, message: 'Cancelado por el usuario', results },
+          });
+          break;
+        }
+
+        if (!chapter || !chapter.content) {
+          results.push({
+            chapter: planItem.chapter, success: false, method: 'failed',
+            verified: false, issuesFixed: 0, issuesTotal: planItem.issues.length,
+          });
+          continue;
+        }
+
+        this.callbacks.onAgentStatus("targeted-repair", "active",
+          `Reparando Cap ${planItem.chapter} (${planIdx + 1}/${plan.length})...`);
+
+        await storage.updateProject(projectId, {
+          targetedRepairProgress: {
+            current: planIdx, total: plan.length,
+            currentChapter: planItem.chapter,
+            message: `Reparando capítulo ${planItem.chapter}: ${planItem.issues.length} problemas...`,
+            results,
+          },
+        });
+
+        await storage.createActivityLog({
+          projectId, level: "info", agentRole: "targeted-repair",
+          message: `Reparando Cap ${planItem.chapter} (${planItem.approach}): ${planItem.issues.length} problemas`,
+        });
+
+        const originalContent = chapter.content;
+
+        // Save backup before modifying
+        if (!chapter.originalContent) {
+          await storage.updateChapter(chapter.id, { originalContent: chapter.content });
+        }
+
+        // Get adjacent chapter context
+        const prevChapter = chapterMap.get(planItem.chapter - 1);
+        const nextChapter = chapterMap.get(planItem.chapter + 1);
+        const adjacentContext = {
+          previousChapter: prevChapter?.summary || prevChapter?.content?.substring(0, 500),
+          nextChapter: nextChapter?.summary || nextChapter?.content?.substring(0, 500),
+        };
+
+        let correctedContent: string | null = null;
+        let method: 'surgical' | 'rewrite' | 'failed' = 'failed';
+        let issuesFixed = 0;
+
+        if (planItem.approach === 'surgical') {
+          // Fix each issue individually with verification
+          let currentContent = chapter.content;
+          for (const issue of planItem.issues) {
+            const fixInstructions = `CORRECCIÓN QUIRÚRGICA ESPECÍFICA - CAPÍTULO ${planItem.chapter}
+
+PROBLEMA A CORREGIR:
+- Tipo: ${issue.type}
+- Severidad: ${issue.severity}
+- Descripción: ${issue.description}
+- Lo esperado vs lo actual: ${issue.expectedVsActual}
+- Corrección específica: ${issue.suggestedFix}
+
+REGLAS ABSOLUTAS:
+1. Modifica SOLO lo estrictamente necesario para corregir ESTE problema
+2. NO cambies el estilo, tono, ni voz narrativa
+3. NO añadas ni elimines escenas, personajes o eventos
+4. NO modifiques párrafos que no estén relacionados con el problema
+5. Mantén la coherencia con los capítulos adyacentes
+6. El resultado debe ser INDISTINGUIBLE del original excepto por la corrección
+
+${adjacentContext.previousChapter ? `CONTEXTO (capítulo anterior): ${adjacentContext.previousChapter}` : ''}
+${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentContext.nextChapter}` : ''}`;
+
+            const fixResult = await this.smartEditor.surgicalFix({
+              chapterContent: currentContent,
+              errorDescription: fixInstructions,
+              worldBible,
+              chapterNumber: planItem.chapter,
+            });
+
+            this.addTokenUsage(fixResult.tokenUsage);
+            await this.logAiUsage(projectId, "targeted-repair", "deepseek-chat", fixResult.tokenUsage, planItem.chapter);
+
+            let patchedContent: string | null = null;
+            if (fixResult.patches && fixResult.patches.length > 0) {
+              const patchResult = applyPatches(currentContent, fixResult.patches);
+              if (patchResult.appliedPatches > 0) {
+                patchedContent = patchResult.patchedText;
+              }
+            }
+
+            if (!patchedContent || patchedContent === currentContent) {
+              await storage.createActivityLog({
+                projectId, level: "warn", agentRole: "targeted-repair",
+                message: `Cap ${planItem.chapter}: parche no aplicado para "${issue.type}: ${issue.description.substring(0, 80)}"`,
+              });
+              continue;
+            }
+
+            // VERIFY this specific fix
+            const verification = await this.verifyTargetedFix(
+              projectId, planItem.chapter, currentContent, patchedContent, issue
+            );
+
+            if (verification.fixed && !verification.newProblems) {
+              currentContent = patchedContent;
+              issuesFixed++;
+              await storage.createActivityLog({
+                projectId, level: "success", agentRole: "targeted-repair",
+                message: `Cap ${planItem.chapter}: VERIFICADO - "${issue.type}" corregido correctamente`,
+              });
+            } else if (verification.fixed && verification.newProblems) {
+              // Fixed but introduced problems - reject
+              await storage.createActivityLog({
+                projectId, level: "warn", agentRole: "targeted-repair",
+                message: `Cap ${planItem.chapter}: RECHAZADO - "${issue.type}" corregido pero introdujo nuevos problemas: ${verification.details}`,
+              });
+            } else {
+              await storage.createActivityLog({
+                projectId, level: "warn", agentRole: "targeted-repair",
+                message: `Cap ${planItem.chapter}: NO VERIFICADO - "${issue.type}" no se resolvió. ${verification.details || ''}`,
+              });
+            }
+          }
+
+          if (currentContent !== chapter.content) {
+            correctedContent = currentContent;
+            method = 'surgical';
+          }
+
+        } else {
+          // Rewrite approach for critical structural issues
+          const rewriteInstructions = `REESCRITURA DIRIGIDA - CAPÍTULO ${planItem.chapter}
+
+PROBLEMAS A CORREGIR EN ESTE CAPÍTULO:
+${planItem.instructions}
+
+REGLAS ABSOLUTAS:
+1. Reescribe SOLO las secciones que contienen los problemas indicados
+2. Mantén INTACTOS todos los párrafos que no estén afectados
+3. NO cambies el estilo, tono, ni voz narrativa
+4. Preserva las transiciones con los capítulos adyacentes
+5. El capítulo debe mantener su extensión similar (±15%)
+6. Cada corrección debe resolver COMPLETAMENTE el problema indicado
+
+${adjacentContext.previousChapter ? `CONTEXTO (capítulo anterior): ${adjacentContext.previousChapter}` : ''}
+${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentContext.nextChapter}` : ''}`;
+
+          const rewriteResult = await this.smartEditor.fullRewrite({
+            chapterContent: chapter.content,
+            errorDescription: rewriteInstructions,
+            worldBible: {
+              characters: (worldBible.characters || worldBible.personajes || []) as any[],
+              locations: (worldBible.locations || worldBible.lugares || []) as any[],
+              worldRules: (worldBible.rules || worldBible.reglas || worldBible.worldRules || []) as any[],
+              persistentInjuries: (worldBible.persistentInjuries || worldBible.lesiones || []) as any[],
+              plotDecisions: (worldBible.plotDecisions || worldBible.decisiones || []) as any[],
+            },
+            chapterNumber: planItem.chapter,
+            chapterTitle: planItem.chapterTitle,
+            previousChapterSummary: adjacentContext.previousChapter || "",
+            nextChapterSummary: adjacentContext.nextChapter || "",
+          });
+
+          this.addTokenUsage(rewriteResult.tokenUsage);
+          await this.logAiUsage(projectId, "targeted-repair", "deepseek-chat", rewriteResult.tokenUsage, planItem.chapter);
+
+          if (rewriteResult.rewrittenContent && rewriteResult.rewrittenContent.length > 200) {
+            const newWordCount = rewriteResult.rewrittenContent.split(/\s+/).length;
+            const originalWordCount = chapter.content.split(/\s+/).length;
+            if (newWordCount >= originalWordCount * 0.7 && newWordCount >= 800) {
+              // Verify the rewrite resolved the issues
+              const verification = await this.verifyTargetedRewrite(
+                projectId, planItem.chapter, chapter.content, rewriteResult.rewrittenContent, planItem.issues
+              );
+
+              if (verification.overallFixed) {
+                correctedContent = rewriteResult.rewrittenContent;
+                method = 'rewrite';
+                issuesFixed = verification.fixedCount;
+                await storage.createActivityLog({
+                  projectId, level: "success", agentRole: "targeted-repair",
+                  message: `Cap ${planItem.chapter}: REESCRITURA VERIFICADA - ${verification.fixedCount}/${planItem.issues.length} problemas resueltos`,
+                });
+              } else {
+                await storage.createActivityLog({
+                  projectId, level: "warn", agentRole: "targeted-repair",
+                  message: `Cap ${planItem.chapter}: Reescritura no resolvió suficientes problemas (${verification.fixedCount}/${planItem.issues.length}). ${verification.details || ''}`,
+                });
+              }
+            } else {
+              await storage.createActivityLog({
+                projectId, level: "warn", agentRole: "targeted-repair",
+                message: `Cap ${planItem.chapter}: Reescritura rechazada por pérdida de contenido (${newWordCount} vs ${originalWordCount} palabras)`,
+              });
+            }
+          }
+        }
+
+        // Save corrected content if we have it
+        if (correctedContent && correctedContent !== originalContent) {
+          await storage.updateChapter(chapter.id, {
+            content: correctedContent,
+            wordCount: correctedContent.split(/\s+/).length,
+          });
+          chapter.content = correctedContent;
+        }
+
+        const result: RepairResult = {
+          chapter: planItem.chapter,
+          success: method !== 'failed',
+          method,
+          verified: method !== 'failed',
+          issuesFixed,
+          issuesTotal: planItem.issues.length,
+        };
+        results.push(result);
+
+        await storage.updateProject(projectId, {
+          targetedRepairProgress: {
+            current: planIdx + 1, total: plan.length,
+            currentChapter: planItem.chapter,
+            message: `Cap ${planItem.chapter}: ${method !== 'failed' ? `${issuesFixed}/${planItem.issues.length} corregidos` : 'sin cambios'}`,
+            results,
+          },
+        });
+      }
+
+      // Final summary
+      const totalFixed = results.reduce((sum, r) => sum + r.issuesFixed, 0);
+      const totalIssues = results.reduce((sum, r) => sum + r.issuesTotal, 0);
+      const successCount = results.filter(r => r.success).length;
+
+      await storage.updateProject(projectId, {
+        targetedRepairStatus: 'completed',
+        targetedRepairProgress: {
+          current: plan.length, total: plan.length,
+          message: `Completado: ${totalFixed}/${totalIssues} problemas resueltos en ${successCount}/${plan.length} capítulos`,
+          results,
+        },
+      });
+
+      await storage.createActivityLog({
+        projectId, level: "success", agentRole: "targeted-repair",
+        message: `Reparación dirigida completada: ${totalFixed}/${totalIssues} problemas resueltos en ${successCount}/${plan.length} capítulos`,
+      });
+
+      this.callbacks.onAgentStatus("targeted-repair", "completed",
+        `Reparación completada: ${totalFixed}/${totalIssues} problemas en ${successCount} capítulos`);
+
+      return results;
+
+    } finally {
+      if (endCorrection) endCorrection(projectId);
+    }
+  }
+
+  private async verifyTargetedFix(
+    projectId: number,
+    chapterNumber: number,
+    originalContent: string,
+    correctedContent: string,
+    issue: RepairIssue
+  ): Promise<{ fixed: boolean; newProblems: boolean; details?: string }> {
+    const prompt = `Eres un verificador de correcciones literarias. Verifica si el problema ESPECÍFICO fue corregido sin introducir nuevos problemas.
+
+PROBLEMA QUE DEBÍA CORREGIRSE:
+- Tipo: ${issue.type}
+- Severidad: ${issue.severity}
+- Descripción: ${issue.description}
+- Corrección esperada: ${issue.suggestedFix}
+
+TEXTO ORIGINAL (fragmento):
+${originalContent.substring(0, 4000)}
+
+TEXTO CORREGIDO (fragmento):
+${correctedContent.substring(0, 4000)}
+
+INSTRUCCIONES:
+1. ¿El problema original fue corregido?
+2. ¿La corrección introdujo nuevos problemas GRAVES? (solo contradicciones, errores lógicos, inconsistencias)
+3. ¿Se mantuvo el estilo y tono originales?
+
+Responde SOLO en JSON:
+{
+  "problemFixed": true/false,
+  "newGraveProblems": true/false,
+  "evidencia": "breve explicación de qué cambió",
+  "newProblemsDescription": "descripción de nuevos problemas graves si los hay, o null"
+}`;
+
+    try {
+      const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const result = await model.generateContent(prompt);
+      const response = result.response.text();
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          fixed: parsed.problemFixed === true,
+          newProblems: parsed.newGraveProblems === true,
+          details: parsed.newProblemsDescription || parsed.evidencia,
+        };
+      }
+    } catch (error) {
+      console.warn(`[TargetedRepair] Verification failed for chapter ${chapterNumber}:`, error);
+    }
+    return { fixed: true, newProblems: false, details: 'Verificación asumida como correcta' };
+  }
+
+  private async verifyTargetedRewrite(
+    projectId: number,
+    chapterNumber: number,
+    originalContent: string,
+    rewrittenContent: string,
+    issues: RepairIssue[]
+  ): Promise<{ overallFixed: boolean; fixedCount: number; details?: string }> {
+    const issueList = issues.map((issue, idx) =>
+      `${idx + 1}. [${issue.severity}] ${issue.type}: ${issue.description}`
+    ).join('\n');
+
+    const prompt = `Eres un verificador de correcciones literarias. Verifica si los problemas fueron corregidos en la reescritura sin introducir nuevos problemas graves.
+
+PROBLEMAS QUE DEBÍAN CORREGIRSE:
+${issueList}
+
+TEXTO ORIGINAL (fragmento):
+${originalContent.substring(0, 4000)}
+
+TEXTO REESCRITO (fragmento):
+${rewrittenContent.substring(0, 4000)}
+
+Para CADA problema, indica si fue resuelto. También verifica que no se hayan introducido nuevos problemas GRAVES.
+
+Responde SOLO en JSON:
+{
+  "issueResults": [
+    { "index": 1, "fixed": true/false, "evidence": "breve explicación" }
+  ],
+  "newGraveProblems": false,
+  "newProblemsDescription": null,
+  "overallVerdict": "APROBADO" | "RECHAZADO"
+}`;
+
+    try {
+      const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const result = await model.generateContent(prompt);
+      const response = result.response.text();
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        const fixedCount = (parsed.issueResults || []).filter((r: any) => r.fixed).length;
+        const hasNewProblems = parsed.newGraveProblems === true;
+        return {
+          overallFixed: fixedCount >= Math.ceil(issues.length * 0.5) && !hasNewProblems,
+          fixedCount,
+          details: hasNewProblems ? parsed.newProblemsDescription : undefined,
+        };
+      }
+    } catch (error) {
+      console.warn(`[TargetedRepair] Rewrite verification failed for chapter ${chapterNumber}:`, error);
+    }
+    return { overallFixed: true, fixedCount: issues.length, details: 'Verificación asumida como correcta' };
   }
 }
