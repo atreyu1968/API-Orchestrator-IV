@@ -103,6 +103,10 @@ export const projects = pgTable("projects", {
   chapterCorrectionCounts: jsonb("chapter_correction_counts").default({}), // {chapterNumber: correctionCount} - prevents infinite loops
   successfullyCorrectedChapters: jsonb("successfully_corrected_chapters").default([]), // Array of chapter numbers that passed correction - skip in future cycles
   consecutiveHighScores: integer("consecutive_high_scores").default(0), // Track consecutive 9+/10 scores for approval
+  targetedRepairDiagnosis: jsonb("targeted_repair_diagnosis"), // Structured deviation report from diagnosis
+  targetedRepairPlan: jsonb("targeted_repair_plan"), // Array of chapter-specific repair actions
+  targetedRepairStatus: text("targeted_repair_status"), // idle | diagnosing | plan_ready | executing | verifying | completed | error
+  targetedRepairProgress: jsonb("targeted_repair_progress"), // { current, total, currentChapter, message, results: [] }
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
