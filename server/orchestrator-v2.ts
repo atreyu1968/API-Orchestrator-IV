@@ -12111,9 +12111,9 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
         let correctedContent: string | null = null;
         let method: 'surgical' | 'rewrite' | 'failed' = 'failed';
         let issuesFixed = 0;
+        let allIssuesResolved = false;
 
         if (planItem.approach === 'surgical') {
-          // Fix each issue individually with verification
           let currentContent = chapter.content;
           const unresolvedIssues: RepairIssue[] = [];
           for (const issue of planItem.issues) {
@@ -12243,9 +12243,10 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
             }
           }
 
-          if (currentContent !== chapter.content) {
+          if (currentContent !== chapter.content && unresolvedIssues.length === 0) {
             correctedContent = currentContent;
             method = 'surgical';
+            allIssuesResolved = true;
           }
 
           // FALLBACK: If surgical failed for any issues, evaluate escalation to rewrite
@@ -12268,7 +12269,8 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
                 `Cap ${planItem.chapter}: Reescritura focalizada (fallback)...`);
 
               // Phase 2: Focused rewrite only for unresolved issues
-              const contentToRewrite = correctedContent || chapter.content;
+              // Use the partially-fixed content (from successful surgical patches) as base for rewrite
+              const contentToRewrite = currentContent;
               const unresolvedInstructions = worthFixing.unresolvedIssues.map((issue: RepairIssue, idx: number) =>
                 `${idx + 1}. [${issue.severity.toUpperCase()}] ${issue.type}:
    Problema: ${issue.description}
@@ -12334,6 +12336,7 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
                     correctedContent = rewriteResult.rewrittenContent;
                     method = 'rewrite';
                     issuesFixed = verification.fixedCount;
+                    allIssuesResolved = true;
                     await storage.createActivityLog({
                       projectId, level: "success", agentRole: "targeted-repair",
                       message: `Cap ${planItem.chapter}: FALLBACK REESCRITURA VERIFICADA - ${verification.fixedCount}/${planItem.issues.length} problemas resueltos`,
@@ -12415,6 +12418,7 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
                 correctedContent = rewriteResult.rewrittenContent;
                 method = 'rewrite';
                 issuesFixed = verification.fixedCount;
+                allIssuesResolved = true;
                 await storage.createActivityLog({
                   projectId, level: "success", agentRole: "targeted-repair",
                   message: `Cap ${planItem.chapter}: REESCRITURA VERIFICADA - ${verification.fixedCount}/${planItem.issues.length} problemas resueltos`,
@@ -12434,20 +12438,32 @@ ${adjacentContext.nextChapter ? `CONTEXTO (capítulo siguiente): ${adjacentConte
           }
         }
 
-        // Save corrected content if we have it
-        if (correctedContent && correctedContent !== originalContent) {
+        // CRITICAL: Only save corrected content if ALL issues were verified as resolved
+        // This prevents saving partial fixes that could introduce new problems
+        if (correctedContent && correctedContent !== originalContent && allIssuesResolved) {
           await storage.updateChapter(chapter.id, {
             content: correctedContent,
             wordCount: correctedContent.split(/\s+/).length,
           });
           chapter.content = correctedContent;
+          await storage.createActivityLog({
+            projectId, level: "success", agentRole: "targeted-repair",
+            message: `Cap ${planItem.chapter}: Contenido guardado (${method}, ${issuesFixed}/${planItem.issues.length} problemas resueltos)`,
+          });
+        } else if (correctedContent && !allIssuesResolved) {
+          await storage.createActivityLog({
+            projectId, level: "warn", agentRole: "targeted-repair",
+            message: `Cap ${planItem.chapter}: Contenido NO guardado - reparación incompleta (${issuesFixed}/${planItem.issues.length}). Se mantiene el original para evitar regresiones.`,
+          });
+          correctedContent = null;
+          method = 'failed';
         }
 
         const result: RepairResult = {
           chapter: planItem.chapter,
-          success: method !== 'failed',
+          success: allIssuesResolved,
           method,
-          verified: method !== 'failed',
+          verified: allIssuesResolved,
           issuesFixed,
           issuesTotal: planItem.issues.length,
         };
