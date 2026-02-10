@@ -305,18 +305,154 @@ export class GlobalArchitectAgent extends BaseAgent {
       };
     }
     
-    // Validate required fields
+    // Normalize alternative key names the AI might use
+    const parsedAny = parsed as any;
     if (!parsed.outline || !Array.isArray(parsed.outline)) {
-      console.error("[GlobalArchitect] Missing or invalid outline in response");
+      const outlineAlternatives = ['chapters', 'capitulos', 'chapter_outline', 'chapter_outlines', 'estructura', 'esquema', 'estructura_capitulos', 'novel_outline', 'book_outline'];
+      for (const alt of outlineAlternatives) {
+        if (parsedAny[alt] && Array.isArray(parsedAny[alt])) {
+          console.log(`[GlobalArchitect] Found outline under alternative key "${alt}" (${parsedAny[alt].length} entries), normalizing...`);
+          parsed.outline = parsedAny[alt].map((ch: any, idx: number) => ({
+            chapter_num: ch.chapter_num ?? ch.numero ?? ch.num ?? ch.number ?? ch.capitulo_num ?? (idx + 1),
+            title: ch.title ?? ch.titulo ?? ch.name ?? ch.nombre ?? `Capítulo ${idx + 1}`,
+            act: ch.act ?? ch.acto ?? undefined,
+            summary: ch.summary ?? ch.resumen ?? ch.sinopsis ?? ch.descripcion ?? "",
+            key_event: ch.key_event ?? ch.evento_clave ?? ch.evento ?? ch.event ?? "",
+            emotional_arc: ch.emotional_arc ?? ch.arco_emocional ?? undefined,
+            temporal_notes: ch.temporal_notes ?? ch.notas_temporales ?? undefined,
+            location: ch.location ?? ch.ubicacion ?? ch.lugar ?? undefined,
+            character_states_entering: ch.character_states_entering ?? ch.estados_personajes ?? undefined,
+          }));
+          break;
+        }
+      }
+    }
+    if (!parsed.world_bible) {
+      const wbAlternatives = ['worldBible', 'world', 'biblia_mundo', 'biblia', 'worldbuilding', 'mundo'];
+      for (const alt of wbAlternatives) {
+        if (parsedAny[alt] && typeof parsedAny[alt] === 'object') {
+          console.log(`[GlobalArchitect] Found world_bible under alternative key "${alt}", normalizing...`);
+          parsed.world_bible = parsedAny[alt];
+          break;
+        }
+      }
+    }
+    if (!parsed.plot_threads || !Array.isArray(parsed.plot_threads)) {
+      const ptAlternatives = ['plotThreads', 'hilos_narrativos', 'hilos', 'tramas', 'plot_lines', 'threads'];
+      for (const alt of ptAlternatives) {
+        if (parsedAny[alt] && Array.isArray(parsedAny[alt])) {
+          console.log(`[GlobalArchitect] Found plot_threads under alternative key "${alt}", normalizing...`);
+          parsed.plot_threads = parsedAny[alt];
+          break;
+        }
+      }
+    }
+
+    // Validate required fields - retry once if missing
+    if (!parsed.outline || !Array.isArray(parsed.outline) || !parsed.world_bible) {
+      const missingFields = [];
+      if (!parsed.outline || !Array.isArray(parsed.outline)) missingFields.push('outline');
+      if (!parsed.world_bible) missingFields.push('world_bible');
+      const parsedKeys = Object.keys(parsed);
+      console.error(`[GlobalArchitect] Missing required fields: ${missingFields.join(', ')}. Parsed keys: ${parsedKeys.join(', ')}`);
+      console.error(`[GlobalArchitect] Parsed object preview: ${JSON.stringify(parsed).substring(0, 1000)}`);
+      
+      console.log(`[GlobalArchitect] RETRYING: Making a second API call due to missing fields...`);
+      const retryResponse = await this.generateContent(prompt, undefined, { maxCompletionTokens: maxTokens });
+      
+      if (!retryResponse.error && retryResponse.content) {
+        const retryContent = retryResponse.content;
+        let retryParsed: GlobalArchitectOutput | null = null;
+        
+        try {
+          const jsonMatch = retryContent.match(/\{[\s\S]*"outline"[\s\S]*\}/);
+          if (jsonMatch) {
+            retryParsed = JSON.parse(cleanJsonString(jsonMatch[0])) as GlobalArchitectOutput;
+          }
+        } catch {}
+        
+        if (!retryParsed) {
+          try {
+            const firstBrace = retryContent.indexOf('{');
+            const lastBrace = retryContent.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace > firstBrace) {
+              retryParsed = JSON.parse(cleanJsonString(retryContent.substring(firstBrace, lastBrace + 1))) as GlobalArchitectOutput;
+            }
+          } catch {}
+        }
+        
+        if (!retryParsed) {
+          try {
+            retryParsed = this.repairTruncatedJson(retryContent) as GlobalArchitectOutput;
+          } catch {}
+        }
+        if (!retryParsed) {
+          try {
+            retryParsed = this.aggressiveJsonRepair(retryContent) as GlobalArchitectOutput;
+          } catch {}
+        }
+        if (!retryParsed) {
+          try {
+            retryParsed = this.iterativeJsonRepair(retryContent) as GlobalArchitectOutput;
+          } catch {}
+        }
+        
+        if (retryParsed) {
+          const retryAny = retryParsed as any;
+          if (!retryParsed.outline || !Array.isArray(retryParsed.outline)) {
+            const outlineAlts = ['chapters', 'capitulos', 'chapter_outline', 'chapter_outlines', 'estructura', 'esquema'];
+            for (const alt of outlineAlts) {
+              if (retryAny[alt] && Array.isArray(retryAny[alt])) {
+                retryParsed.outline = retryAny[alt].map((ch: any, idx: number) => ({
+                  chapter_num: ch.chapter_num ?? ch.numero ?? ch.num ?? ch.number ?? (idx + 1),
+                  title: ch.title ?? ch.titulo ?? ch.name ?? `Capítulo ${idx + 1}`,
+                  act: ch.act ?? ch.acto ?? undefined,
+                  summary: ch.summary ?? ch.resumen ?? ch.sinopsis ?? "",
+                  key_event: ch.key_event ?? ch.evento_clave ?? ch.evento ?? "",
+                }));
+                break;
+              }
+            }
+          }
+          if (!retryParsed.world_bible) {
+            const wbAlts = ['worldBible', 'world', 'biblia_mundo', 'biblia', 'worldbuilding'];
+            for (const alt of wbAlts) {
+              if (retryAny[alt] && typeof retryAny[alt] === 'object') {
+                retryParsed.world_bible = retryAny[alt];
+                break;
+              }
+            }
+          }
+          
+          if (retryParsed.outline && Array.isArray(retryParsed.outline) && retryParsed.world_bible) {
+            console.log(`[GlobalArchitect] RETRY SUCCEEDED: Got ${retryParsed.outline.length} outline entries`);
+            parsed = retryParsed;
+            if (retryResponse.tokenUsage) {
+              response.tokenUsage = {
+                inputTokens: (response.tokenUsage?.inputTokens || 0) + (retryResponse.tokenUsage?.inputTokens || 0),
+                outputTokens: (response.tokenUsage?.outputTokens || 0) + (retryResponse.tokenUsage?.outputTokens || 0),
+                thinkingTokens: (response.tokenUsage?.thinkingTokens || 0) + (retryResponse.tokenUsage?.thinkingTokens || 0),
+              };
+            }
+          } else {
+            console.error(`[GlobalArchitect] RETRY ALSO FAILED: Still missing outline or world_bible`);
+          }
+        }
+      }
+    }
+    
+    if (!parsed.outline || !Array.isArray(parsed.outline)) {
+      const parsedKeys = Object.keys(parsed);
+      console.error(`[GlobalArchitect] Missing or invalid outline in response after retry. Keys: ${parsedKeys.join(', ')}`);
       return {
         ...response,
-        error: "La respuesta no contiene un outline válido. Por favor, regenere el proyecto.",
+        error: `La respuesta no contiene un outline válido (campos encontrados: ${parsedKeys.join(', ')}). Por favor, regenere el proyecto.`,
         parsed: undefined
       };
     }
     
     if (!parsed.world_bible) {
-      console.error("[GlobalArchitect] Missing world_bible in response");
+      console.error("[GlobalArchitect] Missing world_bible in response after retry");
       return {
         ...response,
         error: "La respuesta no contiene world_bible. Por favor, regenere el proyecto.",
