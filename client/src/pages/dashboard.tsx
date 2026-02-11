@@ -15,11 +15,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Play, FileText, Clock, CheckCircle, Download, Archive, Copy, Trash2, ClipboardCheck, RefreshCw, Ban, CheckCheck, Plus, Upload, Database, Info, ExternalLink, Loader2, BookOpen, Crosshair, Merge } from "lucide-react";
+import { Play, FileText, Clock, CheckCircle, Download, Archive, Copy, Trash2, ClipboardCheck, RefreshCw, Ban, CheckCheck, Plus, Upload, Database, Info, ExternalLink, Loader2, BookOpen, Crosshair, Merge, Pencil } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProject } from "@/lib/project-context";
 import { Link } from "wouter";
-import type { Project, AgentStatus, Chapter } from "@shared/schema";
+import type { Project, AgentStatus, Chapter, Series } from "@shared/schema";
 
 import type { AgentRole } from "@/components/process-flow";
 
@@ -156,6 +157,11 @@ export default function Dashboard() {
   const [showExtendDialog, setShowExtendDialog] = useState(false);
   const [showResetReviewerDialog, setShowResetReviewerDialog] = useState(false);
   const [showMergeChaptersDialog, setShowMergeChaptersDialog] = useState(false);
+  const [showEditMetadataDialog, setShowEditMetadataDialog] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editSeriesId, setEditSeriesId] = useState<number | null>(null);
+  const [editSeriesOrder, setEditSeriesOrder] = useState<number | null>(null);
+  const [editWorkType, setEditWorkType] = useState("standalone");
   const [mergeSource, setMergeSource] = useState<number | null>(null);
   const [mergeTarget, setMergeTarget] = useState<number | null>(null);
   const [targetChapters, setTargetChapters] = useState("");
@@ -419,6 +425,49 @@ export default function Dashboard() {
       toast({ title: "Error", description: "No se pudo duplicar el proyecto", variant: "destructive" });
     },
   });
+
+  const { data: allSeries = [] } = useQuery<Series[]>({
+    queryKey: ["/api/series"],
+  });
+
+  const updateProjectMetadataMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Record<string, any> }) => {
+      const response = await apiRequest("PATCH", `/api/projects/${id}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setShowEditMetadataDialog(false);
+      toast({ title: "Datos actualizados", description: "Los datos del proyecto se han actualizado correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudieron actualizar los datos", variant: "destructive" });
+    },
+  });
+
+  const openEditMetadataDialog = () => {
+    if (!currentProject) return;
+    setEditTitle(currentProject.title);
+    setEditWorkType(currentProject.workType || "standalone");
+    setEditSeriesId(currentProject.seriesId ?? null);
+    setEditSeriesOrder(currentProject.seriesOrder ?? null);
+    setShowEditMetadataDialog(true);
+  };
+
+  const handleSaveMetadata = () => {
+    if (!currentProject) return;
+    const data: Record<string, any> = { title: editTitle };
+    if (editWorkType === "standalone") {
+      data.workType = "standalone";
+      data.seriesId = null;
+      data.seriesOrder = null;
+    } else {
+      data.workType = editWorkType;
+      data.seriesId = editSeriesId;
+      data.seriesOrder = editSeriesOrder;
+    }
+    updateProjectMetadataMutation.mutate({ id: currentProject.id, data });
+  };
 
   const deleteProjectMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -1483,6 +1532,16 @@ export default function Dashboard() {
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={openEditMetadataDialog}
+                    disabled={currentProject.status === "generating"}
+                    data-testid="button-edit-metadata"
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Editar Datos
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => duplicateProjectMutation.mutate(currentProject.id)}
                     disabled={duplicateProjectMutation.isPending}
                     data-testid="button-duplicate-project"
@@ -1715,6 +1774,93 @@ export default function Dashboard() {
           <DuplicateManager projectId={currentProject?.id} />
         </div>
       </div>
+
+      <Dialog open={showEditMetadataDialog} onOpenChange={setShowEditMetadataDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Datos del Proyecto</DialogTitle>
+            <DialogDescription>
+              Modifica el título, tipo de obra y posición en la serie.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-title">Título</Label>
+              <Input
+                id="edit-title"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                data-testid="input-edit-title"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Tipo de obra</Label>
+              <Select value={editWorkType} onValueChange={(val) => {
+                setEditWorkType(val);
+                if (val === "standalone") {
+                  setEditSeriesId(null);
+                  setEditSeriesOrder(null);
+                }
+              }}>
+                <SelectTrigger data-testid="select-edit-work-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="standalone">Independiente</SelectItem>
+                  <SelectItem value="series">Serie</SelectItem>
+                  <SelectItem value="trilogy">Trilogía</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {(editWorkType === "series" || editWorkType === "trilogy") && (
+              <>
+                <div className="space-y-2">
+                  <Label>Serie</Label>
+                  <Select
+                    value={editSeriesId?.toString() ?? "none"}
+                    onValueChange={(val) => setEditSeriesId(val === "none" ? null : parseInt(val))}
+                  >
+                    <SelectTrigger data-testid="select-edit-series">
+                      <SelectValue placeholder="Seleccionar serie" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sin serie</SelectItem>
+                      {allSeries.map((s) => (
+                        <SelectItem key={s.id} value={s.id.toString()}>
+                          {s.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-series-order">Orden en la serie</Label>
+                  <Input
+                    id="edit-series-order"
+                    type="number"
+                    min={1}
+                    value={editSeriesOrder ?? ""}
+                    onChange={(e) => setEditSeriesOrder(e.target.value ? parseInt(e.target.value) : null)}
+                    data-testid="input-edit-series-order"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditMetadataDialog(false)} data-testid="button-cancel-edit">
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveMetadata}
+              disabled={!editTitle.trim() || updateProjectMetadataMutation.isPending || ((editWorkType === "series" || editWorkType === "trilogy") && (!editSeriesId || !editSeriesOrder))}
+              data-testid="button-save-metadata"
+            >
+              {updateProjectMetadataMutation.isPending ? "Guardando..." : "Guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={confirmDialog === "cancel"}
