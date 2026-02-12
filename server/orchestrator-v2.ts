@@ -5102,6 +5102,41 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           return { ...ch, chapter_num: actualNumber, title: actualTitle };
         });
 
+        // Detect if architect added more regular chapters than originally requested
+        const regularChaptersFromArchitect = outline.filter((ch: any) => ch.chapter_num > 0 && ch.chapter_num < 900).length;
+        if (regularChaptersFromArchitect > project.chapterCount) {
+          const oldCount = project.chapterCount;
+          const maxAllowed = oldCount + Math.ceil(oldCount * 0.3);
+          const finalCount = Math.min(regularChaptersFromArchitect, maxAllowed);
+          
+          console.log(`[OrchestratorV2] 📊 Architect expanded chapter count: ${oldCount} → ${finalCount} (architect proposed ${regularChaptersFromArchitect}, max allowed ${maxAllowed})`);
+          
+          if (regularChaptersFromArchitect > maxAllowed) {
+            console.warn(`[OrchestratorV2] ⚠️ Architect exceeded 30% cap (${regularChaptersFromArchitect} > ${maxAllowed}). Trimming and renumbering...`);
+            const specialBefore = outline.filter((ch: any) => ch.chapter_num === 0);
+            const regularChapters = outline.filter((ch: any) => ch.chapter_num > 0 && ch.chapter_num < 900);
+            const specialAfter = outline.filter((ch: any) => ch.chapter_num >= 900);
+            const trimmedRegular = regularChapters.slice(0, maxAllowed);
+            // Renumber sequentially to ensure consistency
+            trimmedRegular.forEach((ch: any, idx: number) => {
+              ch.chapter_num = idx + 1;
+            });
+            outline = [...specialBefore, ...trimmedRegular, ...specialAfter];
+          }
+          
+          await storage.updateProject(project.id, { chapterCount: finalCount });
+          project = { ...project, chapterCount: finalCount };
+          
+          await storage.createActivityLog({
+            projectId: project.id,
+            level: "info",
+            agentRole: "global-architect",
+            message: `📊 El Arquitecto expandió la estructura de ${oldCount} a ${finalCount} capítulos regulares para desarrollar mejor los arcos narrativos.${regularChaptersFromArchitect > maxAllowed ? ` (Propuso ${regularChaptersFromArchitect}, limitado al 30% máximo: ${maxAllowed})` : ''}`,
+          });
+          
+          this.callbacks.onAgentStatus("global-architect", "active", `Expanded to ${finalCount} chapters (from ${oldCount} minimum)`);
+        }
+
         // Store World Bible with timeline derived from outline
         const timeline = outline.map(ch => ({
           chapter: ch.chapter_num,

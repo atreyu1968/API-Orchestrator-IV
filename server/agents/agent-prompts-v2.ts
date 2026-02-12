@@ -619,7 +619,7 @@ export const PROMPTS_V2 = {
   ) => `
     Eres un Arquitecto Narrativo de Best-Sellers con experiencia en ${genre}.
     IDIOMA: Escribe TODO en ESPAÑOL. Títulos de capítulos, descripciones, nombres de personajes típicos del contexto, todo debe estar en español.
-    OBJETIVO: Crear la estructura maestra para una novela de ${genre} de ${chapters} capítulos.
+    OBJETIVO: Crear la estructura maestra para una novela de ${genre} con un MÍNIMO de ${chapters} capítulos regulares.
     PREMISA: "${premise}"
     TONO: ${tone}
     ${architectInstructions ? `INSTRUCCIONES ADICIONALES DEL AUTOR: ${architectInstructions}` : ''}
@@ -764,18 +764,31 @@ export const PROMPTS_V2 = {
     ╚══════════════════════════════════════════════════════════════════╝
 
     ╔══════════════════════════════════════════════════════════════════╗
-    ║ REGLA CRÍTICA E INVIOLABLE: NÚMERO EXACTO DE CAPÍTULOS          ║
+    ║ REGLA DE CAPÍTULOS: MÍNIMO ${chapters} CAPÍTULOS REGULARES               ║
     ╠══════════════════════════════════════════════════════════════════╣
-    ║ El usuario solicita ${chapters} CAPÍTULOS REGULARES (numerados 1-${chapters}).    ║
+    ║ El usuario solicita un MÍNIMO de ${chapters} capítulos regulares.         ║
     ║                                                                  ║
-    ║ El prólogo y epílogo son ADICIONALES, NO cuentan en esos ${chapters}:   ║
+    ║ REGLA DE FLEXIBILIDAD NARRATIVA:                                 ║
+    ║ Si ${chapters} capítulos NO son suficientes para desarrollar              ║
+    ║ correctamente todos los arcos narrativos, hilos de trama,        ║
+    ║ y puntos de giro, PUEDES añadir capítulos regulares adicionales. ║
+    ║                                                                  ║
+    ║ CRITERIOS para añadir capítulos:                                 ║
+    ║ - Los arcos de personajes necesitan más espacio para resolverse  ║
+    ║ - Los puntos de giro están demasiado comprimidos                 ║
+    ║ - La tensión narrativa no puede construirse adecuadamente        ║
+    ║ - Los hilos secundarios no tienen espacio para desarrollarse     ║
+    ║ - El desenlace se siente apresurado                              ║
+    ║                                                                  ║
+    ║ LÍMITES: Puedes añadir hasta un 30% más de capítulos             ║
+    ║ (máximo ${chapters + Math.ceil(chapters * 0.3)} capítulos regulares si es necesario).        ║
+    ║ No añadas capítulos innecesarios de relleno.                     ║
+    ║                                                                  ║
+    ║ El prólogo y epílogo son ADICIONALES, NO cuentan:                ║
     ║ ${hasPrologue ? '  - Prólogo = chapter_num: 0 (ADICIONAL, no cuenta)' : '  - Sin prólogo'}         ║
     ║ ${hasEpilogue ? '  - Epílogo = chapter_num: 998 (ADICIONAL, no cuenta)' : '  - Sin epílogo'}       ║
     ║                                                                  ║
-    ║ TOTAL en tu outline:                                             ║
-    ║   ${hasPrologue ? '1 prólogo + ' : ''}${chapters} capítulos regulares${hasEpilogue ? ' + 1 epílogo' : ''} = ${(hasPrologue ? 1 : 0) + chapters + (hasEpilogue ? 1 : 0)} entradas en outline  ║
-    ║                                                                  ║
-    ║ VERIFICA: chapter_num 1, 2, 3... hasta ${chapters} DEBEN existir.        ║
+    ║ VERIFICA: chapter_num 1, 2, 3... consecutivos SIN saltos.        ║
     ╚══════════════════════════════════════════════════════════════════╝
 
     ╔══════════════════════════════════════════════════════════════════╗
