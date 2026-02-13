@@ -10732,22 +10732,25 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       const guideContent = guideResponse.content;
       console.log(`[GuideGenerator] Guide generated (${guideContent.length} chars)`);
       
+      if (!guideContent || guideContent.trim().length === 0) {
+        console.error(`[GuideGenerator] ERROR: Guide content is empty! Response error: ${guideResponse.error || 'none'}`);
+        throw new Error(guideResponse.error || "La IA no devolvió contenido para la guía. Por favor inténtalo de nuevo.");
+      }
+      
       let project = null;
-      let extendedGuide = null;
+      
+      // Always save as extended guide so it can be viewed later
+      const extendedGuide = await storage.createExtendedGuide({
+        title: `Guía de Escritura: ${params.title}`,
+        description: `Guía generada automáticamente para "${params.title}"`,
+        originalFileName: `guia_${params.title.toLowerCase().replace(/\s+/g, '_')}.md`,
+        content: guideContent,
+        wordCount: guideContent.split(/\s+/).length,
+      });
+      
+      console.log(`[GuideGenerator] Extended guide created (ID: ${extendedGuide.id})`);
       
       if (params.createProject) {
-        // Create extended guide
-        extendedGuide = await storage.createExtendedGuide({
-          title: `Guía de Escritura: ${params.title}`,
-          description: `Guía generada automáticamente para "${params.title}"`,
-          originalFileName: `guia_${params.title.toLowerCase().replace(/\s+/g, '_')}.md`,
-          content: guideContent,
-          wordCount: guideContent.split(/\s+/).length,
-        });
-        
-        console.log(`[GuideGenerator] Extended guide created (ID: ${extendedGuide.id})`);
-        
-        // Create project
         project = await storage.createProject({
           title: params.title,
           premise: params.argument.substring(0, 500),
@@ -10773,11 +10776,11 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
         res.json({
           success: true,
           guideContent,
-          extendedGuideId: extendedGuide?.id,
+          extendedGuideId: extendedGuide.id,
           projectId: project?.id,
           message: project 
             ? `Guía generada y proyecto "${params.title}" creado exitosamente`
-            : "Guía generada exitosamente",
+            : `Guía generada exitosamente (ID: ${extendedGuide.id})`,
         });
       } finally {
         await releaseGenerationLock();

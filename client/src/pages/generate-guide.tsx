@@ -106,10 +106,12 @@ export default function GenerateGuidePage() {
       return response.json();
     },
     onSuccess: (data) => {
-      setGeneratedGuide(data.guideContent);
-      setCreatedProjectId(data.projectId);
+      setGeneratedGuide(data.guideContent || "");
+      setCreatedProjectId(data.projectId || null);
       setCreatedExtendedGuideId(data.extendedGuideId || null);
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/generation-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/extended-guides"] });
       toast({
         title: "Guía generada",
         description: data.message,
@@ -201,7 +203,7 @@ export default function GenerateGuidePage() {
         </p>
       </div>
 
-      {serverGenerationStatus?.isGenerating ? (
+      {serverGenerationStatus?.isGenerating && !generateMutation.isSuccess ? (
         <Card className="border-orange-500/50 bg-orange-500/5">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400" data-testid="text-server-generation-active">
@@ -239,7 +241,7 @@ export default function GenerateGuidePage() {
             </Button>
           </CardContent>
         </Card>
-      ) : !generatedGuide ? (
+      ) : generatedGuide === null ? (
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <Card>
@@ -656,11 +658,13 @@ export default function GenerateGuidePage() {
                 <CheckCircle className="h-6 w-6" />
                 Guía Generada Exitosamente
               </CardTitle>
-              {createdProjectId && (
-                <CardDescription data-testid="text-project-id">
-                  Proyecto creado con ID: {createdProjectId}
-                </CardDescription>
-              )}
+              <CardDescription data-testid="text-project-id">
+                {createdProjectId 
+                  ? `Proyecto creado con ID: ${createdProjectId}` 
+                  : createdExtendedGuideId 
+                    ? `Guía guardada (ID: ${createdExtendedGuideId}). Puedes verla en Configuración > Guías Extendidas.`
+                    : "Guía generada correctamente"}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-2">
@@ -676,8 +680,9 @@ export default function GenerateGuidePage() {
                 <Button
                   variant="outline"
                   data-testid="button-download-guide"
+                  disabled={!generatedGuide || generatedGuide.trim().length === 0}
                   onClick={() => {
-                    const blob = new Blob([generatedGuide], { type: "text/markdown" });
+                    const blob = new Blob([generatedGuide || ""], { type: "text/markdown" });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");
                     a.href = url;
@@ -709,9 +714,15 @@ export default function GenerateGuidePage() {
             </CardHeader>
             <CardContent>
               <div className="prose prose-sm dark:prose-invert max-w-none max-h-[600px] overflow-y-auto">
-                <pre className="whitespace-pre-wrap text-sm font-mono bg-muted p-4 rounded-lg" data-testid="text-guide-content">
-                  {generatedGuide}
-                </pre>
+                {generatedGuide && generatedGuide.trim().length > 0 ? (
+                  <pre className="whitespace-pre-wrap text-sm font-mono bg-muted p-4 rounded-lg" data-testid="text-guide-content">
+                    {generatedGuide}
+                  </pre>
+                ) : (
+                  <p className="text-muted-foreground italic p-4" data-testid="text-guide-empty">
+                    La guía no contiene texto. Esto puede ocurrir si la IA no devolvió contenido. Intenta generar de nuevo.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
