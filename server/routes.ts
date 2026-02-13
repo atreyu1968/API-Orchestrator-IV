@@ -10715,27 +10715,46 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       }
       
       try {
-        // Generate the writing guide
-        const guideResponse = await guideGeneratorAgent.generateWritingGuide({
-        argument: params.argument,
-        title: params.title,
-        genre: params.genre,
-        tone: params.tone,
-        chapterCount: params.chapterCount,
-        hasPrologue: params.hasPrologue,
-        hasEpilogue: params.hasEpilogue,
-        styleGuideContent,
-        seriesContext,
-        kindleUnlimited: params.kindleUnlimited,
-      });
-      
-      const guideContent = guideResponse.content;
-      console.log(`[GuideGenerator] Guide generated (${guideContent.length} chars)`);
-      
-      if (!guideContent || guideContent.trim().length === 0) {
-        console.error(`[GuideGenerator] ERROR: Guide content is empty! Response error: ${guideResponse.error || 'none'}`);
-        throw new Error(guideResponse.error || "La IA no devolvió contenido para la guía. Por favor inténtalo de nuevo.");
-      }
+        const MAX_GUIDE_RETRIES = 3;
+        let guideContent = "";
+        let lastError = "";
+        
+        for (let attempt = 1; attempt <= MAX_GUIDE_RETRIES; attempt++) {
+          console.log(`[GuideGenerator] Attempt ${attempt}/${MAX_GUIDE_RETRIES}...`);
+          const guideResponse = await guideGeneratorAgent.generateWritingGuide({
+            argument: params.argument,
+            title: params.title,
+            genre: params.genre,
+            tone: params.tone,
+            chapterCount: params.chapterCount,
+            hasPrologue: params.hasPrologue,
+            hasEpilogue: params.hasEpilogue,
+            styleGuideContent,
+            seriesContext,
+            kindleUnlimited: params.kindleUnlimited,
+          });
+          
+          guideContent = guideResponse.content || "";
+          lastError = guideResponse.error || "";
+          
+          if (guideContent.trim().length >= 100) {
+            console.log(`[GuideGenerator] Guide generated on attempt ${attempt} (${guideContent.length} chars)`);
+            break;
+          }
+          
+          console.warn(`[GuideGenerator] Attempt ${attempt} returned empty/short content (${guideContent.length} chars). Error: ${lastError || 'none'}`);
+          
+          if (attempt < MAX_GUIDE_RETRIES) {
+            const delay = attempt * 2000;
+            console.log(`[GuideGenerator] Retrying in ${delay}ms...`);
+            await new Promise(r => setTimeout(r, delay));
+          }
+        }
+        
+        if (!guideContent || guideContent.trim().length < 100) {
+          console.error(`[GuideGenerator] All ${MAX_GUIDE_RETRIES} attempts failed. Last error: ${lastError}`);
+          throw new Error(lastError || "La IA no pudo generar la guía después de varios intentos. Verifica que la API key esté configurada correctamente.");
+        }
       
       let project = null;
       
@@ -11219,14 +11238,32 @@ Buscar en la guía de serie los hitos correspondientes al Volumen ${volume.numbe
       
       console.log(`[StyleGuideGenerator] Generating guide based on "${params.referenceAuthor}" for "${params.pseudonymName}"...`);
       
-      // Generate the style guide
-      const guideContent = await styleGuideGeneratorAgent.generateStyleGuide({
-        referenceAuthor: params.referenceAuthor,
-        pseudonymName: params.pseudonymName,
-        genre: params.genre,
-        additionalNotes: params.additionalNotes,
-      });
-      console.log(`[StyleGuideGenerator] Guide generated (${guideContent.length} chars)`);
+      const MAX_STYLE_RETRIES = 3;
+      let guideContent = "";
+      
+      for (let attempt = 1; attempt <= MAX_STYLE_RETRIES; attempt++) {
+        console.log(`[StyleGuideGenerator] Attempt ${attempt}/${MAX_STYLE_RETRIES}...`);
+        guideContent = await styleGuideGeneratorAgent.generateStyleGuide({
+          referenceAuthor: params.referenceAuthor,
+          pseudonymName: params.pseudonymName,
+          genre: params.genre,
+          additionalNotes: params.additionalNotes,
+        });
+        
+        if (guideContent && guideContent.trim().length >= 100) {
+          console.log(`[StyleGuideGenerator] Guide generated on attempt ${attempt} (${guideContent.length} chars)`);
+          break;
+        }
+        
+        console.warn(`[StyleGuideGenerator] Attempt ${attempt} returned empty/short content (${guideContent?.length || 0} chars)`);
+        if (attempt < MAX_STYLE_RETRIES) {
+          await new Promise(r => setTimeout(r, attempt * 2000));
+        }
+      }
+      
+      if (!guideContent || guideContent.trim().length < 100) {
+        throw new Error("La IA no pudo generar la guía de estilo después de varios intentos. Verifica la configuración de la API.");
+      }
       
       let pseudonymId = params.pseudonymId;
       let styleGuide = null;

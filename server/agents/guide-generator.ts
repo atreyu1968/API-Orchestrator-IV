@@ -291,7 +291,7 @@ Sé muy específico en los resúmenes de cada capítulo - cada uno debe tener su
 Las subtramas deben distribuirse en múltiples capítulos (mínimo 3, idealmente 5+).
 `;
 
-    const response = await this.generateContent(prompt);
+    const response = await this.generateContent(prompt, undefined, { forceProvider: "gemini" });
     return response;
   }
 }

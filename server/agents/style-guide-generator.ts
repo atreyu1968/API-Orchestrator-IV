@@ -284,7 +284,7 @@ INSTRUCCIONES:
 Genera ahora la GUÍA DE ESTILO COMPLETA siguiendo exactamente la estructura del prompt del sistema.
 `;
 
-    const response = await this.generateContent(prompt);
+    const response = await this.generateContent(prompt, undefined, { forceProvider: "gemini" });
     return response.content;
   }
   
