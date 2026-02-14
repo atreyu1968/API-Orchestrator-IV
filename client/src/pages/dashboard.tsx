@@ -162,6 +162,9 @@ export default function Dashboard() {
   const [editSeriesId, setEditSeriesId] = useState<number | null>(null);
   const [editSeriesOrder, setEditSeriesOrder] = useState<number | null>(null);
   const [editWorkType, setEditWorkType] = useState("standalone");
+  const [rewriteChapterNumber, setRewriteChapterNumber] = useState<number | null>(null);
+  const [rewriteInstructions, setRewriteInstructions] = useState("");
+  const [showRewriteDialog, setShowRewriteDialog] = useState(false);
   const [mergeSource, setMergeSource] = useState<number | null>(null);
   const [mergeTarget, setMergeTarget] = useState<number | null>(null);
   const [targetChapters, setTargetChapters] = useState("");
@@ -762,6 +765,32 @@ export default function Dashboard() {
     },
   });
 
+  const rewriteChapterMutation = useMutation({
+    mutationFn: async ({ projectId, chapterNumber, instructions }: { projectId: number; chapterNumber: number; instructions?: string }) => {
+      if (instructions && instructions.trim().length > 0) {
+        const response = await apiRequest("POST", `/api/projects/${projectId}/chapters/${chapterNumber}/rewrite`, { instructions });
+        return response.json();
+      } else {
+        const response = await apiRequest("POST", `/api/projects/${projectId}/regenerate-chapter/${chapterNumber}`);
+        return response.json();
+      }
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", currentProject?.id, "chapters"] });
+      toast({
+        title: "Reescritura iniciada",
+        description: data.message || "El capítulo se está reescribiendo",
+      });
+      setShowRewriteDialog(false);
+      setRewriteChapterNumber(null);
+      setRewriteInstructions("");
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "No se pudo reescribir el capítulo", variant: "destructive" });
+    },
+  });
+
   const addLog = (type: LogEntry["type"], message: string, agent?: string) => {
     const newLog: LogEntry = {
       id: crypto.randomUUID(),
@@ -1268,6 +1297,26 @@ export default function Dashboard() {
                            chapter.status === "editing" ? "Editando" : 
                            chapter.status === "revision" ? "Reescribiendo" : "Pendiente"}
                         </Badge>
+                        {(chapter.status === "completed" || chapter.status === "approved" || (chapter.content && chapter.content.length > 0)) && currentProject.status !== "generating" && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                data-testid={`button-rewrite-chapter-${chapter.chapterNumber}`}
+                                onClick={() => {
+                                  setRewriteChapterNumber(chapter.chapterNumber);
+                                  setRewriteInstructions("");
+                                  setShowRewriteDialog(true);
+                                }}
+                                disabled={rewriteChapterMutation.isPending}
+                              >
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Reescribir capítulo</TooltipContent>
+                          </Tooltip>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -2255,6 +2304,75 @@ export default function Dashboard() {
                 </>
               ) : (
                 "Fusionar Capítulos"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rewrite Chapter Dialog */}
+      <Dialog open={showRewriteDialog} onOpenChange={(open) => {
+        setShowRewriteDialog(open);
+        if (!open) {
+          setRewriteChapterNumber(null);
+          setRewriteInstructions("");
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Reescribir {rewriteChapterNumber === 0 ? "Prólogo" : 
+                rewriteChapterNumber === 998 ? "Epílogo" : 
+                rewriteChapterNumber === 999 ? "Nota del Autor" :
+                `Capítulo ${rewriteChapterNumber}`}
+            </DialogTitle>
+            <DialogDescription>
+              Se regenerará el capítulo completo manteniendo la coherencia con la World Bible y los capítulos anteriores. Puedes dar instrucciones específicas o dejarlo en blanco para una regeneración automática.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="rewrite-instructions">Instrucciones (opcional)</Label>
+              <Textarea
+                id="rewrite-instructions"
+                placeholder="Ej: Hacer el capítulo más tenso, añadir más diálogo, corregir la escena del encuentro..."
+                value={rewriteInstructions}
+                onChange={(e) => setRewriteInstructions(e.target.value)}
+                className="min-h-[100px]"
+                data-testid="input-rewrite-instructions"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => {
+              setShowRewriteDialog(false);
+              setRewriteChapterNumber(null);
+              setRewriteInstructions("");
+            }}
+            data-testid="button-cancel-rewrite"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (currentProject && rewriteChapterNumber !== null) {
+                  rewriteChapterMutation.mutate({
+                    projectId: currentProject.id,
+                    chapterNumber: rewriteChapterNumber,
+                    instructions: rewriteInstructions.trim() || undefined,
+                  });
+                }
+              }}
+              disabled={rewriteChapterMutation.isPending}
+              data-testid="button-confirm-rewrite"
+            >
+              {rewriteChapterMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Reescribiendo...
+                </>
+              ) : (
+                "Reescribir Capítulo"
               )}
             </Button>
           </DialogFooter>

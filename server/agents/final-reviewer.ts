@@ -502,7 +502,9 @@ SALIDA OBLIGATORIA (JSON):
 `;
 
 // DeepSeek R1 has 131k token context limit; reserve ~40k for prompt overhead (World Bible, style guide, instructions, accumulated context) and response
-const MAX_TOKENS_PER_TRANCHE = 70000;
+const MAX_TOKENS_PER_TRANCHE_DEEPSEEK = 70000;
+// Gemini has 1M+ token context - can handle entire manuscripts in one pass
+const MAX_TOKENS_PER_TRANCHE_GEMINI = 500000;
 // Approximate tokens per character (conservative estimate for Spanish text)
 const TOKENS_PER_CHAR = 0.35;
 // Fallback chapter limit when no act structure is available
@@ -882,7 +884,9 @@ INSTRUCCIÓN: Usa esta información para reportar issues con los CAPÍTULOS ESPE
 
   async execute(input: FinalReviewerInput, options?: { forceProvider?: "gemini" | "deepseek" }): Promise<AgentResponse & { result?: FinalReviewerResult }> {
     console.log(`[FinalReviewer] ========== EXECUTE CALLED ==========`);
-    console.log(`[FinalReviewer] Input chapters: ${input.chapters?.length || 0}, pasadaNumero: ${input.pasadaNumero}`);
+    const isGemini = options?.forceProvider === "gemini";
+    const MAX_TOKENS_PER_TRANCHE = isGemini ? MAX_TOKENS_PER_TRANCHE_GEMINI : MAX_TOKENS_PER_TRANCHE_DEEPSEEK;
+    console.log(`[FinalReviewer] Input chapters: ${input.chapters?.length || 0}, pasadaNumero: ${input.pasadaNumero}, provider: ${isGemini ? 'gemini' : 'deepseek'}, maxTokens/tranche: ${MAX_TOKENS_PER_TRANCHE}`);
     
     const sortedChapters = [...input.chapters].sort((a, b) => 
       this.getChapterSortOrder(a.numero) - this.getChapterSortOrder(b.numero)
@@ -1105,8 +1109,8 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
     let totalScore = 0;
     let scoreCount = 0;
     
-    // Per-tranche issue limit: max 3 issues per tranche (per spec)
-    const MAX_ISSUES_PER_TRANCHE = 3;
+    // Per-tranche issue limit: Gemini single-pass can detect more issues reliably
+    const MAX_ISSUES_PER_TRANCHE = isGemini ? 10 : 3;
 
     for (const result of trancheResults) {
       if (result.issues) {
@@ -1138,8 +1142,11 @@ Si no hay regresiones y los issues se corrigieron, la puntuación debe ser >= ${
     // Deduplicate similar issues (same category and overlapping chapters)
     let deduplicatedIssues = this.deduplicateIssues(allIssues);
     
-    // Apply global issue limits based on pass number: Pasada 1 = max 5, Pasada 2+ = max 3*numTranches
-    const globalIssueLimit = input.pasadaNumero === 1 ? 5 : Math.max(3, numTranches * 3);
+    // Apply global issue limits based on pass number and provider
+    // Gemini single-pass can reliably detect more issues at once
+    const globalIssueLimit = isGemini 
+      ? (input.pasadaNumero === 1 ? 15 : Math.max(5, numTranches * 5))
+      : (input.pasadaNumero === 1 ? 5 : Math.max(3, numTranches * 3));
     if (deduplicatedIssues.length > globalIssueLimit) {
       console.log(`[FinalReviewer] Global issue limit applied: ${deduplicatedIssues.length} → ${globalIssueLimit}`);
       deduplicatedIssues = deduplicatedIssues.slice(0, globalIssueLimit);

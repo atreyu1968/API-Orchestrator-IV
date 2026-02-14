@@ -8663,7 +8663,9 @@ Si el error es de inconsistencia física/edad:
           console.log(`[OrchestratorV2] No 3-act structure found in World Bible, using fixed-size tranches`);
         }
         
-        const frForceProvider = this.geminiQAFlags?.finalReviewer ? "gemini" as const : undefined;
+        // Always use Gemini for diagnostic (data layer of AI sandwich - massive context window)
+        // Corrections are always done by DeepSeek (reasoning layer)
+        const frForceProvider = "gemini" as const;
         const reviewResult = await this.finalReviewer.execute({
           projectTitle: project.title,
           chapters: chaptersForReview,
@@ -8681,9 +8683,9 @@ Si el error es de inconsistencia física/edad:
             );
             console.log(`[OrchestratorV2] FinalReviewer progress: ${currentTranche}/${totalTranches} - ${chaptersInTranche}`);
           },
-        }, frForceProvider ? { forceProvider: frForceProvider } : undefined);
+        }, { forceProvider: frForceProvider });
 
-        const frModel = frForceProvider ? "gemini-3-pro-preview" : "deepseek-reasoner";
+        const frModel = "gemini-3-pro-preview";
         this.addTokenUsage(reviewResult.tokenUsage);
         await this.logAiUsage(project.id, "final-reviewer", frModel, reviewResult.tokenUsage);
 
@@ -11880,11 +11882,12 @@ ${relatedIssue.instrucciones ? `Instrucciones: ${relatedIssue.instrucciones}` : 
       targetedRepairProgress: { current: 1, total: 3, message: 'Analizando estructura narrativa...' },
     });
 
+    // Send full chapter content to Gemini (massive context window) for thorough diagnosis
     const chapterSummaries = completedChapters.map(ch => {
       const outlineEntry = outline.find((o: any) => o.chapter_num === ch.chapterNumber);
-      const contentPreview = ch.content!.substring(0, 800);
-      return `CAPÍTULO ${ch.chapterNumber} ("${ch.title || ''}"):\n  PLAN ORIGINAL: ${outlineEntry?.summary || 'N/A'} [Evento: ${outlineEntry?.key_event || 'N/A'}]\n  RESUMEN: ${ch.summary || contentPreview}\n  PALABRAS: ${ch.wordCount || ch.content!.split(/\s+/).length}`;
-    }).join('\n\n');
+      const fullContent = ch.content || '';
+      return `CAPÍTULO ${ch.chapterNumber} ("${ch.title || ''}"):\n  PLAN ORIGINAL: ${outlineEntry?.summary || 'N/A'} [Evento: ${outlineEntry?.key_event || 'N/A'}]\n  PALABRAS: ${ch.wordCount || fullContent.split(/\s+/).length}\n  CONTENIDO COMPLETO:\n${fullContent}`;
+    }).join('\n\n---\n\n');
 
     const bibleCharacters = JSON.stringify(
       ((worldBible.characters || []) as any[]).map((c: any) => ({
@@ -11916,8 +11919,8 @@ ${worldRules}
 
 ${guiaEstilo ? `=== GUÍA DE ESTILO ===\n${guiaEstilo.substring(0, 2000)}\n` : ''}
 
-=== COMPARACIÓN PLAN vs REALIDAD ===
-${chapterSummaries.substring(0, 30000)}
+=== CONTENIDO COMPLETO DE LA NOVELA ===
+${chapterSummaries}
 
 ANALIZA EXHAUSTIVAMENTE:
 1. ¿Cada capítulo cumple con su plan original? ¿Se ejecutaron los eventos clave?
