@@ -321,6 +321,18 @@ export default function StyleGuidesPage() {
     },
   });
 
+  const onFormError = (errors: Record<string, any>) => {
+    console.error("[StyleGuides] Form validation errors:", errors);
+    const errorMessages = Object.entries(errors)
+      .map(([field, error]: [string, any]) => `${field}: ${error?.message || 'inválido'}`)
+      .join(', ');
+    toast({
+      title: "Campos incompletos",
+      description: errorMessages,
+      variant: "destructive",
+    });
+  };
+
   const onSubmit = async (data: FormData) => {
     let pseudonymId: number;
 
@@ -362,7 +374,20 @@ export default function StyleGuidesPage() {
   };
 
   const onGenerateSubmit = (data: GenerateFormData) => {
+    console.log("[StyleGuides] Generate form submitted successfully", data.referenceAuthor);
     generateStyleGuideMutation.mutate(data);
+  };
+
+  const onGenerateFormError = (errors: Record<string, any>) => {
+    console.error("[StyleGuides] Generate form validation errors:", errors);
+    const errorMessages = Object.entries(errors)
+      .map(([field, error]: [string, any]) => `${field}: ${error?.message || 'inválido'}`)
+      .join(', ');
+    toast({
+      title: "Campos incompletos",
+      description: errorMessages,
+      variant: "destructive",
+    });
   };
 
   const resetGenerateForm = () => {
@@ -433,7 +458,7 @@ export default function StyleGuidesPage() {
         <TabsContent value="generate">
           {!generatedGuide ? (
             <Form {...generateForm}>
-              <form onSubmit={generateForm.handleSubmit(onGenerateSubmit)} className="space-y-6">
+              <form onSubmit={generateForm.handleSubmit(onGenerateSubmit, onGenerateFormError)} className="space-y-6">
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -708,7 +733,7 @@ export default function StyleGuidesPage() {
 
         <TabsContent value="create">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(onSubmit, onFormError)} className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle>
