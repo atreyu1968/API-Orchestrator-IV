@@ -41,6 +41,10 @@ const agentNames: Record<string, string> = {
   "narrative-director": "Director Narrativo",
   "universal-consistency": "Guardián de Continuidad",
   "beta-reader": "El Crítico",
+  "inquisidor": "Inquisidor",
+  "estilista": "Estilista",
+  "ritmo": "Agente de Ritmo",
+  "ensamblador": "Ensamblador",
 };
 
 function sortChaptersForDisplay(chapters: Chapter[]): Chapter[] {
@@ -149,6 +153,7 @@ export default function Dashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [currentStage, setCurrentStage] = useState<AgentRole | null>(null);
   const [completedStages, setCompletedStages] = useState<AgentRole[]>([]);
+  const [warningStages, setWarningStages] = useState<AgentRole[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmType>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -313,6 +318,7 @@ export default function Dashboard() {
     setLogs([]);
     setCurrentStage(null);
     setCompletedStages([]);
+    setWarningStages([]);
     setSceneProgress(null);
     setChaptersBeingCorrected(null);
     setDetectAndFixProgress(null);
@@ -421,6 +427,7 @@ export default function Dashboard() {
       setLogs([]);
       setCurrentStage(null);
       setCompletedStages([]);
+      setWarningStages([]);
       setSceneProgress(null);
       setChaptersBeingCorrected(null);
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
@@ -484,6 +491,7 @@ export default function Dashboard() {
       setLogs([]);
       setCurrentStage(null);
       setCompletedStages([]);
+      setWarningStages([]);
       setSceneProgress(null);
       setChaptersBeingCorrected(null);
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
@@ -551,6 +559,7 @@ export default function Dashboard() {
       toast({ title: "Generación cancelada", description: "El proceso ha sido detenido" });
       addLog("error", "Generación cancelada por el usuario");
       setCurrentStage(null);
+      setWarningStages([]);
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo cancelar la generación", variant: "destructive" });
@@ -585,7 +594,8 @@ export default function Dashboard() {
       toast({ title: "Proyecto completado", description: "El manuscrito ha sido marcado como finalizado" });
       addLog("success", "Proyecto marcado como completado (forzado)");
       setCurrentStage(null);
-      setCompletedStages(["global-architect", "chapter-architect", "ghostwriter-v2", "universal-consistency", "smart-editor", "summarizer", "narrative-director", "beta-reader"]);
+      setWarningStages([]);
+      setCompletedStages(["global-architect", "chapter-architect", "ghostwriter-v2", "inquisidor", "estilista", "ritmo", "smart-editor", "summarizer", "ensamblador"]);
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo completar el proyecto", variant: "destructive" });
@@ -713,6 +723,7 @@ export default function Dashboard() {
       toast({ title: "Generación reanudada", description: "Continuando desde donde se detuvo" });
       addLog("success", "Reanudando generación del manuscrito...");
       setCompletedStages([]);
+      setWarningStages([]);
     },
     onError: (error) => {
       console.error("[Resume] Error:", error);
@@ -731,6 +742,7 @@ export default function Dashboard() {
       toast({ title: "Reinicio completo", description: "Generando novela desde cero" });
       addLog("success", "Reiniciando generación desde cero...");
       setCompletedStages([]);
+      setWarningStages([]);
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "No se pudo reiniciar el proyecto", variant: "destructive" });
@@ -751,6 +763,7 @@ export default function Dashboard() {
       });
       addLog("success", `Extendiendo novela: generando capítulos ${data.fromChapter} a ${data.toChapter}...`);
       setCompletedStages([]);
+      setWarningStages([]);
       setShowExtendDialog(false);
       setTargetChapters("");
     },
@@ -835,8 +848,12 @@ export default function Dashboard() {
               addLog("writing", data.message || `${agentNames[role]} está escribiendo...`, role);
             } else if (data.status === "editing") {
               addLog("editing", data.message || `${agentNames[role]} está revisando...`, role);
+            } else if (data.status === "warning") {
+              setWarningStages(prev => prev.includes(role) ? prev : [...prev, role]);
+              addLog("editing", data.message || `${agentNames[role]} detectó problemas`, role);
             } else if (data.status === "completed") {
               setCompletedStages(prev => prev.includes(role) ? prev : [...prev, role]);
+              setWarningStages(prev => prev.filter(r => r !== role));
               addLog("success", data.message || `${agentNames[role]} completó su tarea`, role);
             }
           } else if (data.type === "chapter_rewrite") {
@@ -1037,12 +1054,12 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Agentes v2 - Pipeline por escenas */}
+      {/* OmniWriter Zero-Touch Pipeline */}
       <div className="space-y-2">
         <h3 className="text-sm font-medium text-muted-foreground">
-          Pipeline por Escenas
+          OmniWriter — Pipeline Autónomo
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <AgentCard 
             name={agentNames["global-architect"]}
             role="global-architect"
@@ -1059,6 +1076,21 @@ export default function Dashboard() {
             {...getAgentStatus("ghostwriter-v2")}
           />
           <AgentCard 
+            name={agentNames["inquisidor"]}
+            role="inquisidor"
+            {...getAgentStatus("inquisidor")}
+          />
+          <AgentCard 
+            name={agentNames["estilista"]}
+            role="estilista"
+            {...getAgentStatus("estilista")}
+          />
+          <AgentCard 
+            name={agentNames["ritmo"]}
+            role="ritmo"
+            {...getAgentStatus("ritmo")}
+          />
+          <AgentCard 
             name={agentNames["smart-editor"]}
             role="smart-editor"
             {...getAgentStatus("smart-editor")}
@@ -1069,19 +1101,9 @@ export default function Dashboard() {
             {...getAgentStatus("summarizer")}
           />
           <AgentCard 
-            name={agentNames["narrative-director"]}
-            role="narrative-director"
-            {...getAgentStatus("narrative-director")}
-          />
-          <AgentCard 
-            name={agentNames["universal-consistency"]}
-            role="universal-consistency"
-            {...getAgentStatus("universal-consistency")}
-          />
-          <AgentCard 
-            name={agentNames["beta-reader"]}
-            role="beta-reader"
-            {...getAgentStatus("beta-reader")}
+            name={agentNames["ensamblador"]}
+            role="ensamblador"
+            {...getAgentStatus("ensamblador")}
           />
         </div>
       </div>
@@ -1094,7 +1116,8 @@ export default function Dashboard() {
           <CardContent>
             <ProcessFlow 
               currentStage={currentStage} 
-              completedStages={completedStages} 
+              completedStages={completedStages}
+              warningStages={warningStages}
             />
           </CardContent>
         </Card>
