@@ -20,7 +20,7 @@ APP_PORT="5000"
 APP_USER="litagents"
 DB_NAME="litagents"
 DB_USER="litagents"
-GITHUB_REPO="https://github.com/atreyu1968/API-Orchestrator-II.git"
+GITHUB_REPO="https://github.com/atreyu1968/API-Orchestrator-IV.git"
 
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
@@ -191,17 +191,19 @@ cd "$APP_DIR"
 sudo -u $APP_USER npm install --legacy-peer-deps
 print_success "Dependencias instaladas"
 
-print_status "Compilando aplicación..."
-sudo -u $APP_USER npm run build
-print_success "Aplicación compilada"
-
-print_status "Aplicando migraciones de base de datos..."
-cd "$APP_DIR"
+print_status "Cargando variables de entorno..."
 set -a
 source "$CONFIG_DIR/env"
 set +a
+
+print_status "Aplicando migraciones de base de datos..."
+cd "$APP_DIR"
 sudo -E -u $APP_USER npx drizzle-kit push --force 2>/dev/null || true
 print_success "Base de datos actualizada"
+
+print_status "Compilando aplicación..."
+sudo -E -u $APP_USER SKIP_DB_PUSH=true npm run build
+print_success "Aplicación compilada"
 
 print_status "Configurando servicio systemd..."
 cat > "/etc/systemd/system/$APP_NAME.service" << EOF

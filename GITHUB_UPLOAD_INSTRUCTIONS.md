@@ -21,7 +21,7 @@ rm -rf node_modules dist .cache attached_assets
 git init
 
 # Agregar el remote de GitHub
-git remote add origin https://github.com/atreyu1968/API-Orchestrator-II.git
+git remote add origin https://github.com/atreyu1968/API-Orchestrator-IV.git
 
 # Agregar todos los archivos
 git add .
@@ -53,9 +53,9 @@ git push -u origin main --force
 gh auth login
 
 # Clonar, copiar archivos y subir
-gh repo clone atreyu1968/API-Orchestrator-II
+gh repo clone atreyu1968/API-Orchestrator-IV
 # Copiar archivos del proyecto aquí
-cd API-Orchestrator-II
+cd API-Orchestrator-IV
 git add .
 git commit -m "LitAgents 2.1"
 git push
@@ -65,7 +65,7 @@ git push
 
 ## Opción 3: Subida directa desde la web de GitHub
 
-1. Ve a https://github.com/atreyu1968/API-Orchestrator-II
+1. Ve a https://github.com/atreyu1968/API-Orchestrator-IV
 2. Haz clic en "Add file" > "Upload files"
 3. Arrastra los archivos del proyecto
 4. Haz commit
@@ -93,8 +93,8 @@ Una vez el código esté en GitHub:
 
 ```bash
 # En tu servidor Ubuntu
-git clone https://github.com/atreyu1968/API-Orchestrator-II.git
-cd API-Orchestrator-II
+git clone https://github.com/atreyu1968/API-Orchestrator-IV.git
+cd API-Orchestrator-IV
 sudo bash install.sh
 ```
 

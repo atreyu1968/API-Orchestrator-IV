@@ -36,11 +36,15 @@ const allowlist = [
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });
 
-  console.log("pushing database schema...");
-  try {
-    execSync("npm run db:push", { stdio: "inherit" });
-  } catch (e) {
-    console.warn("Database push warning (may be expected):", e);
+  if (process.env.SKIP_DB_PUSH !== "true") {
+    console.log("pushing database schema...");
+    try {
+      execSync("npm run db:push", { stdio: "inherit" });
+    } catch (e) {
+      console.warn("Database push skipped (may be expected):", e);
+    }
+  } else {
+    console.log("skipping database push (SKIP_DB_PUSH=true)...");
   }
 
   console.log("building client...");

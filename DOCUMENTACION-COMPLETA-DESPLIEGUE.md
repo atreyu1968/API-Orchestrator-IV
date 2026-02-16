@@ -184,7 +184,7 @@ rm -rf node_modules dist .cache attached_assets .config
 git init
 
 # Agregar el repositorio remoto
-git remote add origin https://github.com/atreyu1968/API-Orchestrator-II.git
+git remote add origin https://github.com/atreyu1968/API-Orchestrator-IV.git
 
 # Agregar todos los archivos
 git add .
@@ -213,9 +213,9 @@ git push -u origin main --force
 gh auth login
 
 # Clonar, copiar y subir
-gh repo clone atreyu1968/API-Orchestrator-II
+gh repo clone atreyu1968/API-Orchestrator-IV
 # Copiar archivos del proyecto (sin node_modules, dist, .cache)
-cd API-Orchestrator-II
+cd API-Orchestrator-IV
 git add .
 git commit -m "LitAgents v2.9.9+"
 git push
@@ -223,7 +223,7 @@ git push
 
 ### Opción C: Subida directa desde la web de GitHub
 
-1. Ve a https://github.com/atreyu1968/API-Orchestrator-II
+1. Ve a https://github.com/atreyu1968/API-Orchestrator-IV
 2. Haz clic en "Add file" > "Upload files"
 3. Arrastra los archivos del proyecto
 4. Haz commit
@@ -279,8 +279,8 @@ Una vez el código está en GitHub, en tu servidor Ubuntu:
 
 ```bash
 # 1. Clonar repositorio
-git clone https://github.com/atreyu1968/API-Orchestrator-II.git
-cd API-Orchestrator-II
+git clone https://github.com/atreyu1968/API-Orchestrator-IV.git
+cd API-Orchestrator-IV
 
 # 2. Ejecutar instalador
 sudo bash install.sh
@@ -389,7 +389,7 @@ sudo useradd --system --create-home --shell /bin/bash litagents
 sudo mkdir -p /var/www/litagents
 sudo chown litagents:litagents /var/www/litagents
 
-sudo -u litagents git clone https://github.com/atreyu1968/API-Orchestrator-II.git /var/www/litagents
+sudo -u litagents git clone https://github.com/atreyu1968/API-Orchestrator-IV.git /var/www/litagents
 ```
 
 ### 6.9 Instalar dependencias y compilar
@@ -592,7 +592,7 @@ APP_PORT="5000"
 APP_USER="litagents"
 DB_NAME="litagents"
 DB_USER="litagents"
-GITHUB_REPO="https://github.com/atreyu1968/API-Orchestrator-II.git"
+GITHUB_REPO="https://github.com/atreyu1968/API-Orchestrator-IV.git"
 
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
@@ -1379,8 +1379,8 @@ auditoría y traducción de novelas completas.
 
 ### 1. Clonar e instalar
 
-    git clone https://github.com/atreyu1968/API-Orchestrator-II.git
-    cd API-Orchestrator-II
+    git clone https://github.com/atreyu1968/API-Orchestrator-IV.git
+    cd API-Orchestrator-IV
     sudo bash install.sh
 
 ### 2. Durante la instalación
@@ -1460,14 +1460,14 @@ MIT License
    ├── Extraer ZIP
    ├── Eliminar: node_modules, dist, .cache, attached_assets
    ├── git init
-   ├── git remote add origin https://github.com/atreyu1968/API-Orchestrator-II.git
+   ├── git remote add origin https://github.com/atreyu1968/API-Orchestrator-IV.git
    ├── git add .
    ├── git commit -m "LitAgents v2.9.9+"
    └── git push -u origin main (--force si ya existe)
 
 3. SERVIDOR UBUNTU
-   ├── git clone https://github.com/atreyu1968/API-Orchestrator-II.git
-   ├── cd API-Orchestrator-II
+   ├── git clone https://github.com/atreyu1968/API-Orchestrator-IV.git
+   ├── cd API-Orchestrator-IV
    ├── sudo bash install.sh
    │   ├── Instala Node.js 20, PostgreSQL, Nginx
    │   ├── Crea BD y usuario
