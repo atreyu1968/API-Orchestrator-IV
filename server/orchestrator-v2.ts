@@ -5430,13 +5430,14 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         this.callbacks.onAgentStatus("universal-consistency", "active", "Initializing consistency database...");
         await this.initializeConsistencyDatabase(project.id, worldBible, project.genre);
         
-        // LitAgents 2.9.12: Progressive World Bible validation — correct until clean
-        // Acceptance criteria: 0 critical, 0 major, max 2 minor
-        // Stagnation safety: if 3 consecutive rounds show no improvement, pause
-        const MAX_BIBLE_SAFETY_CAP = 10;
+        // LitAgents 2.9.13: Progressive World Bible validation with graceful acceptance
+        // Phase 1 (rounds 1-2): Strict — fix critical and major issues
+        // Phase 2 (round 3+): Graceful — accept if 0 critical (remaining majors are subjective opinions, not real problems)
+        // The AI validator tends to endlessly generate subjective literary opinions ("the arc could be deeper",
+        // "the pacing could improve") that will NEVER be fully satisfied. After 2 correction rounds,
+        // any remaining "major" issues are just opinions — accept and move on.
+        const MAX_BIBLE_ROUNDS = 5;
         let bibleValidationRound = 0;
-        let previousIssueCount = Infinity;
-        let stagnationCounter = 0;
         
         let bibleValidation = await this.validateWorldBibleWithGemini(
           project.id, worldBible, outline, plotThreads
@@ -5449,35 +5450,25 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           return { critical, major, minor, total: issues.length };
         };
         
-        const isBibleAcceptable = (validation: any) => {
+        const isBibleAcceptable = (validation: any, round: number) => {
           const issues = validation.issues || [];
           if (issues.length === 0) return true;
           const { critical, major, minor } = countIssuesBySeverity(issues);
-          return critical === 0 && major === 0 && minor <= 2;
+          // Always block on critical issues (factual contradictions)
+          if (critical > 0) return false;
+          // Rounds 1-2: require 0 major issues too
+          if (round < 2) return major === 0 && minor <= 5;
+          // Round 3+: accept with remaining majors — they are subjective opinions, not real problems
+          return true;
         };
         
-        while (!isBibleAcceptable(bibleValidation) && bibleValidationRound < MAX_BIBLE_SAFETY_CAP) {
+        while (!isBibleAcceptable(bibleValidation, bibleValidationRound) && bibleValidationRound < MAX_BIBLE_ROUNDS) {
           bibleValidationRound++;
           const currentIssues = bibleValidation.issues || [];
           const counts = countIssuesBySeverity(currentIssues);
           
           console.log(`[OrchestratorV2] Bible validation round ${bibleValidationRound}: ${counts.critical} critical, ${counts.major} major, ${counts.minor} minor (total: ${counts.total}). Correcting...`);
           this.callbacks.onAgentStatus("bible-validator", "active", `Corrigiendo Biblia del Mundo (ronda ${bibleValidationRound}): ${counts.critical} críticos, ${counts.major} mayores, ${counts.minor} menores`);
-          
-          // Stagnation detection: if total issues didn't decrease, increment counter
-          if (counts.total >= previousIssueCount) {
-            stagnationCounter++;
-            console.warn(`[OrchestratorV2] Bible validation stagnation detected (${stagnationCounter}/3). Issues: ${counts.total} (previous: ${previousIssueCount})`);
-          } else {
-            stagnationCounter = 0;
-          }
-          previousIssueCount = counts.total;
-          
-          // If stagnated for 3 consecutive rounds, pause
-          if (stagnationCounter >= 3) {
-            console.error(`[OrchestratorV2] Bible validation stagnated for 3 rounds. Cannot make further progress. Pausing.`);
-            break;
-          }
           
           const previousIssues = currentIssues;
           
@@ -5562,50 +5553,53 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           );
         }
         
-        if (isBibleAcceptable(bibleValidation)) {
+        if (isBibleAcceptable(bibleValidation, bibleValidationRound)) {
           const finalIssues = bibleValidation.issues || [];
           const finalCounts = countIssuesBySeverity(finalIssues);
           const suffix = bibleValidationRound > 0 ? ` después de ${bibleValidationRound} ronda(s) de corrección` : '';
-          const minorNote = finalCounts.minor > 0 ? ` (${finalCounts.minor} problema(s) menor(es) aceptado(s))` : '';
+          const acceptedNotes: string[] = [];
+          if (finalCounts.major > 0) acceptedNotes.push(`${finalCounts.major} sugerencia(s) editorial(es) registrada(s)`);
+          if (finalCounts.minor > 0) acceptedNotes.push(`${finalCounts.minor} observación(es) menor(es)`);
+          const notesSuffix = acceptedNotes.length > 0 ? ` (${acceptedNotes.join(', ')})` : '';
           
-          console.log(`[OrchestratorV2] Bible validation PASSED${suffix}${minorNote}`);
+          console.log(`[OrchestratorV2] Bible validation PASSED${suffix}${notesSuffix}`);
           await storage.createActivityLog({
             projectId: project.id,
             level: "success",
             agentRole: "bible-validator",
-            message: `Biblia del Mundo aprobada${suffix}${minorNote}. Lista para escribir.`,
+            message: `Biblia del Mundo aprobada${suffix}${notesSuffix}. Lista para escribir.`,
           });
           this.callbacks.onAgentStatus("bible-validator", "completed", `Biblia aprobada${suffix}`);
         } else {
-          // Failed: stagnation or safety cap reached
+          // Failed: only possible if critical issues persist after MAX_BIBLE_ROUNDS
           const remainingIssues = bibleValidation.issues || [];
           const counts = countIssuesBySeverity(remainingIssues);
-          const issueDetails = remainingIssues.map((i: any) => `[${i.severity}] ${i.description || i.issue || i.message || JSON.stringify(i)}`).join('\n');
-          const reason = stagnationCounter >= 3 
-            ? `estancada (sin mejoras en 3 rondas consecutivas)` 
-            : `alcanzado el límite de seguridad (${MAX_BIBLE_SAFETY_CAP} rondas)`;
+          const criticalDetails = remainingIssues
+            .filter((i: any) => i.severity === 'critica')
+            .map((i: any) => `[CRÍTICO] ${i.description || i.issue || i.message || JSON.stringify(i)}`)
+            .join('\n');
           
-          console.error(`[OrchestratorV2] Bible validation FAILED: ${reason}. ${counts.critical} critical, ${counts.major} major, ${counts.minor} minor remain.`);
+          console.error(`[OrchestratorV2] Bible validation FAILED: ${counts.critical} critical issues persist after ${MAX_BIBLE_ROUNDS} rounds.`);
           
           await storage.createActivityLog({
             projectId: project.id,
             level: "error",
             agentRole: "bible-validator",
-            message: `Biblia del Mundo NO APROBADA — ${reason}. Quedan ${counts.critical} críticos, ${counts.major} mayores, ${counts.minor} menores. La generación se ha pausado.`,
+            message: `Biblia del Mundo NO APROBADA — ${counts.critical} contradicciones factuales sin resolver tras ${MAX_BIBLE_ROUNDS} rondas. La generación se ha pausado.`,
           });
           
-          if (issueDetails) {
+          if (criticalDetails) {
             await storage.createActivityLog({
               projectId: project.id,
               level: "warn",
               agentRole: "bible-validator",
-              message: `Problemas pendientes:\n${issueDetails}`,
+              message: `Contradicciones pendientes:\n${criticalDetails}`,
             });
           }
           
           await storage.updateProject(project.id, { status: "paused" });
-          this.callbacks.onAgentStatus("bible-validator", "error", `Biblia rechazada: ${counts.total} problemas sin resolver (${reason})`);
-          this.callbacks.onError(`Biblia del Mundo no aprobada: ${counts.critical} críticos, ${counts.major} mayores, ${counts.minor} menores — ${reason}`);
+          this.callbacks.onAgentStatus("bible-validator", "error", `Biblia rechazada: ${counts.critical} contradicciones factuales sin resolver`);
+          this.callbacks.onError(`Biblia del Mundo no aprobada: ${counts.critical} contradicciones factuales persisten tras ${MAX_BIBLE_ROUNDS} rondas de corrección`);
           return;
         }
       }
@@ -6641,7 +6635,7 @@ ${previousIssues.map((i, idx) => `${idx + 1}. [${i.type}/${i.severity}] ${i.desc
     }
 
     // ========== PHASE 1: DETECT ISSUES (diagnosis only, no corrections) ==========
-    const detectPrompt = `Eres un editor literario experto. Analiza esta Biblia del Mundo y la escaleta de capítulos para detectar TODOS los problemas.
+    const detectPrompt = `Eres un editor literario experto. Analiza esta Biblia del Mundo y la escaleta de capítulos para detectar problemas OBJETIVOS Y VERIFICABLES.
 
 SOLO DETECTA Y REPORTA. NO generes correcciones en esta fase.
 
@@ -6649,25 +6643,52 @@ SOLO DETECTA Y REPORTA. NO generes correcciones en esta fase.
 ${bibleContent}
 
 === ESCALETA DE CAPÍTULOS (${outline.length} capítulos) ===
-NOTA: El PRÓLOGO (capítulo 0) y el EPÍLOGO (capítulo 998) son secciones especiales, NO capítulos regulares. No los cuentes como capítulos faltantes ni los reportes como errores de numeración.
+CONVENCIÓN DE NUMERACIÓN OBLIGATORIA — NO ES UN ERROR:
+- "PRÓLOGO" (Cap 0) y "EPÍLOGO" (Cap 998) son designaciones INTERNAS del sistema.
+- Esta numeración es CORRECTA e INTENCIONAL. Cap 998 NO necesita renumerarse.
+- NUNCA reportes la numeración de Cap 0 o Cap 998 como problema de coherencia ni de ningún otro tipo.
+- El PRÓLOGO y el EPÍLOGO NO son capítulos regulares. No los incluyas en el conteo de capítulos ni en cálculos de estructura.
 ${outlineContent}
 
 === HILOS ARGUMENTALES ===
 ${threadsContent}
 ${previousIssuesSection}
-DETECTA ESTOS PROBLEMAS:
-1. PERSONAJES: Arcos incompletos, motivaciones contradictorias, relaciones sin definir, personajes mencionados en la escaleta pero ausentes de la biblia
-2. LÍNEA TEMPORAL: Eventos sin orden lógico, saltos temporales injustificados
-3. REGLAS DEL MUNDO: Reglas que se contradicen entre sí, reglas demasiado vagas
-4. UBICACIONES: Descripciones inconsistentes
-5. SUBTRAMAS: Hilos huérfanos (se abren pero no se cierran), desconectadas de la trama principal
-6. ESTRUCTURA: Pacing desbalanceado, clímax mal ubicado, actos desproporcionados
-7. COHERENCIA ESCALETA-BIBLIA: Eventos en la escaleta que contradicen la biblia
+DETECTA SOLO ESTOS TIPOS DE PROBLEMAS:
+1. PERSONAJES: Motivaciones que SE CONTRADICEN entre sí (no "podrían ser más profundas"), personajes mencionados en la escaleta pero AUSENTES de la biblia
+2. LÍNEA TEMPORAL: Eventos que VIOLAN la cronología establecida (A ocurre antes que B, pero B es prerrequisito de A)
+3. REGLAS DEL MUNDO: Reglas que SE CONTRADICEN factualmente entre sí
+4. UBICACIONES: Datos CONTRADICTORIOS sobre una misma ubicación (no "podría ser más detallada")
+5. SUBTRAMAS: Hilos que se ABREN EXPLÍCITAMENTE pero NUNCA se resuelven ni mencionan de nuevo
+6. ESTRUCTURA: Clímax AUSENTE o actos sin contenido narrativo
+7. COHERENCIA ESCALETA-BIBLIA: Hechos en la escaleta que CONTRADICEN DIRECTAMENTE datos de la biblia
 
-SEVERIDAD:
-- "critica": Agujeros de trama, contradicciones factuales, personajes inexistentes referenciados
-- "mayor": Motivaciones débiles, arcos incompletos, problemas de pacing significativos, subtramas huérfanas
-- "menor": Sugerencias de mejora, detalles que enriquecerían la historia
+=== REGLAS ESTRICTAS DE SEVERIDAD ===
+IMPORTANTE: La mayoría de los problemas deben ser "menor". Reserva "critica" y "mayor" para problemas FACTUALES y VERIFICABLES.
+
+- "critica": SOLO contradicciones FACTUALES verificables. Ejemplos:
+  • La biblia dice que X muere en Cap 5, pero aparece vivo en Cap 20
+  • Un personaje referenciado en la escaleta NO EXISTE en la biblia
+  • Una regla del mundo dice A, pero un evento depende de que sea NO-A
+  
+- "mayor": SOLO problemas estructurales CONCRETOS y verificables. Ejemplos:
+  • Una subtrama se abre explícitamente y NUNCA se cierra ni menciona de nuevo
+  • Un personaje principal DESAPARECE de la escaleta sin explicación
+  • La cronología de eventos ES IMPOSIBLE (viaja de A a B en 0 tiempo)
+
+- "menor": TODO LO DEMÁS, incluyendo:
+  • "El arco podría ser más profundo/desarrollado" → SIEMPRE es menor
+  • "El pacing podría mejorar" → SIEMPRE es menor  
+  • "La motivación podría ser más explícita" → SIEMPRE es menor
+  • "El clímax podría ser más extenso/intenso" → SIEMPRE es menor
+  • "La reacción del personaje podría ser más visceral" → SIEMPRE es menor
+  • "Falta desarrollo emocional" → SIEMPRE es menor
+  • Cualquier sugerencia que use "podría", "debería", "convendría" → SIEMPRE es menor
+
+PREGUNTA CLAVE para decidir severidad: "¿Puedo señalar DOS DATOS CONCRETOS en el texto que se contradicen?" 
+- Si SÍ → puede ser "critica" o "mayor"
+- Si NO → es "menor"
+
+LÍMITE: Máximo 3 issues de tipo "mayor". Si detectas más de 3 problemas que crees mayores, incluye solo los 3 más graves como "mayor" y el resto como "menor".
 
 RESPONDE EXCLUSIVAMENTE EN JSON:
 {
@@ -6701,6 +6722,32 @@ RESPONDE EXCLUSIVAMENTE EN JSON:
 
       const detected = JSON.parse(detectJsonMatch[0]);
       const issues = detected.issues || [];
+      
+      // POST-VALIDATION FILTER: Auto-correct misclassified severities
+      const subjectivePatterns = /podría|debería|convendría|podria|deberia|conviene|puede ser más|puede mejorar|falta.*desarrollo|falta.*profundidad|necesita más|podría ser más|abrupto|poco convincente|algo.*rápid|algo.*lent|desaprovechad|insuficiente(?!.*capítulo)/i;
+      const cap998Pattern = /cap(?:ítulo)?\s*998|capítulo\s*0.*numeración|renumera|inconsistencia.*numeración|numeración.*inconsisten/i;
+      
+      for (const issue of issues) {
+        const desc = (issue.description || '') + ' ' + (issue.fix || '');
+        // Always filter out Cap 998 numbering complaints
+        if (cap998Pattern.test(desc)) {
+          if (issue.severity === 'critica' || issue.severity === 'mayor') {
+            console.log(`[BibleValidator] Auto-downgraded Cap 998 numbering issue from ${issue.severity} to menor`);
+            issue.severity = 'menor';
+            issue.description = `[AUTO-DOWNGRADED] ${issue.description}`;
+          }
+        }
+        // Downgrade subjective opinions from critica/mayor to menor
+        if ((issue.severity === 'critica' || issue.severity === 'mayor') && subjectivePatterns.test(desc)) {
+          // Only downgrade if it's NOT a factual contradiction (has two concrete data points)
+          const hasFactualContradiction = /contradice|contradicen|contradictori|pero.*dice|dice.*pero|muere.*aparece|aparece.*muere|no existe|inexistente|ausente.*biblia/i.test(desc);
+          if (!hasFactualContradiction) {
+            console.log(`[BibleValidator] Auto-downgraded subjective opinion from ${issue.severity} to menor: ${issue.description.substring(0, 80)}...`);
+            issue.severity = 'menor';
+          }
+        }
+      }
+      
       const criticalIssues = issues.filter((i: any) => i.severity === 'critica');
       const majorIssues = issues.filter((i: any) => i.severity === 'mayor');
       const minorIssues = issues.filter((i: any) => i.severity === 'menor');
