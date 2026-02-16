@@ -6328,12 +6328,42 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           const contexts: string[] = [];
           for (const prevBook of previousBooks) {
             const prevWorldBible = await storage.getWorldBibleByProject(prevBook.id);
+            const prevChapters = await storage.getChaptersByProject(prevBook.id);
+            const bookParts: string[] = [];
+            bookParts.push(`Libro ${prevBook.seriesOrder}: "${prevBook.title}"`);
+            if (prevBook.premise) {
+              bookParts.push(`  Premisa: ${prevBook.premise.substring(0, 200)}`);
+            }
             if (prevWorldBible && prevWorldBible.characters) {
               const chars = Array.isArray(prevWorldBible.characters) ? prevWorldBible.characters : [];
-              contexts.push(`Libro ${prevBook.seriesOrder}: ${prevBook.title} - Personajes: ${chars.slice(0, 5).map((c: any) => c.name || c).join(', ')}`);
+              const charSummaries = chars.slice(0, 8).map((c: any) => {
+                const name = c.name || c.nombre || 'Desconocido';
+                const role = c.role || c.rol || '';
+                const arc = c.arc || c.arco || '';
+                return `    - ${name} (${role})${arc ? `: ${typeof arc === 'string' ? arc.substring(0, 100) : ''}` : ''}`;
+              });
+              bookParts.push(`  Personajes: `);
+              bookParts.push(charSummaries.join('\n'));
             }
+            if (prevChapters && prevChapters.length > 0) {
+              const keyChapters = prevChapters
+                .filter(ch => ch.summary && ch.summary.length > 10)
+                .sort((a, b) => a.chapterNumber - b.chapterNumber);
+              if (keyChapters.length > 0) {
+                bookParts.push(`  Resumen (${keyChapters.length} caps):`);
+                for (const ch of keyChapters) {
+                  bookParts.push(`    Cap ${ch.chapterNumber}: ${(ch.summary || '').substring(0, 150)}`);
+                }
+              }
+            }
+            contexts.push(bookParts.join('\n'));
           }
-          previousVolumesContext = contexts.join('\n');
+          let fullContext = contexts.join('\n\n');
+          const MAX_THREAD_FIXER_CHARS = 6000;
+          if (fullContext.length > MAX_THREAD_FIXER_CHARS) {
+            fullContext = fullContext.substring(0, MAX_THREAD_FIXER_CHARS) + '\n[... truncado]';
+          }
+          previousVolumesContext = fullContext;
         }
       }
 
