@@ -157,7 +157,20 @@ export default function GenerateGuidePage() {
   });
 
   const onSubmit = (data: FormData) => {
+    console.log("[GuideGenerator] Form submitted successfully, sending to server...", data.title);
     generateMutation.mutate(data);
+  };
+
+  const onFormError = (errors: Record<string, any>) => {
+    console.error("[GuideGenerator] Form validation errors:", errors);
+    const errorMessages = Object.entries(errors)
+      .map(([field, error]: [string, any]) => `${field}: ${error?.message || 'inválido'}`)
+      .join(', ');
+    toast({
+      title: "Campos incompletos",
+      description: errorMessages,
+      variant: "destructive",
+    });
   };
 
   const handlePseudonymChange = (value: string) => {
@@ -244,7 +257,7 @@ export default function GenerateGuidePage() {
         </Card>
       ) : generatedGuide === null ? (
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit, onFormError)} className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
