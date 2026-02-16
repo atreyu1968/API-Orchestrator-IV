@@ -615,6 +615,9 @@ export class OrchestratorV2 {
     const safeOutline = outline || [];
     let safePlotThreads = plotThreads || [];
     
+    // Regular chapters only (exclude prologue=0, epilogue=998/999) for structural checks
+    const regularOutline = safeOutline.filter(ch => ch.chapter_num > 0 && ch.chapter_num < 998);
+    
     if (safeOutline.length === 0) {
       console.warn('[OrchestratorV2] validatePlotCoherence: Empty outline, skipping validation');
       return { isValid: true, criticalIssues: [], warnings: ['Outline vacío - validación omitida'] };
@@ -827,22 +830,53 @@ export class OrchestratorV2 {
                               (char.importance === 1 || char.importancia === 1);
       
       // LitAgents 2.9.6: Require 40% protagonist presence (aligned with prompts)
-      if (isMainCharacter && appearanceCount < safeOutline.length * 0.4) {
-        const minRequired = Math.ceil(safeOutline.length * 0.4);
+      // Count appearances only in regular chapters (exclude prologue/epilogue)
+      let regularAppearanceCount = 0;
+      for (let i = 0; i < safeOutline.length; i++) {
+        const ch = safeOutline[i];
+        if (ch.chapter_num === 0 || ch.chapter_num >= 998) continue;
+        const combined = ((ch.summary || '') + ' ' + (ch.key_event || '')).toLowerCase();
+        const aliasArray = Array.from(aliases);
+        for (const alias of aliasArray) {
+          if (alias.length >= 3 && combined.includes(alias)) {
+            regularAppearanceCount++;
+            break;
+          }
+        }
+      }
+      
+      if (isMainCharacter && regularAppearanceCount < regularOutline.length * 0.4) {
+        const minRequired = Math.ceil(regularOutline.length * 0.4);
         const protagonistName = char.name || char.nombre;
-        criticalIssues.push(`❌ PROTAGONISTA AUSENTE: ${protagonistName} solo aparece en ${appearanceCount}/${safeOutline.length} capítulos. DEBE aparecer NOMBRADO EXPLÍCITAMENTE en el summary o key_event de al menos ${minRequired} capítulos (40%). Escribe "${protagonistName}" (no pronombres ni "el protagonista") en los resúmenes de capítulo.`);
+        criticalIssues.push(`❌ PROTAGONISTA AUSENTE: ${protagonistName} solo aparece en ${regularAppearanceCount}/${regularOutline.length} capítulos regulares. DEBE aparecer NOMBRADO EXPLÍCITAMENTE en el summary o key_event de al menos ${minRequired} capítulos (40%). Escribe "${protagonistName}" (no pronombres ni "el protagonista") en los resúmenes de capítulo.`);
       }
       
       // Characters shouldn't disappear mid-story without explanation
-      // Only check if we have enough chapters (at least 8) and character appears multiple times
-      if (safeOutline.length >= 8 && appearanceCount >= 3 && lastAppearance < safeOutline.length - 5 && 
+      // Compute last appearance index among regular chapters only
+      let lastRegularAppearance = -1;
+      for (let i = 0; i < regularOutline.length; i++) {
+        const ch = regularOutline[i];
+        const combined = ((ch.summary || '') + ' ' + (ch.key_event || '')).toLowerCase();
+        const aliasArray = Array.from(aliases);
+        for (const alias of aliasArray) {
+          if (alias.length >= 3 && combined.includes(alias)) {
+            lastRegularAppearance = i;
+            break;
+          }
+        }
+      }
+      if (regularOutline.length >= 8 && regularAppearanceCount >= 3 && lastRegularAppearance < regularOutline.length - 5 && 
           !(char.status || char.estado || '').toLowerCase().includes('muert')) {
-        warnings.push(`⚠️ PERSONAJE DESAPARECE: ${char.name || char.nombre} deja de aparecer después del capítulo ${lastAppearance + 1}.`);
+        const disappearsAtChapter = regularOutline[lastRegularAppearance]?.chapter_num || (lastRegularAppearance + 1);
+        warnings.push(`⚠️ PERSONAJE DESAPARECE: ${char.name || char.nombre} deja de aparecer después del capítulo ${disappearsAtChapter}.`);
       }
     }
     
-    // 3. Check for chapters without clear purpose
-    for (const ch of safeOutline) {
+    // 3. Check for chapters without clear purpose (regular chapters only, skip if none)
+    if (regularOutline.length === 0) {
+      return { isValid: criticalIssues.length === 0, criticalIssues, warnings };
+    }
+    for (const ch of regularOutline) {
       const summary = (ch.summary || '').toLowerCase();
       const keyEvent = (ch.key_event || '').toLowerCase();
       
@@ -858,8 +892,8 @@ export class OrchestratorV2 {
       }
     }
     
-    // 4. Check three-act structure balance (only for novels with 6+ chapters)
-    const totalChapters = safeOutline.length;
+    // 4. Check three-act structure balance (only regular chapters, exclude prologue/epilogue)
+    const totalChapters = regularOutline.length;
     
     // Skip structure checks for very short outlines
     if (totalChapters >= 6) {
@@ -873,11 +907,11 @@ export class OrchestratorV2 {
         { role: 'act2_crisis', label: 'CRISIS ACTO 2', minPct: 0.60, maxPct: 0.85 },
       ];
       
-      const hasAnyStructuralRole = safeOutline.some(ch => ch.structural_role && ch.structural_role !== 'null');
+      const hasAnyStructuralRole = regularOutline.some(ch => ch.structural_role && ch.structural_role !== 'null');
       
       if (hasAnyStructuralRole) {
         const usedRoles = new Set<string>();
-        for (const ch of safeOutline) {
+        for (const ch of regularOutline) {
           if (ch.structural_role && ch.structural_role !== 'null') {
             if (usedRoles.has(ch.structural_role)) {
               warnings.push(`⚠️ ROL DUPLICADO: structural_role "${ch.structural_role}" aparece en más de un capítulo. Cada rol debe usarse UNA sola vez.`);
@@ -887,39 +921,39 @@ export class OrchestratorV2 {
         }
         
         for (const { role, label, minPct, maxPct } of requiredRoles) {
-          const chapterIndex = safeOutline.findIndex(ch => ch.structural_role === role);
+          const chapterIndex = regularOutline.findIndex(ch => ch.structural_role === role);
           if (chapterIndex === -1) {
             criticalIssues.push(`❌ FALTA ${label}: Ningún capítulo tiene structural_role: "${role}". Marca el capítulo correspondiente (~${Math.round(minPct * 100)}-${Math.round(maxPct * 100)}% de la novela).`);
           } else {
             const position = (chapterIndex + 1) / totalChapters;
-            const chapter = safeOutline[chapterIndex];
+            const chapter = regularOutline[chapterIndex];
             if (position < minPct - 0.10 || position > maxPct + 0.10) {
               warnings.push(`⚠️ ${label} DESCOLOCADO: "${chapter.title}" (cap ${chapter.chapter_num}) está al ${Math.round(position * 100)}% pero debería estar entre ~${Math.round(minPct * 100)}%-${Math.round(maxPct * 100)}%.`);
             }
           }
         }
       } else {
-        // Fallback: AI didn't provide structural_role labels — use keyword detection
+        // Fallback: AI didn't provide structural_role labels — use keyword detection on regular chapters only
         const turningPointKeywords = /giro|revelaci[oó]n|descubr[ei]|confronta|crisis|punto de no retorno|cl[ií]max|todo cambia|traici[oó]n|emboscada|secreto|verdad|trampa|engaño|ataque|muerte|asesinato|desaparici[oó]n|captura|huida|rescate|sacrificio|alianza|ruptura|transformaci[oó]n|decisi[oó]n|enfrentamiento|batalla|guerra|conspiraci[oó]n|derrota|victoria|p[eé]rdida|abandon[ao]|regreso|venganza|confesi[oó]n|despertar|ca[ií]da|ascenso|quiebre|colapso|explosi[oó]n|fuga|invasi[oó]n|golpe|devastaci[oó]n|sorpresa|impacto|cambio radical|punto de inflexi[oó]n|nada volver[aá]|irremediable|irreversible|inevitable/i;
         
         const windowSize = totalChapters >= 30 ? 5 : totalChapters >= 20 ? 4 : 3;
         
         const act1Start = Math.max(0, act1End - windowSize);
         const act1EndBound = Math.min(totalChapters, act1End + windowSize);
-        const act1Turning = safeOutline.slice(act1Start, act1EndBound).some(ch => 
+        const act1Turning = regularOutline.slice(act1Start, act1EndBound).some(ch => 
           turningPointKeywords.test((ch.summary || '') + ' ' + (ch.key_event || ''))
         );
         
         const midPoint = Math.floor(totalChapters * 0.5);
         const midStart = Math.max(0, midPoint - windowSize);
         const midEnd = Math.min(totalChapters, midPoint + windowSize);
-        const midpointTurning = safeOutline.slice(midStart, midEnd).some(ch =>
+        const midpointTurning = regularOutline.slice(midStart, midEnd).some(ch =>
           turningPointKeywords.test((ch.summary || '') + ' ' + (ch.key_event || ''))
         );
         
         const act2Start = Math.max(0, act2End - windowSize);
         const act2EndBound = Math.min(totalChapters, act2End + windowSize);
-        const act2Turning = safeOutline.slice(act2Start, act2EndBound).some(ch =>
+        const act2Turning = regularOutline.slice(act2Start, act2EndBound).some(ch =>
           turningPointKeywords.test((ch.summary || '') + ' ' + (ch.key_event || ''))
         );
         
@@ -5571,7 +5605,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           
           await storage.updateProject(project.id, { status: "paused" });
           this.callbacks.onAgentStatus("bible-validator", "error", `Biblia rechazada: ${counts.total} problemas sin resolver (${reason})`);
-          this.callbacks.onPipelineComplete(0, 0);
+          this.callbacks.onError(`Biblia del Mundo no aprobada: ${counts.critical} críticos, ${counts.major} mayores, ${counts.minor} menores — ${reason}`);
           return;
         }
       }
@@ -6588,9 +6622,10 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
       themes: (worldBible as any).themes || [],
     }, null, 2);
 
-    const outlineContent = outline.map(ch => 
-      `Cap ${ch.chapter_num}: "${ch.title}" - ${ch.summary || 'Sin resumen'} [Evento clave: ${ch.key_event || 'N/A'}]`
-    ).join('\n');
+    const outlineContent = outline.map(ch => {
+      const label = ch.chapter_num === 0 ? 'PRÓLOGO' : ch.chapter_num >= 998 ? 'EPÍLOGO' : `Cap ${ch.chapter_num}`;
+      return `${label}: "${ch.title}" - ${ch.summary || 'Sin resumen'} [Evento clave: ${ch.key_event || 'N/A'}]`;
+    }).join('\n');
 
     const threadsContent = plotThreads ? plotThreads.map(t => 
       `- ${t.name}: ${t.description || t.goal || 'Sin descripción'}`
@@ -6614,6 +6649,7 @@ SOLO DETECTA Y REPORTA. NO generes correcciones en esta fase.
 ${bibleContent}
 
 === ESCALETA DE CAPÍTULOS (${outline.length} capítulos) ===
+NOTA: El PRÓLOGO (capítulo 0) y el EPÍLOGO (capítulo 998) son secciones especiales, NO capítulos regulares. No los cuentes como capítulos faltantes ni los reportes como errores de numeración.
 ${outlineContent}
 
 === HILOS ARGUMENTALES ===
