@@ -782,8 +782,8 @@ export default function GenerateSeriesGuidePage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="prose prose-sm dark:prose-invert max-w-none max-h-[600px] overflow-y-auto">
-                <pre className="whitespace-pre-wrap text-sm font-mono bg-muted p-4 rounded-lg" data-testid="text-guide-content">
+              <div className="max-h-[600px] overflow-y-auto">
+                <pre className="whitespace-pre-wrap text-sm font-mono bg-muted text-foreground p-4 rounded-lg" data-testid="text-guide-content">
                   {generatedGuide}
                 </pre>
               </div>
