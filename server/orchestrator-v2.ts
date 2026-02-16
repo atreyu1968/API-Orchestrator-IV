@@ -5225,6 +5225,8 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           bibleValidationAttempt++;
           console.log(`[OrchestratorV2] Bible validation FAILED (attempt ${bibleValidationAttempt}/${MAX_BIBLE_VALIDATION_ATTEMPTS}). Applying corrections...`);
           
+          const previousIssues = bibleValidation.issues || [];
+          
           if (bibleValidation.correctedBible) {
             // Apply outline fixes if present (in-memory + persist to World Bible)
             if (bibleValidation.correctedBible._outlineFixes && Array.isArray(bibleValidation.correctedBible._outlineFixes)) {
@@ -5258,6 +5260,9 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             }
             
             worldBible = bibleValidation.correctedBible;
+            if (worldBible.rules && !worldBible.worldRules) {
+              worldBible.worldRules = worldBible.rules;
+            }
             
             // Update the stored World Bible with corrections
             const storedWB = await storage.getWorldBibleByProject(project.id);
@@ -5279,11 +5284,19 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
               agentRole: "bible-validator",
               message: `Biblia del Mundo corregida (intento ${bibleValidationAttempt}). Re-validando...`,
             });
+          } else {
+            console.warn(`[OrchestratorV2] Bible validation returned issues but no corrections. Requesting corrections explicitly...`);
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: "warn",
+              agentRole: "bible-validator",
+              message: `Validación detectó ${previousIssues.length} problemas pero no generó correcciones. Re-validando con instrucciones más estrictas...`,
+            });
           }
           
-          // Re-validate after corrections
+          // Re-validate after corrections, passing previous issues to avoid repetition
           bibleValidation = await this.validateWorldBibleWithGemini(
-            project.id, worldBible, outline, plotThreads
+            project.id, worldBible, outline, plotThreads, previousIssues
           );
         }
         
@@ -5296,12 +5309,38 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             message: `Biblia del Mundo validada${bibleValidationAttempt > 0 ? ` después de ${bibleValidationAttempt} correccione(s)` : ''}. Lista para escribir.`,
           });
         } else {
-          console.warn(`[OrchestratorV2] Bible validation has remaining issues after ${MAX_BIBLE_VALIDATION_ATTEMPTS} attempts. Proceeding with best effort.`);
+          const remainingIssues = bibleValidation.issues || [];
+          const remainingCritical = remainingIssues.filter((i: any) => i.severity === 'critica').length;
+          const remainingMajor = remainingIssues.filter((i: any) => i.severity === 'mayor').length;
+          const remainingMinor = remainingIssues.length - remainingCritical - remainingMajor;
+          console.warn(`[OrchestratorV2] Bible validation has remaining issues after ${MAX_BIBLE_VALIDATION_ATTEMPTS} attempts: ${remainingCritical} critical, ${remainingMajor} major, ${remainingMinor} minor. Proceeding with best effort.`);
+          
+          if (bibleValidation.correctedBible) {
+            worldBible = bibleValidation.correctedBible;
+            if (worldBible.rules && !worldBible.worldRules) {
+              worldBible.worldRules = worldBible.rules;
+            }
+            const storedWB = await storage.getWorldBibleByProject(project.id);
+            if (storedWB) {
+              const updates: any = {};
+              if (bibleValidation.correctedBible.characters) {
+                updates.characters = bibleValidation.correctedBible.characters;
+              }
+              if (bibleValidation.correctedBible.rules) {
+                updates.worldRules = bibleValidation.correctedBible.rules;
+              }
+              if (Object.keys(updates).length > 0) {
+                await storage.updateWorldBible(storedWB.id, updates);
+                console.log(`[OrchestratorV2] Final bible corrections applied before proceeding`);
+              }
+            }
+          }
+          
           await storage.createActivityLog({
             projectId: project.id,
             level: "warn",
             agentRole: "bible-validator",
-            message: `Biblia del Mundo con ${bibleValidation.issues.length} advertencias menores pendientes. Continuando con la mejor versión disponible.`,
+            message: `Biblia del Mundo con ${remainingMajor} problemas mayores y ${remainingMinor} menores pendientes tras ${MAX_BIBLE_VALIDATION_ATTEMPTS} intentos. Continuando con la mejor versión disponible.`,
           });
         }
       }
@@ -6301,7 +6340,8 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
     projectId: number,
     worldBible: any,
     outline: any[],
-    plotThreads?: any[]
+    plotThreads?: any[],
+    previousIssues?: Array<{ type: string; severity: string; description: string; fix: string }>
   ): Promise<{ isValid: boolean; issues: Array<{ type: string; severity: string; description: string; fix: string }>; correctedBible?: any }> {
     this.callbacks.onAgentStatus("bible-validator", "active", "Validando Biblia del Mundo con IA...");
     
@@ -6327,8 +6367,23 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
       `- ${t.name}: ${t.description || t.goal || 'Sin descripción'}`
     ).join('\n') : 'No definidos';
 
-    const prompt = `Eres un editor literario experto. Analiza esta Biblia del Mundo y la escaleta de capítulos de una novela.
-Tu objetivo es encontrar FISURAS, INCONSISTENCIAS y DEBILIDADES ESTRUCTURALES que causarían problemas durante la escritura.
+    let previousIssuesSection = '';
+    if (previousIssues && previousIssues.length > 0) {
+      previousIssuesSection = `\n=== PROBLEMAS DETECTADOS EN VALIDACIÓN ANTERIOR (YA DEBERÍAN ESTAR CORREGIDOS) ===
+Los siguientes problemas fueron detectados en la ronda anterior. Verifica si YA están corregidos en la biblia/escaleta actual.
+NO reportes estos mismos problemas otra vez si ya están resueltos. Solo reporta problemas NUEVOS o que persistan.
+${previousIssues.map((i, idx) => `${idx + 1}. [${i.type}/${i.severity}] ${i.description}`).join('\n')}
+=== FIN PROBLEMAS ANTERIORES ===\n`;
+    }
+
+    const prompt = `Eres un editor literario experto y CORRECTOR ACTIVO. Analiza esta Biblia del Mundo y la escaleta de capítulos de una novela.
+Tu objetivo es encontrar FISURAS, INCONSISTENCIAS y DEBILIDADES ESTRUCTURALES, Y CORREGIRLAS DIRECTAMENTE.
+
+IMPORTANTE: No solo describas los problemas. DEBES generar las correcciones concretas en el campo "corrections" del JSON.
+- Si falta un personaje en la biblia, AÑÁDELO al array de characters corregido.
+- Si un arco de personaje es débil, MEJÓRALO en el array de characters corregido.
+- Si una regla es contradictoria, CORRÍGELA en el array de rules corregido.
+- Si un capítulo de la escaleta tiene problemas, CORRÍGELO en outline_fixes.
 
 === BIBLIA DEL MUNDO ===
 ${bibleContent.substring(0, 15000)}
@@ -6338,8 +6393,8 @@ ${outlineContent}
 
 === HILOS ARGUMENTALES ===
 ${threadsContent}
-
-BUSCA ESTOS PROBLEMAS:
+${previousIssuesSection}
+BUSCA Y CORRIGE ESTOS PROBLEMAS:
 1. PERSONAJES: Arcos incompletos, motivaciones contradictorias, relaciones sin definir, personajes mencionados en la escaleta pero ausentes de la biblia
 2. LÍNEA TEMPORAL: Eventos sin orden lógico, saltos temporales injustificados, eventos simultáneos imposibles
 3. REGLAS DEL MUNDO: Reglas que se contradicen entre sí, reglas demasiado vagas que causarán inconsistencias
@@ -6348,9 +6403,14 @@ BUSCA ESTOS PROBLEMAS:
 6. ESTRUCTURA: Pacing desbalanceado, clímax mal ubicado, actos desproporcionados
 7. COHERENCIA ESCALETA-BIBLIA: Eventos en la escaleta que contradicen la biblia
 
+SEVERIDAD - Clasifica correctamente:
+- "critica": Agujeros de trama, contradicciones factuales, personajes inexistentes referenciados, errores que romperían la coherencia
+- "mayor": Motivaciones débiles, arcos incompletos, problemas de pacing significativos, subtramas huérfanas
+- "menor": Sugerencias de mejora, detalles que enriquecerían la historia
+
 RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
 {
-  "isValid": true/false,
+  "isValid": true/false (true SOLO si NO hay issues "critica" NI "mayor"),
   "overallScore": 1-10,
   "issues": [
     {
@@ -6361,12 +6421,14 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     }
   ],
   "corrections": {
-    "characters": null o array corregido de personajes (solo si hay correcciones de personajes),
-    "rules": null o array corregido de reglas (solo si hay correcciones de reglas),
-    "outline_fixes": null o [{chapter_num: N, corrected_summary: "..."}] (solo si hay correcciones de escaleta)
+    "characters": OBLIGATORIO si hay issues de personajes - array COMPLETO de TODOS los personajes (existentes + nuevos/corregidos). Cada personaje: {name, role, description, arc, relationships, ...},
+    "rules": array corregido de TODAS las reglas si hay issues de reglas, o null si no hay cambios,
+    "outline_fixes": OBLIGATORIO si hay issues de estructura/coherencia - [{chapter_num: N, corrected_summary: "resumen corregido completo"}]
   },
   "lessonsForWriter": ["Lección 1 que el escritor debe recordar", "Lección 2..."]
-}`;
+}
+
+RECUERDA: El campo "corrections" es OBLIGATORIO cuando hay issues. No dejes corrections en null si has detectado problemas.`;
 
     try {
       const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
@@ -6401,29 +6463,58 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
         });
       }
 
-      // Store lessons for the Ghostwriter to learn from
+      await storage.createActivityLog({
+        projectId,
+        level: criticalIssues.length > 0 ? "error" : majorIssues.length > 0 ? "warn" : "info",
+        agentRole: "bible-validator",
+        message: `${criticalIssues.length} problemas críticos, ${majorIssues.length} mayores, ${issues.length - criticalIssues.length - majorIssues.length} menores detectados (puntuación: ${parsed.overallScore}/10)`,
+      });
+
       if (parsed.lessonsForWriter && parsed.lessonsForWriter.length > 0) {
         await this.storeBibleLessons(projectId, parsed.lessonsForWriter);
       }
 
-      const isValid = criticalIssues.length === 0 && majorIssues.length <= 1;
+      const isValid = criticalIssues.length === 0 && majorIssues.length === 0;
 
       let correctedBible: any = undefined;
-      if (!isValid && parsed.corrections) {
+      const hasAnyIssues = issues.length > 0;
+      if (hasAnyIssues && parsed.corrections) {
         correctedBible = { ...worldBible };
-        if (parsed.corrections.characters && Array.isArray(parsed.corrections.characters)) {
-          correctedBible.characters = parsed.corrections.characters;
+        if (parsed.corrections.characters && Array.isArray(parsed.corrections.characters) && parsed.corrections.characters.length > 0) {
+          const existingCharacters = worldBible.characters || [];
+          if (parsed.corrections.characters.length >= existingCharacters.length) {
+            correctedBible.characters = parsed.corrections.characters;
+            console.log(`[BibleValidator] Characters updated: ${existingCharacters.length} -> ${parsed.corrections.characters.length}`);
+          } else {
+            const existingNames = new Set(existingCharacters.map((c: any) => (c.name || c.nombre || '').toLowerCase()));
+            const newCharacters = [...existingCharacters];
+            for (const corrChar of parsed.corrections.characters) {
+              const charName = (corrChar.name || corrChar.nombre || '').toLowerCase();
+              const existIdx = newCharacters.findIndex((c: any) => (c.name || c.nombre || '').toLowerCase() === charName);
+              if (existIdx >= 0) {
+                newCharacters[existIdx] = { ...newCharacters[existIdx], ...corrChar };
+              } else {
+                newCharacters.push(corrChar);
+              }
+            }
+            correctedBible.characters = newCharacters;
+            console.log(`[BibleValidator] Characters merged: ${existingCharacters.length} existing + ${parsed.corrections.characters.length} corrections = ${newCharacters.length} total`);
+          }
         }
-        if (parsed.corrections.rules && Array.isArray(parsed.corrections.rules)) {
+        if (parsed.corrections.rules && Array.isArray(parsed.corrections.rules) && parsed.corrections.rules.length > 0) {
           correctedBible.rules = parsed.corrections.rules;
+          console.log(`[BibleValidator] Rules updated: ${parsed.corrections.rules.length} rules`);
         }
-        if (parsed.corrections.outline_fixes && Array.isArray(parsed.corrections.outline_fixes)) {
+        if (parsed.corrections.outline_fixes && Array.isArray(parsed.corrections.outline_fixes) && parsed.corrections.outline_fixes.length > 0) {
           correctedBible._outlineFixes = parsed.corrections.outline_fixes;
+          console.log(`[BibleValidator] Outline fixes: ${parsed.corrections.outline_fixes.length} chapters to fix`);
         }
       }
 
-      this.callbacks.onAgentStatus("bible-validator", isValid ? "completed" : "warning",
-        isValid ? `Biblia validada (${parsed.overallScore}/10)` : `${criticalIssues.length} problemas críticos detectados`);
+      const statusMsg = isValid 
+        ? `Biblia validada (${parsed.overallScore}/10)` 
+        : `${criticalIssues.length} críticos, ${majorIssues.length} mayores detectados`;
+      this.callbacks.onAgentStatus("bible-validator", isValid ? "completed" : "warning", statusMsg);
 
       return { isValid, issues, correctedBible };
     } catch (error) {
