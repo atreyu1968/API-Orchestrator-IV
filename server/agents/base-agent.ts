@@ -315,7 +315,7 @@ export abstract class BaseAgent {
     return this.config.role;
   }
 
-  protected async generateContent(prompt: string, projectId?: number, options?: { temperature?: number; forceProvider?: AIProvider; maxCompletionTokens?: number }): Promise<AgentResponse> {
+  protected async generateContent(prompt: string, projectId?: number, options?: { temperature?: number; forceProvider?: AIProvider; maxCompletionTokens?: number; frequencyPenalty?: number; presencePenalty?: number }): Promise<AgentResponse> {
     console.log(`[${this.config.name}] generateContent() called (prompt: ${prompt.length} chars)`);
     let provider = options?.forceProvider || getAIProvider();
     console.log(`[${this.config.name}] AI provider: ${provider}${options?.forceProvider ? ' (forced)' : ''}`);
@@ -333,7 +333,7 @@ export abstract class BaseAgent {
     return this.generateWithGemini(prompt, projectId, options);
   }
 
-  private async generateWithDeepSeek(prompt: string, projectId?: number, options?: { temperature?: number; maxCompletionTokens?: number }): Promise<AgentResponse> {
+  private async generateWithDeepSeek(prompt: string, projectId?: number, options?: { temperature?: number; maxCompletionTokens?: number; frequencyPenalty?: number; presencePenalty?: number }): Promise<AgentResponse> {
     // Use dedicated client if configured (translator or re-editor)
     let deepseek: OpenAI | null;
     let keyName: string;
@@ -405,14 +405,16 @@ export abstract class BaseAgent {
         };
         
         if (isReasonerModel) {
-          // R1 uses max_completion_tokens and doesn't support temperature
-          // Allow override for large outputs (e.g., 40-chapter outlines)
           requestParams.max_completion_tokens = options?.maxCompletionTokens || 16000;
         } else {
-          // V3: max_tokens limit is 8192 - this is a hard API limit
-          // For large outputs like World Bible, we need to use streaming or split requests
           requestParams.max_tokens = 8192;
           requestParams.temperature = Math.min(temperature, 2.0);
+          if (options?.frequencyPenalty !== undefined) {
+            requestParams.frequency_penalty = Math.min(Math.max(options.frequencyPenalty, -2.0), 2.0);
+          }
+          if (options?.presencePenalty !== undefined) {
+            requestParams.presence_penalty = Math.min(Math.max(options.presencePenalty, -2.0), 2.0);
+          }
         }
         
         // CRITICAL DEBUG: Log the exact parameters being sent to DeepSeek
@@ -423,6 +425,8 @@ export abstract class BaseAgent {
         console.log(`  - max_tokens: ${requestParams.max_tokens || 'N/A'}`);
         console.log(`  - max_completion_tokens: ${requestParams.max_completion_tokens || 'N/A'}`);
         console.log(`  - temperature: ${requestParams.temperature || 'N/A'}`);
+        console.log(`  - frequency_penalty: ${requestParams.frequency_penalty ?? 'N/A'}`);
+        console.log(`  - presence_penalty: ${requestParams.presence_penalty ?? 'N/A'}`);
         console.log(`  - stream: ${requestParams.stream}`);
         console.log(`  - systemPrompt length: ${systemPromptLength} chars`);
         console.log(`  - userPrompt length: ${userPromptLength} chars`);
@@ -625,7 +629,7 @@ export abstract class BaseAgent {
     };
   }
 
-  private async generateWithGemini(prompt: string, projectId?: number, options?: { temperature?: number }, fallbackModel?: string): Promise<AgentResponse> {
+  private async generateWithGemini(prompt: string, projectId?: number, options?: { temperature?: number; frequencyPenalty?: number; presencePenalty?: number }, fallbackModel?: string): Promise<AgentResponse> {
     let lastError: Error | null = null;
     const temperature = options?.temperature ?? 1.0;
     let rateLimitAttempts = 0;
@@ -660,6 +664,8 @@ export abstract class BaseAgent {
             temperature,
             topP: 0.95,
             maxOutputTokens: 65536,
+            ...(options?.frequencyPenalty !== undefined ? { frequencyPenalty: options.frequencyPenalty } : {}),
+            ...(options?.presencePenalty !== undefined ? { presencePenalty: options.presencePenalty } : {}),
             ...(useThinking && modelToUse === "gemini-3-pro-preview" ? {
               thinkingConfig: {
                 thinkingBudget: 10000,

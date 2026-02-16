@@ -398,7 +398,7 @@ Devuelve el capítulo COMPLETO con SOLO el/los párrafo(s) afectado(s) corregido
 NO incluyas explicaciones, comentarios, ni formato markdown.
 El resultado debe ser texto plano listo para reemplazar el capítulo original.`;
 
-    const response = await this.generateContent(focusedPrompt, undefined, { temperature: 0.5 });
+    const response = await this.generateContent(focusedPrompt, undefined, { temperature: 0.5, frequencyPenalty: 0.2, presencePenalty: 0.1 });
     
     if (response.error) {
       console.error(`[SmartEditor] Focused paragraph rewrite API error: ${response.error}`);
@@ -540,7 +540,7 @@ INSTRUCCIONES ESTRICTAS:
 El resultado debe ser el capítulo COMPLETO y CORREGIDO.
 Responde ÚNICAMENTE con el capítulo reescrito, sin explicaciones, comentarios ni formato markdown.`;
 
-    const response = await this.generateContent(rewritePrompt, undefined, { temperature: 0.7 });
+    const response = await this.generateContent(rewritePrompt, undefined, { temperature: 0.7, frequencyPenalty: 0.3, presencePenalty: 0.2 });
     
     if (response.error) {
       console.error(`[SmartEditor] Full rewrite API error: ${response.error}`);

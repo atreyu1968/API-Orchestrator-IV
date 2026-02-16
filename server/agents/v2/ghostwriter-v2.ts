@@ -180,7 +180,7 @@ ${input.chapterOutline.emotional_arc ? `║ ARCO EMOCIONAL: ${input.chapterOutli
       console.log(`[GhostwriterV2] Injected narrative credibility guidance`);
     }
 
-    const response = await this.generateContent(prompt, undefined, { temperature: 1.1 });
+    const response = await this.generateContent(prompt, undefined, { temperature: 1.1, frequencyPenalty: 0.4, presencePenalty: 0.3 });
     
     if (!response.error) {
       const wordCount = response.content.split(/\s+/).length;

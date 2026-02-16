@@ -736,7 +736,9 @@ export class GhostwriterAgent extends BaseAgent {
     `;
 
     const temperature = input.isRewrite ? 0.7 : 1.0;
-    return this.generateContent(prompt, undefined, { temperature });
+    const frequencyPenalty = input.isRewrite ? 0.2 : 0.3;
+    const presencePenalty = input.isRewrite ? 0.1 : 0.2;
+    return this.generateContent(prompt, undefined, { temperature, frequencyPenalty, presencePenalty });
   }
   
   extractContinuityState(content: string): { cleanContent: string; continuityState: any | null } {
