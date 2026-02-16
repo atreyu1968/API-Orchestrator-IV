@@ -84,6 +84,7 @@ Evalúa la tensión narrativa, los ganchos de apertura y cierre, y el ritmo gene
 
     const response = await this.generateContent(prompt, undefined, {
       forceProvider: "gemini",
+      temperature: 0.3,
     });
 
     let parsed: RitmoOutput = {

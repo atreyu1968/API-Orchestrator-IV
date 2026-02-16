@@ -94,7 +94,7 @@ export class SmartEditorAgent extends BaseAgent {
       prompt = `${input.additionalContext}\n\n${prompt}`;
     }
 
-    const response = await this.generateContent(prompt);
+    const response = await this.generateContent(prompt, undefined, { temperature: 0.3 });
     
     if (response.error) {
       return response;
@@ -312,7 +312,7 @@ ${jsonFormat}`;
     
     const surgicalPrompt = this.buildSpecializedPrompt(input, errorType);
 
-    const response = await this.generateContent(surgicalPrompt);
+    const response = await this.generateContent(surgicalPrompt, undefined, { temperature: 0.3 });
     
     if (response.error) {
       return response;
@@ -398,7 +398,7 @@ Devuelve el capítulo COMPLETO con SOLO el/los párrafo(s) afectado(s) corregido
 NO incluyas explicaciones, comentarios, ni formato markdown.
 El resultado debe ser texto plano listo para reemplazar el capítulo original.`;
 
-    const response = await this.generateContent(focusedPrompt);
+    const response = await this.generateContent(focusedPrompt, undefined, { temperature: 0.5 });
     
     if (response.error) {
       console.error(`[SmartEditor] Focused paragraph rewrite API error: ${response.error}`);
@@ -540,7 +540,7 @@ INSTRUCCIONES ESTRICTAS:
 El resultado debe ser el capítulo COMPLETO y CORREGIDO.
 Responde ÚNICAMENTE con el capítulo reescrito, sin explicaciones, comentarios ni formato markdown.`;
 
-    const response = await this.generateContent(rewritePrompt);
+    const response = await this.generateContent(rewritePrompt, undefined, { temperature: 0.7 });
     
     if (response.error) {
       console.error(`[SmartEditor] Full rewrite API error: ${response.error}`);

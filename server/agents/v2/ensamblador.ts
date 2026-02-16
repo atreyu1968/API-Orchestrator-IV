@@ -95,6 +95,7 @@ Reporta los problemas encontrados. NO reescribas el manuscrito.`;
 
     const response = await this.generateContent(prompt, undefined, {
       forceProvider: "gemini",
+      temperature: 0.3,
     });
 
     let parsed: EnsambladorOutput = {
