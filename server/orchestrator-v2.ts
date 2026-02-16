@@ -5260,8 +5260,8 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             }
             
             worldBible = bibleValidation.correctedBible;
-            if (worldBible.rules && !worldBible.worldRules) {
-              worldBible.worldRules = worldBible.rules;
+            if ((worldBible as any).rules && !(worldBible as any).worldRules) {
+              (worldBible as any).worldRules = (worldBible as any).rules;
             }
             
             // Update the stored World Bible with corrections
@@ -5317,8 +5317,8 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           
           if (bibleValidation.correctedBible) {
             worldBible = bibleValidation.correctedBible;
-            if (worldBible.rules && !worldBible.worldRules) {
-              worldBible.worldRules = worldBible.rules;
+            if ((worldBible as any).rules && !(worldBible as any).worldRules) {
+              (worldBible as any).worldRules = (worldBible as any).rules;
             }
             const storedWB = await storage.getWorldBibleByProject(project.id);
             if (storedWB) {
@@ -5814,20 +5814,26 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
               }
             }
 
-            // Use SmartEditor for corrections
+            // Use SmartEditor for corrections - provide FULL World Bible context
+            const currentWBData = await storage.getWorldBibleByProject(project.id);
             const rewriteResult = await this.smartEditor.fullRewrite({
               chapterContent: finalText,
               errorDescription: correctionInstructions,
               worldBible: {
-                characters: ((worldBible as any).characters || []) as any[],
-                locations: [],
-                worldRules: ((worldBible as any).rules || []) as any[],
-                persistentInjuries: [],
-                plotDecisions: [],
+                characters: ((worldBible as any).characters || (worldBible as any).personajes || []) as any[],
+                locations: ((worldBible as any).locations || (worldBible as any).lugares || []) as any[],
+                worldRules: ((worldBible as any).worldRules || (worldBible as any).rules || (worldBible as any).reglas || []) as any[],
+                persistentInjuries: (currentWBData?.persistentInjuries || []) as any[],
+                plotDecisions: (currentWBData?.plotDecisions || []) as any[],
               },
               styleGuide: guiaEstilo,
               chapterNumber,
               chapterTitle: chapterOutline.title,
+              previousChapterSummary: i > 0 ? chapterSummaries[i - 1] : undefined,
+              nextChapterSummary: i < outline.length - 1 ? outline[i + 1]?.summary : undefined,
+              chapterSummaries: chapterSummaries.length > 0 ? chapterSummaries : undefined,
+              projectTitle: project.title,
+              genre: project.genre,
             });
 
             this.addTokenUsage(rewriteResult.tokenUsage);
@@ -6001,19 +6007,22 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
                   }
                 }
 
+                const ensambladorWBData = await storage.getWorldBibleByProject(project.id);
                 const fixResult = await this.smartEditor.fullRewrite({
                   chapterContent: chapter.content || "",
                   errorDescription: corrections,
                   worldBible: {
-                    characters: ((worldBible as any).characters || []) as any[],
-                    locations: [],
-                    worldRules: ((worldBible as any).rules || []) as any[],
-                    persistentInjuries: [],
-                    plotDecisions: [],
+                    characters: ((worldBible as any).characters || (worldBible as any).personajes || []) as any[],
+                    locations: ((worldBible as any).locations || (worldBible as any).lugares || []) as any[],
+                    worldRules: ((worldBible as any).worldRules || (worldBible as any).rules || (worldBible as any).reglas || []) as any[],
+                    persistentInjuries: (ensambladorWBData?.persistentInjuries || []) as any[],
+                    plotDecisions: (ensambladorWBData?.plotDecisions || []) as any[],
                   },
                   styleGuide: guiaEstilo,
                   chapterNumber: capNum,
                   chapterTitle: chapter.title || "",
+                  projectTitle: project.title,
+                  genre: project.genre,
                 });
 
                 this.addTokenUsage(fixResult.tokenUsage);
@@ -8220,6 +8229,20 @@ ${issuesDescription}`;
                       chapterContent: chapter.content,
                       errorDescription: fullContextPrompt,
                       consistencyConstraints: preReviewConsistencyContext || JSON.stringify(chapterContext.mainCharacters),
+                      worldBible: {
+                        characters: chapterContext.mainCharacters,
+                        locations: chapterContext.locations,
+                        worldRules: chapterContext.worldRules,
+                        persistentInjuries: chapterContext.persistentInjuries,
+                        plotDecisions: chapterContext.plotDecisions,
+                      },
+                      chapterNumber: chapNum,
+                      chapterTitle: chapter.title || undefined,
+                      previousChapterSummary: chapterContext.previousChapterSummary,
+                      nextChapterSummary: chapterContext.nextChapterSummary,
+                      styleGuide: chapterContext.styleGuide,
+                      projectTitle: project.title,
+                      genre: project.genre || undefined,
                     });
                     
                     this.addTokenUsage(fixResult.tokenUsage);
@@ -9287,6 +9310,20 @@ ${issuesDescription}`;
                     chapterContent: chapter.content || "",
                     errorDescription: fullContextPrompt,
                     consistencyConstraints: fullConsistencyContext || JSON.stringify(chapterContext.mainCharacters),
+                    worldBible: {
+                      characters: chapterContext.mainCharacters,
+                      locations: chapterContext.locations,
+                      worldRules: chapterContext.worldRules,
+                      persistentInjuries: chapterContext.persistentInjuries,
+                      plotDecisions: chapterContext.plotDecisions,
+                    },
+                    chapterNumber: chapNum,
+                    chapterTitle: chapter.title || undefined,
+                    previousChapterSummary: chapterContext.previousChapterSummary,
+                    nextChapterSummary: chapterContext.nextChapterSummary,
+                    styleGuide: chapterContext.styleGuide,
+                    projectTitle: project.title,
+                    genre: project.genre || undefined,
                   });
 
                   this.addTokenUsage(fixResult.tokenUsage);
