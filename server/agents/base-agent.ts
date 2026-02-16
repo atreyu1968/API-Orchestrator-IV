@@ -625,7 +625,7 @@ export abstract class BaseAgent {
     };
   }
 
-  private async generateWithGemini(prompt: string, projectId?: number, options?: { temperature?: number }): Promise<AgentResponse> {
+  private async generateWithGemini(prompt: string, projectId?: number, options?: { temperature?: number }, fallbackModel?: string): Promise<AgentResponse> {
     let lastError: Error | null = null;
     const temperature = options?.temperature ?? 1.0;
     let rateLimitAttempts = 0;
@@ -643,8 +643,8 @@ export abstract class BaseAgent {
       
       try {
         const isDeepSeekModel = this.config.model?.startsWith("deepseek");
-        const modelToUse = (!this.config.model || isDeepSeekModel) ? "gemini-3-pro-preview" : this.config.model;
-        const useThinking = this.config.useThinking !== false;
+        const modelToUse = fallbackModel || ((!this.config.model || isDeepSeekModel) ? "gemini-3-pro-preview" : this.config.model);
+        const useThinking = this.config.useThinking !== false && !fallbackModel;
         
         const startTime = Date.now();
         console.log(`[${this.config.name}] Starting Gemini API call (${modelToUse}, attempt ${attempt + 1})...`);
@@ -760,8 +760,25 @@ export abstract class BaseAgent {
       } catch (error) {
         lastError = error as Error;
         const errorMessage = lastError.message || String(error);
+        const errorStatus = (error as any)?.status || (error as any)?.statusCode || (error as any)?.code || '';
+        const errorDetails = (error as any)?.errorDetails || (error as any)?.details || '';
+        
+        console.error(`[${this.config.name}] Gemini error details - message: "${errorMessage}", status: ${errorStatus}, details: ${JSON.stringify(errorDetails)}`);
         
         if (isRateLimitError(error)) {
+          if (rateLimitAttempts === 0) {
+            console.error(`[${this.config.name}] IMMEDIATE rate limit on first attempt. Full error: ${JSON.stringify(error, Object.getOwnPropertyNames(error as any))}`);
+            
+            const currentModel = fallbackModel || ((!this.config.model || this.config.model?.startsWith("deepseek")) ? "gemini-3-pro-preview" : this.config.model);
+            if (!fallbackModel && currentModel === "gemini-3-pro-preview") {
+              console.warn(`[${this.config.name}] Model "gemini-3-pro-preview" may not be available with your API key. Trying "gemini-2.5-flash" as fallback...`);
+              return this.generateWithGemini(prompt, projectId, options, "gemini-2.5-flash");
+            }
+            if (fallbackModel === "gemini-2.5-flash") {
+              console.warn(`[${this.config.name}] Fallback model "gemini-2.5-flash" also rate-limited. Trying "gemini-2.0-flash"...`);
+              return this.generateWithGemini(prompt, projectId, options, "gemini-2.0-flash");
+            }
+          }
           rateLimitAttempts++;
           if (rateLimitAttempts <= RATE_LIMIT_MAX_RETRIES) {
             const delayMs = RATE_LIMIT_DELAYS_MS[Math.min(rateLimitAttempts - 1, RATE_LIMIT_DELAYS_MS.length - 1)];
