@@ -867,23 +867,27 @@ export class OrchestratorV2 {
       const act2End = Math.min(totalChapters - 1, Math.floor(totalChapters * 0.75));
       
       // Check for turning points at 25%, 50%, 75%
-      // Use safe slice bounds: Math.max(0, start) and Math.min(length, end)
-      const turningPointKeywords = /giro|revelación|descubre|confronta|crisis|punto de no retorno|clímax|todo cambia/i;
+      // Use safe slice bounds with wider windows for longer novels
+      const turningPointKeywords = /giro|revelaci[oó]n|descubr[ei]|confronta|crisis|punto de no retorno|cl[ií]max|todo cambia|traici[oó]n|emboscada|secreto|verdad|trampa|engaño|ataque|muerte|asesinato|desaparici[oó]n|captura|huida|rescate|sacrificio|alianza|ruptura|transformaci[oó]n|decisi[oó]n|enfrentamiento|batalla|guerra|conspiraci[oó]n|derrota|victoria|p[eé]rdida|abandon[ao]|regreso|venganza|confesi[oó]n|despertar|ca[ií]da|ascenso|quiebre|colapso|explosi[oó]n|fuga|invasi[oó]n|golpe|devastaci[oó]n|sorpresa|impacto|cambio radical|punto de inflexi[oó]n|nada volver[aá]|irremediable|irreversible|inevitable/i;
       
-      const act1Start = Math.max(0, act1End - 2);
-      const act1EndBound = Math.min(totalChapters, act1End + 2);
+      // Wider windows for longer novels: ±3 chapters for <20 caps, ±4 for 20-30, ±5 for 30+
+      const windowSize = totalChapters >= 30 ? 5 : totalChapters >= 20 ? 4 : 3;
+      
+      const act1Start = Math.max(0, act1End - windowSize);
+      const act1EndBound = Math.min(totalChapters, act1End + windowSize);
       const act1Turning = safeOutline.slice(act1Start, act1EndBound).some(ch => 
         turningPointKeywords.test((ch.summary || '') + ' ' + (ch.key_event || ''))
       );
       
-      const midStart = Math.max(0, Math.floor(totalChapters * 0.45));
-      const midEnd = Math.min(totalChapters, Math.floor(totalChapters * 0.55));
+      const midPoint = Math.floor(totalChapters * 0.5);
+      const midStart = Math.max(0, midPoint - windowSize);
+      const midEnd = Math.min(totalChapters, midPoint + windowSize);
       const midpointTurning = safeOutline.slice(midStart, midEnd).some(ch =>
         turningPointKeywords.test((ch.summary || '') + ' ' + (ch.key_event || ''))
       );
       
-      const act2Start = Math.max(0, act2End - 2);
-      const act2EndBound = Math.min(totalChapters, act2End + 2);
+      const act2Start = Math.max(0, act2End - windowSize);
+      const act2EndBound = Math.min(totalChapters, act2End + windowSize);
       const act2Turning = safeOutline.slice(act2Start, act2EndBound).some(ch =>
         turningPointKeywords.test((ch.summary || '') + ' ' + (ch.key_event || ''))
       );
