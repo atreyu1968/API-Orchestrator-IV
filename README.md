@@ -1,48 +1,61 @@
 # LitAgents - Sistema de Orquestación de Agentes Literarios IA
 
-Sistema autónomo de orquestación de agentes de IA para la escritura, edición y producción de novelas completas.
+Sistema autónomo de orquestación de agentes de IA para la escritura, edición y producción de novelas completas. Pipeline Zero-Touch que genera novelas desde la idea hasta el manuscrito final sin intervención humana.
 
 ## Características Principales
 
-- **Generador de Novelas (LitAgents 2.0)**: Pipeline basado en escenas con 6 agentes especializados
+- **Generador de Novelas (OmniWriter 3.0)**: Pipeline Zero-Touch con triple auditoría paralela y ensamblaje final
 - **Re-editor de Manuscritos (LitEditors)**: Editor de desarrollo con auditoría forense de consistencia
 - **Traductor de Novelas (LitTranslators 2.0)**: Sistema de traducción literaria con revisión nativa
 - **World Bible**: Base de datos de consistencia para personajes, ubicaciones y reglas del mundo
 - **Seguimiento de Costos**: Tracking granular de uso de tokens por proyecto
 - **Autenticación**: Protección con contraseña para instalaciones en servidor propio
 
-## Novedades v2.1
+## Novedades v3.0 - OmniWriter Zero-Touch
 
-### Native Beta Reader (Revisor Nativo)
+### Pipeline OmniWriter
+El sistema OmniWriter reemplaza el pipeline de auditoría basado en escenas por un enfoque a nivel de capítulo con corrección autónoma:
+
+- **Triple Auditoría Paralela**: Tres auditores especializados analizan cada capítulo simultáneamente:
+  - **Inquisidor**: Detecta agujeros de trama, inconsistencias de lore y violaciones de la World Bible
+  - **Estilista**: Corrección de estilo a temperatura 0 (precisión máxima), elimina muletillas, clichés y errores gramaticales
+  - **Agente de Ritmo**: Evalúa tensión narrativa, pacing y arco emocional del capítulo
+- **Bucles de Corrección Recursivos**: SmartEditor aplica las correcciones de los 3 auditores, con detección de convergencia Levenshtein (umbral < 1% de cambio) para prevenir bucles infinitos. Máximo 3 intentos por capítulo.
+- **Ensamblador Final (Fase 3)**: Después de completar todos los capítulos, unifica la voz narrativa y verifica consistencia de personajes a lo largo de todo el manuscrito.
+- **Checkpoints Estructurales**: Cada 5 capítulos se ejecuta una verificación estructural que puede reescribir capítulos desviados del plan original.
+
+### Mejoras Anteriores (v2.1)
+
+#### Native Beta Reader (Revisor Nativo)
 - **Revisión como hablante nativo**: Analiza traducciones desde la perspectiva de un lector nativo del idioma destino
 - **Soporte multi-idioma**: Español, Inglés, Francés, Alemán, Italiano, Portugués, Catalán
 - **Feedback por género literario**: Expectativas específicas para Romance, Fantasía, Misterio, Thriller, Ciencia Ficción, Horror, Literaria, Histórica
 - **Correcciones automáticas**: Aplica correcciones directamente al texto traducido
 - **Panel de resumen**: Muestra puntuaciones de calidad, fluidez, género y adaptación cultural en la interfaz
 
-### Sistema de Autenticación
+#### Sistema de Autenticación
 - **Protección con contraseña**: Configurable durante la instalación
 - **Sesiones seguras**: Cookies HTTPOnly con expiración de 24 horas
 - **Desactivable en Replit**: Se desactiva automáticamente cuando se ejecuta en Replit
 
-### Mejoras en el Generador (LitAgents 2.1)
-- **Módulo de Consistencia Universal**: Inyección de restricciones antes de la planificación Y escritura
+#### Módulo de Consistencia Universal
+- **Inyección de restricciones**: Antes de la planificación Y escritura
 - **Guardian de Consistencia**: Validación después de cada capítulo con reescritura forzada si hay violaciones
 - **Zero-tolerance rewrites**: El sistema garantiza que no se produzcan errores de continuidad
 
-### Mejoras en el Re-editor (LitEditors)
-- **Forensic Consistency Auditor**: Detecta errores de consistencia existentes en manuscritos
-- **Beta Reader comercial**: Análisis de viabilidad comercial con comparaciones de mercado
-
 ### Agentes del Sistema
 
-**Generador (LitAgents 2.0)**:
-- Global Architect - Planificación de estructura narrativa
+**Generador (OmniWriter 3.0)**:
+- Global Architect - Planificación de estructura narrativa y World Bible
 - Chapter Architect - Diseño de escenas por capítulo (recibe restricciones de consistencia)
 - Ghostwriter V2 - Escritura creativa de escenas (recibe restricciones de consistencia)
-- Smart Editor - Edición y refinamiento
-- Summarizer - Generación de resúmenes
-- Narrative Director - Control de coherencia narrativa
+- Smart Editor - Edición, refinamiento y correcciones dirigidas
+- Inquisidor - Auditoría de lore, agujeros de trama y coherencia con la World Bible
+- Estilista - Corrección de estilo a temperatura 0 (precisión máxima)
+- Agente de Ritmo - Evaluación de tensión narrativa, pacing y arco emocional
+- Ensamblador - Ensamblaje final del manuscrito con unificación de voz
+- Summarizer - Generación de resúmenes para memoria entre capítulos
+- Narrative Director - Control de coherencia narrativa global
 
 **Re-editor (LitEditors)**:
 - Forensic Consistency Auditor - Detección de errores de consistencia
@@ -100,8 +113,8 @@ git --version
 
 ```bash
 # Clonar repositorio
-git clone https://github.com/atreyu1968/API-Orchestrator-II.git
-cd API-Orchestrator-II
+git clone https://github.com/atreyu1968/API-Orchestrator-IV.git
+cd API-Orchestrator-IV
 
 # Ejecutar instalador
 sudo bash install.sh
