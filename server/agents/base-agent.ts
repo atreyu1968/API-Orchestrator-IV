@@ -15,13 +15,18 @@ export function getAIProvider(): AIProvider {
 
 // Gemini client - Use user's own API key if provided, otherwise fall back to Replit integration
 const userGeminiApiKey = process.env.GEMINI_API_KEY;
+const geminiApiKey = userGeminiApiKey || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
 const geminiClient = new GoogleGenAI({
-  apiKey: userGeminiApiKey || process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+  apiKey: geminiApiKey || "placeholder-no-key",
   httpOptions: userGeminiApiKey ? undefined : {
     apiVersion: "",
     baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
   },
 });
+
+export function isGeminiAvailable(): boolean {
+  return !!(process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY);
+}
 
 // DeepSeek client (OpenAI-compatible API)
 function getDeepSeekClient(): OpenAI | null {
@@ -312,8 +317,13 @@ export abstract class BaseAgent {
 
   protected async generateContent(prompt: string, projectId?: number, options?: { temperature?: number; forceProvider?: AIProvider; maxCompletionTokens?: number }): Promise<AgentResponse> {
     console.log(`[${this.config.name}] generateContent() called (prompt: ${prompt.length} chars)`);
-    const provider = options?.forceProvider || getAIProvider();
+    let provider = options?.forceProvider || getAIProvider();
     console.log(`[${this.config.name}] AI provider: ${provider}${options?.forceProvider ? ' (forced)' : ''}`);
+    
+    if (provider === "gemini" && !isGeminiAvailable()) {
+      console.warn(`[${this.config.name}] Gemini requested but no API key available (GEMINI_API_KEY not set). Falling back to DeepSeek.`);
+      provider = "deepseek";
+    }
     
     if (provider === "deepseek") {
       console.log(`[${this.config.name}] Calling generateWithDeepSeek()...`);
