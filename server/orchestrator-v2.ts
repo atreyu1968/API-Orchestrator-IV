@@ -876,12 +876,23 @@ export class OrchestratorV2 {
       const hasAnyStructuralRole = safeOutline.some(ch => ch.structural_role && ch.structural_role !== 'null');
       
       if (hasAnyStructuralRole) {
+        const usedRoles = new Set<string>();
+        for (const ch of safeOutline) {
+          if (ch.structural_role && ch.structural_role !== 'null') {
+            if (usedRoles.has(ch.structural_role)) {
+              warnings.push(`⚠️ ROL DUPLICADO: structural_role "${ch.structural_role}" aparece en más de un capítulo. Cada rol debe usarse UNA sola vez.`);
+            }
+            usedRoles.add(ch.structural_role);
+          }
+        }
+        
         for (const { role, label, minPct, maxPct } of requiredRoles) {
-          const chapter = safeOutline.find(ch => ch.structural_role === role);
-          if (!chapter) {
+          const chapterIndex = safeOutline.findIndex(ch => ch.structural_role === role);
+          if (chapterIndex === -1) {
             criticalIssues.push(`❌ FALTA ${label}: Ningún capítulo tiene structural_role: "${role}". Marca el capítulo correspondiente (~${Math.round(minPct * 100)}-${Math.round(maxPct * 100)}% de la novela).`);
           } else {
-            const position = safeOutline.indexOf(chapter) / totalChapters;
+            const position = (chapterIndex + 1) / totalChapters;
+            const chapter = safeOutline[chapterIndex];
             if (position < minPct - 0.10 || position > maxPct + 0.10) {
               warnings.push(`⚠️ ${label} DESCOLOCADO: "${chapter.title}" (cap ${chapter.chapter_num}) está al ${Math.round(position * 100)}% pero debería estar entre ~${Math.round(minPct * 100)}%-${Math.round(maxPct * 100)}%.`);
             }
@@ -5385,18 +5396,56 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         this.callbacks.onAgentStatus("universal-consistency", "active", "Initializing consistency database...");
         await this.initializeConsistencyDatabase(project.id, worldBible, project.genre);
         
-        // LitAgents 2.9.10: Validate World Bible with Gemini before writing
-        const MAX_BIBLE_VALIDATION_ATTEMPTS = 3;
-        let bibleValidationAttempt = 0;
+        // LitAgents 2.9.12: Progressive World Bible validation — correct until clean
+        // Acceptance criteria: 0 critical, 0 major, max 2 minor
+        // Stagnation safety: if 3 consecutive rounds show no improvement, pause
+        const MAX_BIBLE_SAFETY_CAP = 10;
+        let bibleValidationRound = 0;
+        let previousIssueCount = Infinity;
+        let stagnationCounter = 0;
+        
         let bibleValidation = await this.validateWorldBibleWithGemini(
           project.id, worldBible, outline, plotThreads
         );
         
-        while (!bibleValidation.isValid && bibleValidationAttempt < MAX_BIBLE_VALIDATION_ATTEMPTS) {
-          bibleValidationAttempt++;
-          console.log(`[OrchestratorV2] Bible validation FAILED (attempt ${bibleValidationAttempt}/${MAX_BIBLE_VALIDATION_ATTEMPTS}). Applying corrections...`);
+        const countIssuesBySeverity = (issues: any[]) => {
+          const critical = issues.filter((i: any) => i.severity === 'critica').length;
+          const major = issues.filter((i: any) => i.severity === 'mayor').length;
+          const minor = issues.length - critical - major;
+          return { critical, major, minor, total: issues.length };
+        };
+        
+        const isBibleAcceptable = (validation: any) => {
+          const issues = validation.issues || [];
+          if (issues.length === 0) return true;
+          const { critical, major, minor } = countIssuesBySeverity(issues);
+          return critical === 0 && major === 0 && minor <= 2;
+        };
+        
+        while (!isBibleAcceptable(bibleValidation) && bibleValidationRound < MAX_BIBLE_SAFETY_CAP) {
+          bibleValidationRound++;
+          const currentIssues = bibleValidation.issues || [];
+          const counts = countIssuesBySeverity(currentIssues);
           
-          const previousIssues = bibleValidation.issues || [];
+          console.log(`[OrchestratorV2] Bible validation round ${bibleValidationRound}: ${counts.critical} critical, ${counts.major} major, ${counts.minor} minor (total: ${counts.total}). Correcting...`);
+          this.callbacks.onAgentStatus("bible-validator", "active", `Corrigiendo Biblia del Mundo (ronda ${bibleValidationRound}): ${counts.critical} críticos, ${counts.major} mayores, ${counts.minor} menores`);
+          
+          // Stagnation detection: if total issues didn't decrease, increment counter
+          if (counts.total >= previousIssueCount) {
+            stagnationCounter++;
+            console.warn(`[OrchestratorV2] Bible validation stagnation detected (${stagnationCounter}/3). Issues: ${counts.total} (previous: ${previousIssueCount})`);
+          } else {
+            stagnationCounter = 0;
+          }
+          previousIssueCount = counts.total;
+          
+          // If stagnated for 3 consecutive rounds, pause
+          if (stagnationCounter >= 3) {
+            console.error(`[OrchestratorV2] Bible validation stagnated for 3 rounds. Cannot make further progress. Pausing.`);
+            break;
+          }
+          
+          const previousIssues = currentIssues;
           
           if (bibleValidation.correctedBible) {
             // Apply outline fixes if present (in-memory + persist to World Bible)
@@ -5409,7 +5458,6 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
                   if (fix.corrected_title) outline[outlineIdx].title = fix.corrected_title;
                   if (fix.corrected_key_event) outline[outlineIdx].key_event = fix.corrected_key_event;
                   fixesApplied++;
-                  console.log(`[OrchestratorV2] Outline fix applied: Chapter ${fix.chapter_num} (summary${fix.corrected_title ? '+title' : ''}${fix.corrected_key_event ? '+event' : ''})`);
                 }
               }
               // Persist outline fixes to stored World Bible
@@ -5427,11 +5475,13 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
                       }
                     }
                     await storage.updateWorldBible(storedWB.id, { plotOutline: plotOutlineData } as any);
-                    console.log(`[OrchestratorV2] ${fixesApplied} outline fixes persisted to stored World Bible`);
                   }
                 }
               } catch (err) {
                 console.error("[OrchestratorV2] Failed to persist outline fixes:", err);
+              }
+              if (fixesApplied > 0) {
+                console.log(`[OrchestratorV2] ${fixesApplied} outline fixes applied and persisted`);
               }
               delete bibleValidation.correctedBible._outlineFixes;
             }
@@ -5441,7 +5491,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
               (worldBible as any).worldRules = (worldBible as any).rules;
             }
             
-            // Update the stored World Bible with ALL corrections
+            // Persist corrected World Bible
             const storedWB = await storage.getWorldBibleByProject(project.id);
             if (storedWB) {
               const updates: any = {};
@@ -5451,11 +5501,9 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
               if (wb.settings) updates.settings = wb.settings;
               if (Object.keys(updates).length > 0) {
                 await storage.updateWorldBible(storedWB.id, updates);
-                console.log(`[OrchestratorV2] World Bible persisted: ${Object.keys(updates).join(', ')}`);
               }
             }
             
-            // Log what changed for traceability
             const wb2 = worldBible as any;
             const charCount = (wb2.characters || []).length;
             const rulesCount = ((wb2.rules || wb2.worldRules) || []).length;
@@ -5463,76 +5511,68 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
               projectId: project.id,
               level: "info",
               agentRole: "bible-validator",
-              message: `Biblia del Mundo corregida (intento ${bibleValidationAttempt}): ${charCount} personajes, ${rulesCount} reglas. Re-validando...`,
+              message: `Biblia corregida (ronda ${bibleValidationRound}): ${charCount} personajes, ${rulesCount} reglas. Quedan ${counts.critical} críticos, ${counts.major} mayores, ${counts.minor} menores. Re-validando...`,
             });
           } else {
-            console.warn(`[OrchestratorV2] Bible validation returned issues but no corrections. Requesting corrections explicitly...`);
             await storage.createActivityLog({
               projectId: project.id,
               level: "warn",
               agentRole: "bible-validator",
-              message: `Validación detectó ${previousIssues.length} problemas pero no generó correcciones. Re-validando con instrucciones más estrictas...`,
+              message: `Ronda ${bibleValidationRound}: ${previousIssues.length} problemas detectados pero sin correcciones generadas. Re-intentando...`,
             });
           }
           
-          // Re-validate after corrections, passing previous issues to avoid repetition
+          // Re-validate after corrections
           bibleValidation = await this.validateWorldBibleWithGemini(
             project.id, worldBible, outline, plotThreads, previousIssues
           );
         }
         
-        if (bibleValidation.isValid) {
-          console.log(`[OrchestratorV2] Bible validation PASSED${bibleValidationAttempt > 0 ? ` after ${bibleValidationAttempt} correction(s)` : ''}`);
+        if (isBibleAcceptable(bibleValidation)) {
+          const finalIssues = bibleValidation.issues || [];
+          const finalCounts = countIssuesBySeverity(finalIssues);
+          const suffix = bibleValidationRound > 0 ? ` después de ${bibleValidationRound} ronda(s) de corrección` : '';
+          const minorNote = finalCounts.minor > 0 ? ` (${finalCounts.minor} problema(s) menor(es) aceptado(s))` : '';
+          
+          console.log(`[OrchestratorV2] Bible validation PASSED${suffix}${minorNote}`);
           await storage.createActivityLog({
             projectId: project.id,
             level: "success",
             agentRole: "bible-validator",
-            message: `Biblia del Mundo validada${bibleValidationAttempt > 0 ? ` después de ${bibleValidationAttempt} correccione(s)` : ''}. Lista para escribir.`,
+            message: `Biblia del Mundo aprobada${suffix}${minorNote}. Lista para escribir.`,
           });
+          this.callbacks.onAgentStatus("bible-validator", "completed", `Biblia aprobada${suffix}`);
         } else {
+          // Failed: stagnation or safety cap reached
           const remainingIssues = bibleValidation.issues || [];
-          const remainingCritical = remainingIssues.filter((i: any) => i.severity === 'critica').length;
-          const remainingMajor = remainingIssues.filter((i: any) => i.severity === 'mayor').length;
-          const remainingMinor = remainingIssues.length - remainingCritical - remainingMajor;
-          console.warn(`[OrchestratorV2] Bible validation has remaining issues after ${MAX_BIBLE_VALIDATION_ATTEMPTS} attempts: ${remainingCritical} critical, ${remainingMajor} major, ${remainingMinor} minor. Proceeding with best effort.`);
+          const counts = countIssuesBySeverity(remainingIssues);
+          const issueDetails = remainingIssues.map((i: any) => `[${i.severity}] ${i.description || i.issue || i.message || JSON.stringify(i)}`).join('\n');
+          const reason = stagnationCounter >= 3 
+            ? `estancada (sin mejoras en 3 rondas consecutivas)` 
+            : `alcanzado el límite de seguridad (${MAX_BIBLE_SAFETY_CAP} rondas)`;
           
-          if (bibleValidation.correctedBible) {
-            // Apply any remaining outline fixes from last attempt
-            if (bibleValidation.correctedBible._outlineFixes && Array.isArray(bibleValidation.correctedBible._outlineFixes)) {
-              for (const fix of bibleValidation.correctedBible._outlineFixes) {
-                const outlineIdx = outline.findIndex((o: any) => o.chapter_num === fix.chapter_num);
-                if (outlineIdx >= 0) {
-                  if (fix.corrected_summary) outline[outlineIdx].summary = fix.corrected_summary;
-                  if (fix.corrected_title) outline[outlineIdx].title = fix.corrected_title;
-                  if (fix.corrected_key_event) outline[outlineIdx].key_event = fix.corrected_key_event;
-                }
-              }
-              delete bibleValidation.correctedBible._outlineFixes;
-            }
-            worldBible = bibleValidation.correctedBible;
-            if ((worldBible as any).rules && !(worldBible as any).worldRules) {
-              (worldBible as any).worldRules = (worldBible as any).rules;
-            }
-            const storedWB = await storage.getWorldBibleByProject(project.id);
-            if (storedWB) {
-              const updates: any = {};
-              const wbFinal = worldBible as any;
-              if (wbFinal.characters) updates.characters = wbFinal.characters;
-              if (wbFinal.rules || wbFinal.worldRules) updates.worldRules = wbFinal.rules || wbFinal.worldRules;
-              if (wbFinal.settings) updates.settings = wbFinal.settings;
-              if (Object.keys(updates).length > 0) {
-                await storage.updateWorldBible(storedWB.id, updates);
-                console.log(`[OrchestratorV2] Final bible corrections applied before proceeding`);
-              }
-            }
-          }
+          console.error(`[OrchestratorV2] Bible validation FAILED: ${reason}. ${counts.critical} critical, ${counts.major} major, ${counts.minor} minor remain.`);
           
           await storage.createActivityLog({
             projectId: project.id,
-            level: "warn",
+            level: "error",
             agentRole: "bible-validator",
-            message: `Biblia del Mundo con ${remainingMajor} problemas mayores y ${remainingMinor} menores pendientes tras ${MAX_BIBLE_VALIDATION_ATTEMPTS} intentos. Continuando con la mejor versión disponible.`,
+            message: `Biblia del Mundo NO APROBADA — ${reason}. Quedan ${counts.critical} críticos, ${counts.major} mayores, ${counts.minor} menores. La generación se ha pausado.`,
           });
+          
+          if (issueDetails) {
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: "warn",
+              agentRole: "bible-validator",
+              message: `Problemas pendientes:\n${issueDetails}`,
+            });
+          }
+          
+          await storage.updateProject(project.id, { status: "paused" });
+          this.callbacks.onAgentStatus("bible-validator", "error", `Biblia rechazada: ${counts.total} problemas sin resolver (${reason})`);
+          this.callbacks.onPipelineComplete(0, 0);
+          return;
         }
       }
 
