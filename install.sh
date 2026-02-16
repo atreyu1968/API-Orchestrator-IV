@@ -40,7 +40,18 @@ IS_UPDATE=false
 if [ -f "$CONFIG_DIR/env" ]; then
     IS_UPDATE=true
     print_warning "Instalación existente detectada - Modo ACTUALIZACIÓN"
-    source "$CONFIG_DIR/env"
+    # Cargar variables existentes sin NODE_ENV para no afectar npm install
+    SAVED_NODE_ENV=""
+    while IFS='=' read -r key value; do
+        [[ "$key" =~ ^#.*$ ]] && continue
+        [[ -z "$key" ]] && continue
+        key=$(echo "$key" | xargs)
+        if [ "$key" = "NODE_ENV" ]; then
+            SAVED_NODE_ENV="$value"
+            continue
+        fi
+        export "$key=$value" 2>/dev/null || true
+    done < "$CONFIG_DIR/env"
 else
     print_status "Primera instalación - Generando credenciales..."
     DB_PASS=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 24)
@@ -186,9 +197,9 @@ fi
 chown -R $APP_USER:$APP_USER "$APP_DIR"
 print_success "Código fuente listo en $APP_DIR"
 
-print_status "Instalando dependencias de Node.js..."
+print_status "Instalando dependencias de Node.js (incluyendo dev)..."
 cd "$APP_DIR"
-sudo -u $APP_USER npm install --legacy-peer-deps
+sudo -u $APP_USER env NODE_ENV=development npm install --include=dev --legacy-peer-deps
 print_success "Dependencias instaladas"
 
 print_status "Cargando variables de entorno..."
@@ -202,7 +213,12 @@ sudo -E -u $APP_USER npx drizzle-kit push --force 2>/dev/null || true
 print_success "Base de datos actualizada"
 
 print_status "Compilando aplicación..."
-sudo -E -u $APP_USER SKIP_DB_PUSH=true npm run build
+export SKIP_DB_PUSH=true
+sudo -E -u $APP_USER npm run build || {
+    print_error "Error en compilación. Reintentando..."
+    sudo -E -u $APP_USER npm run build
+}
+unset SKIP_DB_PUSH
 print_success "Aplicación compilada"
 
 print_status "Configurando servicio systemd..."

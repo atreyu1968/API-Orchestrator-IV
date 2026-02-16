@@ -14,6 +14,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Sparkles, BookOpen, FileText, CheckCircle, X } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import ReactMarkdown from "react-markdown";
 
 interface Pseudonym {
   id: number;
