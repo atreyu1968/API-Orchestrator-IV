@@ -1,4 +1,4 @@
-import { Check, Brain, Pencil, Eye, ArrowRight, Layers, Scissors, Compass, Shield, BookOpen, Scale, Sparkles, Activity } from "lucide-react";
+import { Check, Brain, Pencil, Eye, ArrowRight, Layers, Scale, Sparkles, Activity } from "lucide-react";
 
 export type AgentRole = 
   | "global-architect" 
@@ -26,13 +26,11 @@ interface ProcessFlowProps {
 
 const stages: { role: AgentRole; name: string; icon: React.ReactNode; group?: string }[] = [
   { role: "global-architect", name: "Arquitecto Global", icon: <Brain className="h-4 w-4" />, group: "planificación" },
-  { role: "chapter-architect", name: "Diseñador Escenas", icon: <Layers className="h-4 w-4" />, group: "planificación" },
   { role: "ghostwriter-v2", name: "Escritor", icon: <Pencil className="h-4 w-4" />, group: "escritura" },
   { role: "inquisidor", name: "Inquisidor", icon: <Scale className="h-4 w-4" />, group: "auditoría" },
   { role: "estilista", name: "Estilista", icon: <Sparkles className="h-4 w-4" />, group: "auditoría" },
   { role: "ritmo", name: "Ritmo", icon: <Activity className="h-4 w-4" />, group: "auditoría" },
   { role: "smart-editor", name: "Corrector", icon: <Eye className="h-4 w-4" />, group: "corrección" },
-  { role: "summarizer", name: "Compresor", icon: <Scissors className="h-4 w-4" />, group: "memoria" },
   { role: "ensamblador", name: "Ensamblador", icon: <Layers className="h-4 w-4" />, group: "final" },
 ];
 

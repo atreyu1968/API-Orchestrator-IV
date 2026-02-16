@@ -595,7 +595,7 @@ export default function Dashboard() {
       addLog("success", "Proyecto marcado como completado (forzado)");
       setCurrentStage(null);
       setWarningStages([]);
-      setCompletedStages(["global-architect", "chapter-architect", "ghostwriter-v2", "inquisidor", "estilista", "ritmo", "smart-editor", "summarizer", "ensamblador"]);
+      setCompletedStages(["global-architect", "ghostwriter-v2", "inquisidor", "estilista", "ritmo", "smart-editor", "ensamblador"]);
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo completar el proyecto", variant: "destructive" });
@@ -1066,11 +1066,6 @@ export default function Dashboard() {
             {...getAgentStatus("global-architect")}
           />
           <AgentCard 
-            name={agentNames["chapter-architect"]}
-            role="chapter-architect"
-            {...getAgentStatus("chapter-architect")}
-          />
-          <AgentCard 
             name={agentNames["ghostwriter-v2"]}
             role="ghostwriter-v2"
             {...getAgentStatus("ghostwriter-v2")}
@@ -1094,11 +1089,6 @@ export default function Dashboard() {
             name={agentNames["smart-editor"]}
             role="smart-editor"
             {...getAgentStatus("smart-editor")}
-          />
-          <AgentCard 
-            name={agentNames["summarizer"]}
-            role="summarizer"
-            {...getAgentStatus("summarizer")}
           />
           <AgentCard 
             name={agentNames["ensamblador"]}
