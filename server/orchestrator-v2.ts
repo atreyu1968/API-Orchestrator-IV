@@ -12,6 +12,10 @@ import {
   SummarizerAgent,
   NarrativeDirectorAgent,
   SeriesWorldBibleExtractor,
+  InquisidorAgent,
+  EstilistaAgent,
+  RitmoAgent,
+  EnsambladorAgent,
   getPatternTracker,
   clearPatternTracker,
   type GlobalArchitectOutput,
@@ -35,6 +39,7 @@ import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
 import { isProjectCancelledFromDb, generateGenerationToken, isGenerationTokenValid } from "./agents";
 import { calculateRealCost, formatCostForStorage } from "./cost-calculator";
+import { calcularConvergencia } from "./utils/levenshtein";
 import { BaseAgent } from "./agents/base-agent";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -423,6 +428,12 @@ export class OrchestratorV2 {
   
   // Series World Bible Extractor for propagating data between volumes
   private seriesWorldBibleExtractor = new SeriesWorldBibleExtractor();
+  
+  // OmniWriter Pipeline Agents
+  private inquisidor = new InquisidorAgent();
+  private estilista = new EstilistaAgent();
+  private ritmo = new RitmoAgent();
+  private ensamblador = new EnsambladorAgent();
   
   private callbacks: OrchestratorV2Callbacks;
   private generationToken?: string;
@@ -5447,6 +5458,11 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         console.log(`[OrchestratorV2] Series World Bible loaded - will inject into Ghostwriter for series continuity`);
       }
 
+      // ==================== OMNIWRITER PIPELINE ====================
+      // Zero-Touch Protocol: Per-chapter loop with triple cross-audit
+      // Phase 2: Sequential Production Loop
+      console.log(`[OrchestratorV2] [OmniWriter] Starting Zero-Touch production loop for ${outline.length} chapters`);
+
       for (let i = 0; i < outline.length; i++) {
         if (await this.shouldStopProcessing(project.id)) {
           console.log(`[OrchestratorV2] Project ${project.id} stopped (cancelled or superseded)`);
@@ -5462,118 +5478,65 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           continue;
         }
 
-        console.log(`[OrchestratorV2] Generating Chapter ${chapterNumber}: "${chapterOutline.title}"`);
+        console.log(`[OrchestratorV2] [OmniWriter] Generating Chapter ${chapterNumber}: "${chapterOutline.title}"`);
 
-        // 2a.0: LitAgents 2.1 - Generate consistency constraints BEFORE planning
-        // This prevents the Chapter Architect from planning scenes that violate consistency
+        // OmniWriter Phase 2a: Build context for Ghostwriter
         let consistencyConstraints = "";
         try {
           const context = await this.getConsistencyContext(project.id);
           if (context.entities.length > 0) {
-            // Extract timeline and character state info from worldBible
             const timelineInfo = this.extractTimelineInfo(worldBible, chapterNumber, i > 0 ? (outline as any)[i - 1]?.chapter_num : undefined);
             const characterStates = this.extractCharacterStates(worldBible, chapterNumber);
-            
             consistencyConstraints = universalConsistencyAgent.generateConstraints(
-              project.genre,
-              context.entities,
-              context.rules,
-              context.relationships,
-              chapterNumber,
-              timelineInfo,
-              characterStates
+              project.genre, context.entities, context.rules, context.relationships,
+              chapterNumber, timelineInfo, characterStates
             );
-            console.log(`[OrchestratorV2] Generated consistency constraints (${consistencyConstraints.length} chars) with timeline and character states`);
           }
-          
-          // Add plot decisions and persistent injuries from World Bible
           const currentWorldBible = await storage.getWorldBibleByProject(project.id);
           if (currentWorldBible) {
             const decisionsConstraints = this.formatDecisionsAndInjuriesAsConstraints(
-              currentWorldBible.plotDecisions as any[],
-              currentWorldBible.persistentInjuries as any[],
-              chapterNumber
+              currentWorldBible.plotDecisions as any[], currentWorldBible.persistentInjuries as any[], chapterNumber
             );
-            if (decisionsConstraints) {
-              consistencyConstraints += decisionsConstraints;
-              console.log(`[OrchestratorV2] Added plot decisions and injuries to constraints`);
-            }
+            if (decisionsConstraints) consistencyConstraints += decisionsConstraints;
           }
-          
-          // Add scene summaries from previous chapters
-          const sceneSummaries = await this.getSceneSummariesContext(project.id, chapterNumber);
-          if (sceneSummaries) {
-            consistencyConstraints += sceneSummaries;
-            console.log(`[OrchestratorV2] Added scene summaries from previous chapters`);
-          }
-          
-          // Add enriched writing context (characters, rules, locations, error patterns)
-          // Use centralized helper for KU and series context
           const enrichedOptions = await this.buildEnrichedContextOptions(project);
           const enrichedContext = await this.buildEnrichedWritingContext(project.id, chapterNumber, worldBible, enrichedOptions);
-          if (enrichedContext) {
-            consistencyConstraints += enrichedContext;
-            console.log(`[OrchestratorV2] Added enriched writing context (${enrichedContext.length} chars)`);
-          }
-          
-          // LitAgents 2.9.5: Inject active plot threads to guide scene writing
+          if (enrichedContext) consistencyConstraints += enrichedContext;
           const plotThreadsContext = await this.buildPlotThreadsContext(project.id, chapterNumber, outline as any[]);
-          if (plotThreadsContext) {
-            consistencyConstraints += plotThreadsContext;
-            console.log(`[OrchestratorV2] Injected plot threads context (${plotThreadsContext.length} chars)`);
-          }
+          if (plotThreadsContext) consistencyConstraints += plotThreadsContext;
         } catch (err) {
           console.error(`[OrchestratorV2] Failed to generate constraints:`, err);
         }
 
-        // 2a: Chapter Architect - Plan scenes (now WITH constraints)
+        // OmniWriter Phase 2a: Chapter Architect plans scenes
         this.callbacks.onAgentStatus("chapter-architect", "active", `Planning scenes for Chapter ${chapterNumber}...`);
-        
         const previousSummary = i > 0 ? chapterSummaries[i - 1] : "";
         const storyState = rollingSummary;
-
-        // Get thought context from previous agents for this chapter
         const thoughtContext = await this.getChapterDecisionContext(project.id, chapterNumber);
         let enrichedConstraints = consistencyConstraints + thoughtContext;
 
-        // LitAgents 2.9.7: Get pattern analysis to prevent structural repetition
         const patternTracker = getPatternTracker(project.id);
         const patternAnalysis = patternTracker.analyzeForChapter(chapterNumber);
         const patternAnalysisContext = patternTracker.formatForPrompt(patternAnalysis);
-        if (patternAnalysisContext) {
-          console.log(`[OrchestratorV2] Pattern analysis ready: ${patternAnalysis.recentPatterns.length} patterns tracked, ${patternAnalysis.avoidSequences.length} sequences to avoid`);
-        }
 
         const chapterPlan = await this.chapterArchitect.execute({
-          chapterOutline,
-          worldBible,
-          previousChapterSummary: previousSummary,
-          storyState,
-          consistencyConstraints: enrichedConstraints, // LitAgents 2.1: Inject constraints + thought context
-          fullPlotOutline: outline, // LitAgents 2.1: Full plot context for coherent scene planning
-          isKindleUnlimited: project.kindleUnlimitedOptimized || false, // LitAgents 2.5: Direct KU pacing flag
-          patternAnalysisContext, // LitAgents 2.9.7: Anti-repetition pattern context
+          chapterOutline, worldBible,
+          previousChapterSummary: previousSummary, storyState,
+          consistencyConstraints: enrichedConstraints,
+          fullPlotOutline: outline,
+          isKindleUnlimited: project.kindleUnlimitedOptimized || false,
+          patternAnalysisContext,
         });
 
         if (chapterPlan.error || !chapterPlan.parsed) {
           throw new Error(`Chapter Architect failed for Chapter ${chapterNumber}: ${chapterPlan.error || "No parsed output"}`);
         }
-
         this.addTokenUsage(chapterPlan.tokenUsage);
         await this.logAiUsage(project.id, "chapter-architect", "deepseek-reasoner", chapterPlan.tokenUsage, chapterNumber);
-        
-        // Save Chapter Architect's reasoning to thought logs
         if (chapterPlan.thoughtSignature) {
-          await this.saveThoughtLog(
-            project.id,
-            "Chapter Architect",
-            "chapter-architect",
-            `[Capítulo ${chapterNumber}] ${chapterPlan.thoughtSignature}`
-          );
+          await this.saveThoughtLog(project.id, "Chapter Architect", "chapter-architect", `[Capítulo ${chapterNumber}] ${chapterPlan.thoughtSignature}`);
         }
-        
         this.callbacks.onAgentStatus("chapter-architect", "completed", `${chapterPlan.parsed.scenes.length} scenes planned`);
-
         const sceneBreakdown = chapterPlan.parsed;
 
         // LitAgents 2.9.7: Register the chapter's pattern after planning
@@ -5591,62 +5554,38 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         console.log(`[OrchestratorV2] Registered pattern for Chapter ${chapterNumber}: ${chapterPattern.sceneSequence.join(' → ')}`);
 
 
-        // 2b: Ghostwriter - Write scene by scene
+        // OmniWriter Phase 2b: Ghostwriter writes ALL scenes sequentially
         let fullChapterText = "";
         
-        // LitAgents 2.9.9: Initialize lastContext with end of previous chapter for seamless transitions
         let lastContext = "";
         if (chapterNumber > 1) {
           const allChapters = await storage.getChaptersByProject(project.id);
           const prevChapter = allChapters.find(c => c.chapterNumber === chapterNumber - 1);
           if (prevChapter?.content) {
-            const prevContent = prevChapter.content;
-            // Get last ~1200 chars (approx. 2-3 paragraphs) of previous chapter
-            const lastParagraphs = prevContent.slice(-1200);
-            lastContext = `[FINAL DEL CAPÍTULO ${chapterNumber - 1} - Tu texto debe continuar desde aquí con transición natural]\n${lastParagraphs}`;
-            console.log(`[OrchestratorV2] Loaded ${lastParagraphs.length} chars from end of Chapter ${chapterNumber - 1} for seamless transition`);
+            lastContext = `[FINAL DEL CAPÍTULO ${chapterNumber - 1}]\n${prevChapter.content.slice(-1200)}`;
           }
         }
 
-        // LitAgents 2.2: Get recent chapters text for vocabulary anti-repetition
         const previousChaptersText = await this.getRecentChaptersText(project.id, chapterNumber, 2);
-        if (previousChaptersText) {
-          console.log(`[OrchestratorV2] Loaded ${previousChaptersText.length} chars of recent text for vocabulary tracking`);
-        }
-
-        // LitAgents 2.9: Get error history to avoid past mistakes
         const projectErrorHistory = await this.getErrorHistoryForWriting(project.id);
-        
-        // LitAgents 2.9.9+: Inject global writing lessons learned from past audits
         const globalLessons = await this.getGlobalWritingLessons();
-        
-        // LitAgents 2.9.10: Inject accumulated lessons from Bible validation + structural checkpoints
         const accumulatedLessons = await this.getAccumulatedLessons(project.id);
-        
-        const errorHistory = [globalLessons, projectErrorHistory, accumulatedLessons]
-          .filter(Boolean)
-          .join("\n\n");
+        const errorHistory = [globalLessons, projectErrorHistory, accumulatedLessons].filter(Boolean).join("\n\n");
 
-        // LitAgents 2.9.9+: Inject accumulated narrative timeline into constraints for Ghostwriter
         if (narrativeTimeline.length > 0) {
           let timelineBlock = "\n═══════════════════════════════════════════════════════════════════\n";
-          timelineBlock += "⏰ LÍNEA TEMPORAL ACUMULADA (OBLIGATORIO RESPETAR)\n";
+          timelineBlock += "LÍNEA TEMPORAL ACUMULADA (OBLIGATORIO RESPETAR)\n";
           timelineBlock += "═══════════════════════════════════════════════════════════════════\n";
           narrativeTimeline.forEach(entry => {
             timelineBlock += `  Cap ${entry.chapter}: ${entry.narrativeTime}${entry.location ? ` → ${entry.location}` : ''}\n`;
           });
-          timelineBlock += `\nEste capítulo (${chapterNumber}) DEBE continuar cronológicamente desde el punto anterior.\n`;
-          timelineBlock += "Las referencias temporales ('hace X días', 'ayer') DEBEN cuadrar con esta línea temporal.\n";
+          timelineBlock += `\nEste capítulo (${chapterNumber}) DEBE continuar cronológicamente.\n`;
           timelineBlock += "═══════════════════════════════════════════════════════════════════\n";
           enrichedConstraints = timelineBlock + enrichedConstraints;
-          console.log(`[OrchestratorV2] Injected narrative timeline (${narrativeTimeline.length} entries) into Ghostwriter constraints`);
         }
 
         for (const scene of sceneBreakdown.scenes) {
-          if (await this.shouldStopProcessing(project.id)) {
-            console.log(`[OrchestratorV2] Project ${project.id} was cancelled during scene writing`);
-            return;
-          }
+          if (await this.shouldStopProcessing(project.id)) return;
 
           this.callbacks.onAgentStatus("ghostwriter-v2", "active", `Writing Scene ${scene.scene_num}...`);
 
@@ -5716,230 +5655,211 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
 
         this.callbacks.onAgentStatus("ghostwriter-v2", "completed", "All scenes written");
 
-        // 2c: Smart Editor - Evaluate and patch
-        this.callbacks.onAgentStatus("smart-editor", "active", "Evaluating chapter...");
-
-        const editResult = await this.smartEditor.execute({
-          chapterContent: fullChapterText,
-          sceneBreakdown,
-          worldBible,
-          chapterOutline,
-        });
-
-        this.addTokenUsage(editResult.tokenUsage);
-        await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", editResult.tokenUsage, chapterNumber);
-
+        // ==================== OMNIWRITER: TRIPLE CROSS-AUDIT ====================
+        // Phase 2c: Run Inquisidor + Estilista + Ritmo in parallel, then correction loop
         let finalText = fullChapterText;
         let editorFeedback: SmartEditorOutput | null = null;
+        
+        const MAX_CORRECTION_ATTEMPTS = 3;
+        let correctionAttempt = 0;
+        let chapterApproved = false;
+        let bestVersion = fullChapterText;
+        let bestVersionErrors = Infinity;
 
-        if (editResult.parsed) {
-          editorFeedback = editResult.parsed;
+        while (!chapterApproved && correctionAttempt < MAX_CORRECTION_ATTEMPTS) {
+          correctionAttempt++;
+          console.log(`[OmniWriter] Cross-audit attempt ${correctionAttempt}/${MAX_CORRECTION_ATTEMPTS} for Chapter ${chapterNumber}`);
 
-          // LitAgents 2.9: More strict approval - apply patches even if "approved" when patches exist
-          const hasPatches = editResult.parsed.patches && editResult.parsed.patches.length > 0;
-          const scores = { logic: editResult.parsed.logic_score, style: editResult.parsed.style_score };
-          
-          // Apply patches first if they exist, regardless of approval status
-          if (hasPatches) {
-            this.callbacks.onAgentStatus("smart-editor", "active", `Applying ${editResult.parsed.patches.length} patches...`);
-            
-            const patchResult = applyPatches(fullChapterText, editResult.parsed.patches);
-            finalText = patchResult.patchedText;
+          // Run triple audit in parallel
+          this.callbacks.onAgentStatus("inquisidor", "active", `Auditing lore (attempt ${correctionAttempt})...`);
+          this.callbacks.onAgentStatus("estilista", "active", `Copy-editing (attempt ${correctionAttempt})...`);
+          this.callbacks.onAgentStatus("ritmo", "active", `Evaluating tension (attempt ${correctionAttempt})...`);
 
-            console.log(`[OrchestratorV2] Patch results: ${patchResult.appliedPatches}/${editResult.parsed.patches.length} applied`);
-            patchResult.log.forEach(log => console.log(`  ${log}`));
+          const previousChaptersCtx = chapterSummaries.length > 0
+            ? chapterSummaries.map((s, idx) => `Cap ${idx + 1}: ${s}`).join("\n")
+            : "Este es el primer capítulo.";
 
-            this.callbacks.onAgentStatus("smart-editor", "completed", `${patchResult.appliedPatches} patches applied, ${scores.logic}/10 Logic, ${scores.style}/10 Style`);
-          } else if (editResult.parsed.is_approved) {
-            this.callbacks.onAgentStatus("smart-editor", "completed", `Approved: ${scores.logic}/10 Logic, ${scores.style}/10 Style`);
-          } else if (editResult.parsed.needs_rewrite) {
-            console.log(`[OrchestratorV2] Chapter ${chapterNumber} needs rewrite, but continuing with current version`);
-            this.callbacks.onAgentStatus("smart-editor", "completed", "Needs improvement (continuing)");
+          const prevChapterEnding = i > 0 ? (await storage.getChaptersByProject(project.id))
+            .find(c => c.chapterNumber === outline[i - 1]?.chapter_num)?.content?.slice(-500) : undefined;
+
+          const [inquisidorResult, estilistaResult, ritmoResult] = await Promise.all([
+            this.inquisidor.execute({
+              chapterContent: finalText,
+              chapterNumber,
+              worldBible,
+              previousChaptersContext: previousChaptersCtx,
+              escaleta: chapterOutline,
+            }),
+            this.estilista.execute({
+              chapterContent: finalText,
+              chapterNumber,
+              styleGuide: guiaEstilo,
+            }),
+            this.ritmo.execute({
+              chapterContent: finalText,
+              chapterNumber,
+              totalChapters: outline.length,
+              escaletaEntry: chapterOutline,
+              previousChapterEnding: prevChapterEnding,
+            }),
+          ]);
+
+          // Log token usage for all 3 auditors
+          this.addTokenUsage(inquisidorResult.tokenUsage);
+          this.addTokenUsage(estilistaResult.tokenUsage);
+          this.addTokenUsage(ritmoResult.tokenUsage);
+          await this.logAiUsage(project.id, "inquisidor", "deepseek-reasoner", inquisidorResult.tokenUsage, chapterNumber);
+          await this.logAiUsage(project.id, "estilista", "gemini-2.5-flash", estilistaResult.tokenUsage, chapterNumber);
+          await this.logAiUsage(project.id, "ritmo", "gemini-2.5-flash", ritmoResult.tokenUsage, chapterNumber);
+
+          // Collect all errors from the three audits
+          const inquisidorErrors = inquisidorResult.parsed?.errores || [];
+          const estilistaErrors = estilistaResult.parsed?.errores || [];
+          const ritmoProblems = ritmoResult.parsed?.problemas || [];
+          const totalErrors = inquisidorErrors.length + estilistaErrors.length + ritmoProblems.length;
+
+          const inquisidorApproved = inquisidorResult.parsed?.veredicto === "aprobado";
+          const estilistaApproved = estilistaResult.parsed?.veredicto === "aprobado";
+          const ritmoApproved = ritmoResult.parsed?.veredicto === "aprobado";
+
+          this.callbacks.onAgentStatus("inquisidor", inquisidorApproved ? "completed" : "warning",
+            inquisidorApproved ? "Lore verified" : `${inquisidorErrors.length} issues found`);
+          this.callbacks.onAgentStatus("estilista", estilistaApproved ? "completed" : "warning",
+            estilistaApproved ? `Style ${estilistaResult.parsed?.puntuacion_estilo}/10` : `${estilistaErrors.length} style issues`);
+          this.callbacks.onAgentStatus("ritmo", ritmoApproved ? "completed" : "warning",
+            ritmoApproved ? `Tension ${ritmoResult.parsed?.tension_nivel}/10` : `${ritmoProblems.length} rhythm issues`);
+
+          // Track best version
+          if (totalErrors < bestVersionErrors) {
+            bestVersionErrors = totalErrors;
+            bestVersion = finalText;
           }
-        }
 
-        // 2c.5: LitAgents 2.1 - Universal Consistency Validation with RE-VALIDATION LOOP
-        const MAX_CONSISTENCY_ATTEMPTS = 3;
-        let consistencyAttempt = 0;
-        let consistencyResult = await this.validateAndUpdateConsistency(
-          project.id,
-          chapterNumber,
-          finalText,
-          project.genre,
-          worldBible,
-          narrativeTimeline
-        );
+          // Check if all three auditors approve
+          chapterApproved = inquisidorApproved && estilistaApproved && ritmoApproved;
 
-        while (!consistencyResult.isValid && consistencyResult.error && consistencyAttempt < MAX_CONSISTENCY_ATTEMPTS) {
-          consistencyAttempt++;
-          console.warn(`[OrchestratorV2] Consistency violation in Chapter ${chapterNumber} (attempt ${consistencyAttempt}/${MAX_CONSISTENCY_ATTEMPTS}): ${consistencyResult.error}`);
-          this.callbacks.onAgentStatus("universal-consistency", "warning", `Fixing consistency error (attempt ${consistencyAttempt})...`);
-          
-          // ALWAYS use full rewrite with complete context for consistency errors
-          // Surgical fixes are insufficient for continuity issues that require scene rewrites
-          this.callbacks.onAgentStatus("smart-editor", "active", `Full rewrite for consistency error (attempt ${consistencyAttempt})...`);
-          
-          // Get fresh World Bible context for informed rewrites
-          const currentWB = await storage.getWorldBibleByProject(project.id);
-          
-          // Get scene summaries from previous chapters for context
-          const sceneSummariesContext = await this.getSceneSummariesContext(project.id, chapterNumber);
-          
-          // Get style guide if linked
-          const projectStyleGuide = project.styleGuideId 
-            ? await storage.getStyleGuide(project.styleGuideId) 
-            : null;
-          
-          // Build comprehensive chapter summaries from adjacent chapters
-          const adjacentChapters = await storage.getChaptersByProject(project.id);
-          const chapterSummariesList: string[] = [];
-          for (const ch of adjacentChapters) {
-            if (ch.chapterNumber !== chapterNumber && ch.summary) {
-              chapterSummariesList.push(`Cap ${ch.chapterNumber}: ${ch.summary}`);
+          if (chapterApproved) {
+            console.log(`[OmniWriter] Chapter ${chapterNumber} APPROVED by all auditors on attempt ${correctionAttempt}`);
+            await storage.createActivityLog({
+              projectId: project.id, level: "success", agentRole: "omniwriter",
+              message: `Cap ${chapterNumber}: Aprobado por Inquisidor, Estilista y Ritmo (intento ${correctionAttempt})`,
+            });
+            break;
+          }
+
+          // If not approved and we have attempts left, apply corrections
+          if (correctionAttempt < MAX_CORRECTION_ATTEMPTS) {
+            this.callbacks.onAgentStatus("smart-editor", "active", `Correcting ${totalErrors} issues (attempt ${correctionAttempt})...`);
+
+            // Build comprehensive correction instructions from all three audits
+            let correctionInstructions = "CORRECCIONES OBLIGATORIAS DETECTADAS POR EL SISTEMA DE AUDITORÍA TRIPLE:\n\n";
+
+            if (inquisidorErrors.length > 0) {
+              correctionInstructions += "=== ERRORES DE LORE Y COHERENCIA (Inquisidor) ===\n";
+              for (const err of inquisidorErrors) {
+                correctionInstructions += `- [${err.severidad}] ${err.tipo}: ${err.descripcion}\n  Ubicación: ${err.ubicacion}\n  Corrección: ${err.correccion_exacta}\n\n`;
+              }
+            }
+
+            if (estilistaErrors.length > 0) {
+              correctionInstructions += "=== ERRORES ESTILÍSTICOS (Estilista) ===\n";
+              for (const err of estilistaErrors) {
+                correctionInstructions += `- [${err.severidad}] ${err.tipo}: "${err.fragmento_original}" → "${err.correccion}"\n  Razón: ${err.explicacion}\n\n`;
+              }
+            }
+
+            if (ritmoProblems.length > 0) {
+              correctionInstructions += "=== PROBLEMAS DE RITMO (Agente de Ritmo) ===\n";
+              for (const prob of ritmoProblems) {
+                correctionInstructions += `- ${prob.tipo}: ${prob.descripcion}\n  Sugerencia: ${prob.sugerencia}\n\n`;
+              }
+            }
+
+            // Use SmartEditor for corrections
+            const rewriteResult = await this.smartEditor.fullRewrite({
+              chapterContent: finalText,
+              errorDescription: correctionInstructions,
+              worldBible: {
+                characters: ((worldBible as any).characters || []) as any[],
+                locations: [],
+                worldRules: ((worldBible as any).rules || []) as any[],
+                persistentInjuries: [],
+                plotDecisions: [],
+              },
+              styleGuide: guiaEstilo,
+              chapterNumber,
+              chapterTitle: chapterOutline.title,
+            });
+
+            this.addTokenUsage(rewriteResult.tokenUsage);
+            await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", rewriteResult.tokenUsage, chapterNumber);
+
+            if (rewriteResult.rewrittenContent && rewriteResult.rewrittenContent.length > 200) {
+              const previousVersion = finalText;
+              finalText = rewriteResult.rewrittenContent;
+
+              // Levenshtein convergence check
+              const converged = calcularConvergencia(previousVersion, finalText);
+              if (converged) {
+                console.log(`[OmniWriter] Chapter ${chapterNumber}: Converged (< 1% change). Accepting current version.`);
+                chapterApproved = true;
+              } else {
+                console.log(`[OmniWriter] Chapter ${chapterNumber}: Corrections applied, re-auditing...`);
+              }
+
+              this.callbacks.onAgentStatus("smart-editor", "completed", `Corrections applied (attempt ${correctionAttempt})`);
+            } else {
+              console.warn(`[OmniWriter] Chapter ${chapterNumber}: Correction returned empty content`);
+              this.callbacks.onAgentStatus("smart-editor", "warning", "Correction failed - keeping current version");
             }
           }
-          
-          const rewriteResult = await this.smartEditor.fullRewrite({
-            chapterContent: finalText,
-            errorDescription: `CORRECCIÓN OBLIGATORIA - VIOLACIÓN DE CONTINUIDAD:\n${consistencyResult.error}\n\nDebes reescribir las escenas afectadas para eliminar COMPLETAMENTE esta contradicción manteniendo la coherencia narrativa.`,
-            consistencyConstraints: consistencyConstraints + (sceneSummariesContext || ''),
-            worldBible: currentWB ? {
-              characters: currentWB.characters as any[],
-              locations: [], // Not in schema but expected by interface
-              worldRules: currentWB.worldRules as any[],
-              persistentInjuries: currentWB.persistentInjuries as any[],
-              plotDecisions: currentWB.plotDecisions as any[],
-            } : undefined,
-            chapterSummaries: chapterSummariesList,
-            styleGuide: projectStyleGuide?.content || undefined,
+        }
+
+        // If max attempts reached without approval, use best version with note
+        if (!chapterApproved) {
+          finalText = bestVersion;
+          console.log(`[OmniWriter] Chapter ${chapterNumber}: Max attempts reached. Using best version (${bestVersionErrors} errors remaining).`);
+          await storage.createActivityLog({
+            projectId: project.id, level: "warn", agentRole: "omniwriter",
+            message: `Cap ${chapterNumber}: Revisión automática realizada - ${bestVersionErrors} errores menores pendientes tras ${MAX_CORRECTION_ATTEMPTS} intentos.`,
           });
-          
-          this.addTokenUsage(rewriteResult.tokenUsage);
-          await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", rewriteResult.tokenUsage, chapterNumber);
-          
-          if (rewriteResult.rewrittenContent) {
-            finalText = rewriteResult.rewrittenContent;
-            console.log(`[OrchestratorV2] Chapter ${chapterNumber}: Full rewrite applied for consistency fix (attempt ${consistencyAttempt})`);
-          } else {
-            console.warn(`[OrchestratorV2] Chapter ${chapterNumber}: Full rewrite returned empty content`);
-          }
-          
-          // RE-VALIDATE after correction to confirm the fix worked
-          this.callbacks.onAgentStatus("universal-consistency", "active", "Re-validating after correction...");
-          consistencyResult = await this.validateAndUpdateConsistency(
-            project.id,
-            chapterNumber,
-            finalText,
-            project.genre,
-            worldBible,
-            narrativeTimeline
-          );
-          
-          if (consistencyResult.isValid) {
-            console.log(`[OrchestratorV2] Chapter ${chapterNumber}: Consistency VERIFIED after attempt ${consistencyAttempt}`);
-            this.callbacks.onAgentStatus("universal-consistency", "completed", `Consistency verified (attempt ${consistencyAttempt})`);
-          } else {
-            console.warn(`[OrchestratorV2] Chapter ${chapterNumber}: Consistency still invalid after attempt ${consistencyAttempt}`);
-          }
-        }
-        
-        // Mark violations as resolved only if truly fixed, or as attempted if max attempts reached
-        const violations = await db.select().from(consistencyViolations)
-          .where(and(
-            eq(consistencyViolations.projectId, project.id),
-            eq(consistencyViolations.chapterNumber, chapterNumber),
-            eq(consistencyViolations.status, "pending")
-          ));
-        
-        if (violations.length > 0) {
-          const wasFixed = consistencyResult.isValid;
-          for (const violation of violations) {
-            await db.update(consistencyViolations)
-              .set({ 
-                wasAutoFixed: wasFixed, 
-                status: wasFixed ? "resolved" : "attempted",
-                resolvedAt: wasFixed ? new Date() : null,
-                fixDescription: wasFixed 
-                  ? `Corregido después de ${consistencyAttempt} intento(s)` 
-                  : `No resuelto después de ${MAX_CONSISTENCY_ATTEMPTS} intentos - requiere revisión manual`
-              })
-              .where(eq(consistencyViolations.id, violation.id));
-          }
-          console.log(`[OrchestratorV2] Marked ${violations.length} violation(s) as ${wasFixed ? 'RESOLVED' : 'ATTEMPTED'} for Chapter ${chapterNumber}`);
-        }
-        
-        if (consistencyAttempt > 0) {
-          this.callbacks.onAgentStatus("smart-editor", "completed", 
-            consistencyResult.isValid ? "Continuity error fixed" : `Continuity issues persist after ${consistencyAttempt} attempts`);
-          
-          // Log persistent violations for user visibility
-          if (!consistencyResult.isValid) {
-            await storage.createActivityLog({
-              projectId: project.id,
-              level: "warning",
-              agentRole: "universal-consistency",
-              message: `Capítulo ${chapterNumber}: Violación de consistencia NO RESUELTA después de ${MAX_CONSISTENCY_ATTEMPTS} intentos. Error: ${consistencyResult.error?.substring(0, 200)}...`,
-            });
-          }
         }
 
-        // 2d: Summarizer - Compress for memory
+        // OmniWriter Phase 2d: Consistency validation (simplified - Inquisidor already audited)
+        await this.validateAndUpdateConsistency(project.id, chapterNumber, finalText, project.genre, worldBible, narrativeTimeline);
+
+        // OmniWriter Phase 2e: Summarizer - Compress for memory
         this.callbacks.onAgentStatus("summarizer", "active", "Compressing for memory...");
-
-        const summaryResult = await this.summarizer.execute({
-          chapterContent: finalText,
-          chapterNumber,
-        });
-
+        const summaryResult = await this.summarizer.execute({ chapterContent: finalText, chapterNumber });
         this.addTokenUsage(summaryResult.tokenUsage);
         await this.logAiUsage(project.id, "summarizer", "deepseek-chat", summaryResult.tokenUsage, chapterNumber);
-
         const chapterSummary = summaryResult.content || `Chapter ${chapterNumber} completed.`;
         chapterSummaries.push(chapterSummary);
-
-        // Update rolling summary (keep last 3 chapters for context)
         const recentSummaries = chapterSummaries.slice(-3);
         rollingSummary = recentSummaries.map((s, idx) => `Cap ${chapterNumber - (recentSummaries.length - 1 - idx)}: ${s}`).join("\n");
-
         this.callbacks.onAgentStatus("summarizer", "completed", "Chapter compressed");
 
-        // Save chapter to database (update if exists, create if not)
+        // OmniWriter Phase 2f: Save chapter to database
         const wordCount = finalText.split(/\s+/).length;
-        
-        // ALWAYS check database directly to prevent duplicates (don't rely on cached list)
         const freshChapters = await storage.getChaptersByProject(project.id);
         const existingChapter = freshChapters.find(c => c.chapterNumber === chapterNumber);
         
         if (existingChapter) {
-          // Update existing chapter instead of creating a duplicate
           await storage.updateChapter(existingChapter.id, {
-            title: chapterOutline.title,
-            content: finalText,
-            wordCount,
-            status: "approved",
-            sceneBreakdown: sceneBreakdown as any,
-            summary: chapterSummary,
-            editorFeedback: editorFeedback as any,
-            qualityScore: editorFeedback ? Math.round((editorFeedback.logic_score + editorFeedback.style_score) / 2) : null,
+            title: chapterOutline.title, content: finalText, wordCount,
+            status: "approved", sceneBreakdown: sceneBreakdown as any,
+            summary: chapterSummary, editorFeedback: editorFeedback as any,
+            qualityScore: null,
           });
-          console.log(`[OrchestratorV2] Updated existing chapter ${chapterNumber} (ID: ${existingChapter.id})`);
         } else {
-          // Create new chapter
           await storage.createChapter({
-            projectId: project.id,
-            chapterNumber,
-            title: chapterOutline.title,
-            content: finalText,
-            wordCount,
-            status: "approved",
-            sceneBreakdown: sceneBreakdown as any,
-            summary: chapterSummary,
-            editorFeedback: editorFeedback as any,
-            qualityScore: editorFeedback ? Math.round((editorFeedback.logic_score + editorFeedback.style_score) / 2) : null,
+            projectId: project.id, chapterNumber,
+            title: chapterOutline.title, content: finalText, wordCount,
+            status: "approved", sceneBreakdown: sceneBreakdown as any,
+            summary: chapterSummary, editorFeedback: editorFeedback as any,
+            qualityScore: null,
           });
-          console.log(`[OrchestratorV2] Created new chapter ${chapterNumber}`);
         }
-
         await storage.updateProject(project.id, { currentChapter: chapterNumber });
         this.callbacks.onChapterComplete(chapterNumber, wordCount, chapterOutline.title);
 
@@ -5963,181 +5883,24 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           console.error(`[OrchestratorV2] Error extracting injuries from Chapter ${chapterNumber}:`, injuryError);
         }
 
-        // 2e: Narrative Director - Check every 5 chapters, before epilogue, AND always with epilogue/last chapter
+        // OmniWriter: Structural checkpoint every 5 chapters (preserved from original)
         const isMultipleOfFive = chapterNumber > 0 && chapterNumber < 998 && chapterNumber % 5 === 0;
-        const currentIdx = outline.findIndex((ch: any) => ch.chapter_num === chapterNumber);
-        const nextChapter = outline[currentIdx + 1];
-        const isLastBeforeEpilogue = nextChapter && (nextChapter.chapter_num === 998 || nextChapter.chapter_num === 999);
-        const isEpilogue = chapterNumber === 998;
-        const isLastChapter = currentIdx === outline.length - 1; // v2.9.10: Also detect when this is the absolute last chapter (no epilogue)
-        
-        if (isMultipleOfFive || isLastBeforeEpilogue || isEpilogue || isLastChapter) {
-          let label: string;
-          if (isEpilogue) {
-            label = "Final coherence review with epilogue";
-          } else if (isLastChapter && !isEpilogue) {
-            label = "Final chapter coherence review (no epilogue)";
-          } else if (isLastBeforeEpilogue) {
-            label = "Pre-epilogue review";
-          } else {
-            label = `Chapter ${chapterNumber} checkpoint`;
-          }
-          console.log(`[OrchestratorV2] Running Narrative Director: ${label}`);
-          const directorResult = await this.runNarrativeDirector(project.id, chapterNumber, project.chapterCount, chapterSummaries);
-          
-          // LitAgents 2.9.10: Run Structural Checkpoint alongside Narrative Director
-          if (isMultipleOfFive && !isEpilogue) {
-            console.log(`[OrchestratorV2] Running Structural Checkpoint at Chapter ${chapterNumber} (last checkpoint was at ${lastCheckpointChapter})`);
-            const checkpointResult = await this.runStructuralCheckpoint(
-              project.id, chapterNumber, worldBible, outline, narrativeTimeline,
-              lastCheckpointChapter, alreadyCorrectedChapters
-            );
-            
-            // Update lastCheckpointChapter for next checkpoint
-            lastCheckpointChapter = chapterNumber;
-            
-            // Rewrite deviated chapters (max 5 per checkpoint to prevent token waste)
-            const MAX_REWRITES_PER_CHECKPOINT = 5;
-            if (checkpointResult.deviatedChapters.length > 0) {
-              const chaptersToRewrite = checkpointResult.deviatedChapters.slice(0, MAX_REWRITES_PER_CHECKPOINT);
-              if (checkpointResult.deviatedChapters.length > MAX_REWRITES_PER_CHECKPOINT) {
-                console.log(`[OrchestratorV2] Limiting rewrites to ${MAX_REWRITES_PER_CHECKPOINT} of ${checkpointResult.deviatedChapters.length} deviated chapters`);
-              }
-              console.log(`[OrchestratorV2] ${chaptersToRewrite.length} chapters need structural correction`);
-              
-              for (const deviatedChNum of chaptersToRewrite) {
-                if (await this.shouldStopProcessing(project.id)) break;
-                
-                const deviationIssue = checkpointResult.issues.find(i => i.includes(`Cap ${deviatedChNum}`)) || 
-                  `Capítulo ${deviatedChNum} se desvió del plan original`;
-                
-                let rewritten = await this.rewriteDeviatedChapter(
-                  project.id, deviatedChNum, worldBible, outline, deviationIssue
-                );
-                
-                if (rewritten) {
-                  const updatedChapters = await storage.getChaptersByProject(project.id);
-                  const updatedCh = updatedChapters.find(c => c.chapterNumber === deviatedChNum);
-                  
-                  if (updatedCh?.content) {
-                    const verification = await this.verifyRewriteFixed(
-                      project.id, deviatedChNum, updatedCh.content, outline, deviationIssue
-                    );
-                    
-                    if (!verification.fixed && verification.remainingIssues.length > 0) {
-                      console.log(`[OrchestratorV2] Chapter ${deviatedChNum} rewrite did NOT fix the problem. Attempting second rewrite...`);
-                      const enhancedIssue = `${deviationIssue}\n\nPROBLEMAS PERSISTENTES TRAS PRIMERA REESCRITURA:\n${verification.remainingIssues.join('\n')}`;
-                      
-                      rewritten = await this.rewriteDeviatedChapter(
-                        project.id, deviatedChNum, worldBible, outline, enhancedIssue
-                      );
-                      
-                      if (rewritten) {
-                        const recheckChapters = await storage.getChaptersByProject(project.id);
-                        const recheckCh = recheckChapters.find(c => c.chapterNumber === deviatedChNum);
-                        if (recheckCh?.content) {
-                          const secondVerification = await this.verifyRewriteFixed(
-                            project.id, deviatedChNum, recheckCh.content, outline, enhancedIssue
-                          );
-                          if (!secondVerification.fixed) {
-                            console.warn(`[OrchestratorV2] Chapter ${deviatedChNum} still not fixed after 2 rewrites. Storing as lesson.`);
-                            await storage.createActivityLog({
-                              projectId: project.id,
-                              level: "warn",
-                              agentRole: "structural-checkpoint",
-                              message: `Capítulo ${deviatedChNum}: desviación persistente tras 2 intentos de reescritura. Problemas: ${secondVerification.remainingIssues.join('; ')}`,
-                              metadata: { type: 'persistent_deviation', chapterNumber: deviatedChNum, remainingIssues: secondVerification.remainingIssues },
-                            });
-                          }
-                        }
-                      }
-                    }
-                  }
-                  
-                  alreadyCorrectedChapters.add(deviatedChNum);
-                  console.log(`[OrchestratorV2] Chapter ${deviatedChNum} processed for structural adherence (marked as corrected)`);
-                  
-                  const finalChapters = await storage.getChaptersByProject(project.id);
-                  const finalCh = finalChapters.find(c => c.chapterNumber === deviatedChNum);
-                  if (finalCh) {
-                    const summaryResult = await this.summarizer.execute({
-                      chapterContent: finalCh.content || '',
-                      chapterNumber: deviatedChNum,
-                    });
-                    this.addTokenUsage(summaryResult.tokenUsage);
-                    
-                    if (summaryResult.content) {
-                      await storage.updateChapter(finalCh.id, { summary: summaryResult.content });
-                      const summaryIdx = chapterSummaries.findIndex((_, idx) => {
-                        const chapNum = outline[idx]?.chapter_num;
-                        return chapNum === deviatedChNum;
-                      });
-                      if (summaryIdx >= 0) {
-                        chapterSummaries[summaryIdx] = summaryResult.content;
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-          
-          // v2.9.10: If last chapter (epilogue or final regular chapter) needs rewrite to close unresolved threads
-          const shouldRewriteForClosure = (isEpilogue || (isLastChapter && !isEpilogue)) && directorResult.needsRewrite;
-          if (shouldRewriteForClosure) {
-            const targetChapterNum = isEpilogue ? 998 : chapterNumber;
-            console.log(`[OrchestratorV2] Rewriting chapter ${targetChapterNum} to resolve: ${directorResult.unresolvedThreads.join(", ")}`);
-            this.callbacks.onAgentStatus("ghostwriter-v2", "active", `Rewriting chapter ${targetChapterNum} to close narrative threads...`);
-            
-            const allChapters = await storage.getChaptersByProject(project.id);
-            const targetChapter = allChapters.find(c => c.chapterNumber === targetChapterNum);
-            
-            if (targetChapter) {
-              const closureInstructions = directorResult.unresolvedThreads.length > 0 
-                ? `HILOS NARRATIVOS SIN CERRAR - DEBES resolver estos hilos en la reescritura:\n${directorResult.unresolvedThreads.map(t => `- ${t}`).join("\n")}\n\nReescribe el capítulo completo integrando los cierres de forma natural en la narrativa existente.`
-                : directorResult.directive;
-              
-              // v2.9.10: Use fullRewrite instead of appending to prevent disjointed content
-              const rewriteResult = await this.smartEditor.fullRewrite({
-                chapterContent: targetChapter.content || "",
-                errorDescription: closureInstructions,
-                worldBible: {
-                  characters: ((worldBible as any).characters || (worldBible as any).personajes || []) as any[],
-                  locations: ((worldBible as any).locations || (worldBible as any).lugares || []) as any[],
-                  worldRules: ((worldBible as any).rules || (worldBible as any).reglas || (worldBible as any).worldRules || []) as any[],
-                  persistentInjuries: ((worldBible as any).persistentInjuries || (worldBible as any).lesiones || []) as any[],
-                  plotDecisions: ((worldBible as any).plotDecisions || (worldBible as any).decisiones || []) as any[],
-                },
-                chapterNumber: targetChapterNum,
-                chapterTitle: targetChapter.title || chapterOutline.title,
-                previousChapterSummary: chapterSummaries[chapterSummaries.length - 2] || "",
-              });
-              
-              this.addTokenUsage(rewriteResult.tokenUsage);
-              await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", rewriteResult.tokenUsage, targetChapterNum);
-              
-              if (rewriteResult.rewrittenContent && rewriteResult.rewrittenContent.length > 200) {
-                const newWordCount = rewriteResult.rewrittenContent.split(/\s+/).length;
-                const originalWordCount = (targetChapter.content || "").split(/\s+/).length;
-                
-                // Only accept if the rewrite didn't lose too much content
-                if (newWordCount >= originalWordCount * 0.7) {
-                  await storage.updateChapter(targetChapter.id, {
-                    originalContent: targetChapter.originalContent || targetChapter.content,
-                    content: rewriteResult.rewrittenContent,
-                    wordCount: newWordCount,
-                  });
-                  
-                  console.log(`[OrchestratorV2] Chapter ${targetChapterNum} rewritten to close ${directorResult.unresolvedThreads.length} narrative threads (${newWordCount} words)`);
-                  this.callbacks.onAgentStatus("ghostwriter-v2", "completed", `Chapter ${targetChapterNum} rewritten (${directorResult.unresolvedThreads.length} threads closed)`);
-                } else {
-                  console.warn(`[OrchestratorV2] Chapter ${targetChapterNum} rewrite too short (${newWordCount} vs ${originalWordCount}), keeping original`);
-                  this.callbacks.onAgentStatus("ghostwriter-v2", "completed", "Rewrite discarded (too short)");
-                }
-              } else {
-                console.log(`[OrchestratorV2] Chapter ${targetChapterNum} rewrite failed - no content generated`);
-                this.callbacks.onAgentStatus("ghostwriter-v2", "completed", "Rewrite skipped");
-              }
+        if (isMultipleOfFive) {
+          console.log(`[OmniWriter] Running Structural Checkpoint at Chapter ${chapterNumber}`);
+          const checkpointResult = await this.runStructuralCheckpoint(
+            project.id, chapterNumber, worldBible, outline, narrativeTimeline,
+            lastCheckpointChapter, alreadyCorrectedChapters
+          );
+          lastCheckpointChapter = chapterNumber;
+
+          if (checkpointResult.deviatedChapters.length > 0) {
+            const chaptersToRewrite = checkpointResult.deviatedChapters.slice(0, 3);
+            for (const deviatedChNum of chaptersToRewrite) {
+              if (await this.shouldStopProcessing(project.id)) break;
+              const deviationIssue = checkpointResult.issues.find(iss => iss.includes(`Cap ${deviatedChNum}`)) ||
+                `Capítulo ${deviatedChNum} se desvió del plan original`;
+              await this.rewriteDeviatedChapter(project.id, deviatedChNum, worldBible, outline, deviationIssue);
+              alreadyCorrectedChapters.add(deviatedChNum);
             }
           }
         }
@@ -6145,13 +5908,105 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         // Update token counts
         await this.updateProjectTokens(project.id);
       }
+      // ==================== END OMNIWRITER CHAPTER LOOP ====================
 
       // After all chapters are written, run SeriesThreadFixer if this is a series project
       if (project.seriesId) {
         await this.runSeriesThreadFixer(project);
       }
 
-      // LitAgents 2.9.10: Full-novel structural review before marking complete
+      // ==================== OMNIWRITER PHASE 3: ENSAMBLADOR ====================
+      // Final manuscript assembly: voice unification + cross-chapter character consistency
+      if (await this.shouldStopProcessing(project.id) === false) {
+        console.log(`[OmniWriter] Phase 3: Running Ensamblador for final manuscript assembly...`);
+        this.callbacks.onAgentStatus("ensamblador", "active", "Unifying voice across full manuscript...");
+
+        try {
+          const allChapters = await storage.getChaptersByProject(project.id);
+          const sortedChapters = allChapters
+            .filter(c => c.content && c.content.length > 0)
+            .sort((a, b) => a.chapterNumber - b.chapterNumber);
+
+          const fullManuscript = sortedChapters.map(c => c.content).join("\n\n---\n\n");
+
+          const ensambladorResult = await this.ensamblador.execute({
+            fullManuscript,
+            totalChapters: sortedChapters.length,
+            worldBible,
+            styleGuide: guiaEstilo,
+          });
+
+          this.addTokenUsage(ensambladorResult.tokenUsage);
+          await this.logAiUsage(project.id, "ensamblador", "gemini-2.5-flash", ensambladorResult.tokenUsage);
+
+          if (ensambladorResult.parsed) {
+            const report = ensambladorResult.parsed;
+            const totalIssues = (report.inconsistencias_voz?.length || 0) + (report.inconsistencias_personaje?.length || 0);
+
+            if (totalIssues > 0 && report.capitulos_afectados?.length > 0) {
+              console.log(`[OmniWriter] Ensamblador found ${totalIssues} issues in ${report.capitulos_afectados.length} chapters`);
+
+              for (const capNum of report.capitulos_afectados.slice(0, 5)) {
+                const chapter = sortedChapters.find(c => c.chapterNumber === capNum);
+                if (!chapter) continue;
+
+                let corrections = `CORRECCIONES DE ENSAMBLAJE FINAL (Capítulo ${capNum}):\n\n`;
+                for (const issue of (report.inconsistencias_voz || [])) {
+                  if (issue.capitulo === capNum) {
+                    corrections += `- VOZ: ${issue.descripcion}\n  Corrección: ${issue.correccion}\n`;
+                  }
+                }
+                for (const issue of (report.inconsistencias_personaje || [])) {
+                  if (issue.capitulo === capNum) {
+                    corrections += `- PERSONAJE (${issue.personaje}): ${issue.descripcion}\n  Corrección: ${issue.correccion}\n`;
+                  }
+                }
+
+                const fixResult = await this.smartEditor.fullRewrite({
+                  chapterContent: chapter.content || "",
+                  errorDescription: corrections,
+                  worldBible: {
+                    characters: ((worldBible as any).characters || []) as any[],
+                    locations: [],
+                    worldRules: ((worldBible as any).rules || []) as any[],
+                    persistentInjuries: [],
+                    plotDecisions: [],
+                  },
+                  styleGuide: guiaEstilo,
+                  chapterNumber: capNum,
+                  chapterTitle: chapter.title || "",
+                });
+
+                this.addTokenUsage(fixResult.tokenUsage);
+                if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 200) {
+                  await storage.updateChapter(chapter.id, {
+                    content: fixResult.rewrittenContent,
+                    wordCount: fixResult.rewrittenContent.split(/\s+/).length,
+                  });
+                  console.log(`[OmniWriter] Ensamblador: Chapter ${capNum} unified`);
+                }
+              }
+
+              this.callbacks.onAgentStatus("ensamblador", "completed", `${totalIssues} issues fixed in ${report.capitulos_afectados.length} chapters`);
+            } else {
+              console.log(`[OmniWriter] Ensamblador: Manuscript voice is consistent`);
+              this.callbacks.onAgentStatus("ensamblador", "completed", `Voice unified - Score: ${report.puntuacion_coherencia}/10`);
+            }
+
+            await storage.createActivityLog({
+              projectId: project.id, level: "success", agentRole: "ensamblador",
+              message: `Ensamblaje final: coherencia ${report.puntuacion_coherencia}/10, ${totalIssues} correcciones aplicadas`,
+            });
+          } else {
+            this.callbacks.onAgentStatus("ensamblador", "completed", "Assembly complete");
+          }
+        } catch (err) {
+          console.error("[OmniWriter] Ensamblador error:", err);
+          this.callbacks.onAgentStatus("ensamblador", "warning", "Assembly skipped (non-fatal)");
+        }
+      }
+
+      // Full-novel structural review before marking complete
       if (await this.shouldStopProcessing(project.id) === false) {
         console.log(`[OrchestratorV2] Running full-novel structural review...`);
         this.callbacks.onAgentStatus("structural-checkpoint", "active", "Revisión estructural completa de toda la novela...");

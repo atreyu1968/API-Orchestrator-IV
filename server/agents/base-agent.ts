@@ -136,6 +136,12 @@ export const AGENT_DEEPSEEK_MODELS: Record<string, DeepSeekModel> = {
   "expansion_analyzer": "deepseek-chat", // V3: fast expansion analysis (was R1)
   "italian-reviewer": "deepseek-chat",  // V3: fast Italian review (was R1)
   "writing-lessons": "deepseek-chat",  // V3: fast lesson extraction
+  
+  // === OMNIWRITER PIPELINE AGENTS ===
+  "inquisidor": "deepseek-reasoner",   // R1: deep plot hole detection
+  "estilista": "deepseek-chat",        // V3: fast copy editing (overridden to Gemini in agent)
+  "ritmo": "deepseek-chat",            // V3: fast rhythm evaluation (overridden to Gemini in agent)
+  "ensamblador": "deepseek-chat",      // V3: final assembly (overridden to Gemini in agent)
 };
 
 export type AIModel = GeminiModel | DeepSeekModel;

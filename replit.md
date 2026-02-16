@@ -48,6 +48,12 @@ Preferred communication style: Simple, everyday language.
 - **Surgical-First Corrections**: Prioritizes surgical patching for all issue types, using full rewrites only as a last resort. Provides detailed correction visibility.
 - **Detect All, Then Fix Strategy**: A two-phase correction strategy (Detection then Verified Correction) to prevent inconsistencies, with immediate verification and escalation for unresolved issues.
 - **Zero-Cascade with Focused Verification**: Corrections do not cascade; only grave new problems are reported. Employs progressive escalation for failed surgical patches, including focused full rewrites with strict validation. Supports multi-chapter coordination and specialized prompts by error type.
+- **OmniWriter Zero-Touch Pipeline (v3.0)**: Replaces the old scene-based audit system with a chapter-level approach:
+  - **Triple Cross-Audit**: Inquisidor (lore/plot holes), Estilista (copy editing at temp 0), Ritmo (tension/pacing) run in parallel after each chapter.
+  - **Recursive Correction Loops**: SmartEditor applies corrections from all 3 auditors, with Levenshtein convergence detection (< 1% change threshold) to prevent infinite loops.
+  - **Ensamblador Final Assembly (Phase 3)**: After all chapters complete, runs voice unification and cross-chapter character consistency across the full manuscript.
+  - **New Agent Files**: `server/agents/v2/inquisidor.ts`, `server/agents/v2/estilista.ts`, `server/agents/v2/ritmo.ts`, `server/agents/v2/ensamblador.ts`
+  - **Levenshtein Utility**: `server/utils/levenshtein.ts` for convergence detection.
 - **Plot Coherence Validation**: Global Architect output is strictly validated BEFORE chapter generation to prevent structural issues.
 - **Protagonist Presence Enforcement**: Three-tier defense system ensures protagonist appears in at least 40% of chapters with explicit naming, through prompt instructions, specific correction instructions, and automatic post-processing.
 - **Cumulative Correction Phases**: Corrections build on previous ones; in-memory chapter array is updated after each successful correction for fresh adjacentContext.

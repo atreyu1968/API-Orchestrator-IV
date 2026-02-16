@@ -9,6 +9,12 @@ export { NarrativeDirectorAgent, type NarrativeDirectorInput, type NarrativeDire
 
 export { SeriesWorldBibleExtractor, type ExtractedWorldBibleData } from './series-world-bible-extractor';
 
+// OmniWriter Pipeline Agents
+export { InquisidorAgent, type InquisidorInput, type InquisidorOutput, type InquisidorIssue } from './inquisidor';
+export { EstilistaAgent, type EstilistaInput, type EstilistaOutput, type EstilistaIssue } from './estilista';
+export { RitmoAgent, type RitmoInput, type RitmoOutput } from './ritmo';
+export { EnsambladorAgent, type EnsambladorInput, type EnsambladorOutput } from './ensamblador';
+
 // Pattern Tracker for anti-repetition
 export { 
   PatternTracker, 

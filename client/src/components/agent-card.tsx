@@ -1,9 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Pencil, Brain, Eye, FileText, Loader2, ClipboardCheck, Shield, AudioWaveform, Search, AlertTriangle } from "lucide-react";
+import { Pencil, Brain, Eye, FileText, Loader2, ClipboardCheck, Shield, AudioWaveform, Search, AlertTriangle, Scale, Sparkles, Activity, Layers } from "lucide-react";
 
-type AgentRole = "architect" | "ghostwriter" | "editor" | "copyeditor" | "final-reviewer" | "continuity-sentinel" | "voice-auditor" | "semantic-detector" | "global-architect" | "chapter-architect" | "ghostwriter-v2" | "smart-editor" | "summarizer" | "narrative-director" | "universal-consistency" | "beta-reader";
+type AgentRole = "architect" | "ghostwriter" | "editor" | "copyeditor" | "final-reviewer" | "continuity-sentinel" | "voice-auditor" | "semantic-detector" | "global-architect" | "chapter-architect" | "ghostwriter-v2" | "smart-editor" | "summarizer" | "narrative-director" | "universal-consistency" | "beta-reader" | "inquisidor" | "estilista" | "ritmo" | "ensamblador";
 type AgentStatusType = "idle" | "thinking" | "writing" | "editing" | "reviewing" | "polishing" | "completed" | "error" | "analyzing" | "warning";
 
 interface AgentCardProps {
@@ -32,6 +32,10 @@ const roleIcons: Record<AgentRole, React.ReactNode> = {
   "narrative-director": <ClipboardCheck className="h-5 w-5" />,
   "universal-consistency": <Shield className="h-5 w-5" />,
   "beta-reader": <Eye className="h-5 w-5" />,
+  "inquisidor": <Scale className="h-5 w-5" />,
+  "estilista": <Sparkles className="h-5 w-5" />,
+  "ritmo": <Activity className="h-5 w-5" />,
+  "ensamblador": <Layers className="h-5 w-5" />,
 };
 
 const roleColors: Record<AgentRole, string> = {
@@ -51,6 +55,10 @@ const roleColors: Record<AgentRole, string> = {
   "narrative-director": "bg-orange-500/10 text-orange-600 dark:text-orange-400",
   "universal-consistency": "bg-teal-500/10 text-teal-600 dark:text-teal-400",
   "beta-reader": "bg-pink-500/10 text-pink-600 dark:text-pink-400",
+  "inquisidor": "bg-red-500/10 text-red-600 dark:text-red-400",
+  "estilista": "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400",
+  "ritmo": "bg-lime-500/10 text-lime-600 dark:text-lime-400",
+  "ensamblador": "bg-blue-500/10 text-blue-600 dark:text-blue-400",
 };
 
 const statusColors: Record<AgentStatusType, string> = {
