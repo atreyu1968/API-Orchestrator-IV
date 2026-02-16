@@ -828,8 +828,8 @@ export const PROMPTS_V2 = {
     ║ Para evitar truncamiento, usa el FORMATO COMPACTO:              ║
     ║                                                                  ║
     ║ 1. En "outline": SOLO usa chapter_num, title, act, summary,     ║
-    ║    key_event. NO incluyas emotional_arc, temporal_notes,         ║
-    ║    location, ni character_states_entering.                       ║
+    ║    key_event, structural_role. NO incluyas emotional_arc,        ║
+    ║    temporal_notes, location, ni character_states_entering.        ║
     ║ 2. En "summary": máximo 1 línea (40-60 palabras).               ║
     ║ 3. En "key_event": máximo 15 palabras.                          ║
     ║ 4. "timeline_master": SOLO story_duration, start_date, y        ║
@@ -925,13 +925,15 @@ export const PROMPTS_V2 = {
           "title": "Título evocador", 
           "act": 1,
           "summary": "Sinopsis concisa de 1 línea", 
-          "key_event": "Evento principal del capítulo"
+          "key_event": "Evento principal del capítulo",
+          "structural_role": "inciting_incident | act1_turn | midpoint | act2_crisis | climax | resolution | null"
         }` : `{ 
           "chapter_num": 1, 
           "title": "Título evocador del capítulo", 
           "act": 1,
           "summary": "Sinopsis de 2-3 líneas de lo que ocurre", 
           "key_event": "El evento principal que define el capítulo",
+          "structural_role": "inciting_incident | act1_turn | midpoint | act2_crisis | climax | resolution | null",
           "emotional_arc": "De qué emoción a qué emoción viaja el lector",
           "temporal_notes": "Día X, mañana/tarde/noche, X horas después del capítulo anterior",
           "location": "Ciudad/lugar principal donde transcurre",
@@ -949,6 +951,25 @@ export const PROMPTS_V2 = {
     RECORDATORIO FINAL: Tu outline DEBE tener EXACTAMENTE ${chapters} entradas (chapter_num 1 a ${chapters}).
     Sé CONCISO en cada entrada. Prioriza COMPLETAR TODOS LOS CAPÍTULOS sobre el detalle.
     ` : ''}
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║ STRUCTURAL_ROLE - OBLIGATORIO para puntos clave               ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║ Cada capítulo DEBE tener "structural_role" con UNO de estos   ║
+    ║ valores o null si no es un punto estructural clave:            ║
+    ║                                                                ║
+    ║ "inciting_incident" - El detonante que lanza la trama (~10%)  ║
+    ║ "act1_turn"  - Giro del Acto 1: el punto de no retorno (~25%)║
+    ║ "midpoint"   - Punto medio: revelación/crisis central (~50%) ║
+    ║ "act2_crisis"- Crisis del Acto 2: todo se derrumba (~75%)    ║
+    ║ "climax"     - Clímax: confrontación definitiva (~85-90%)    ║
+    ║ "resolution" - Resolución: desenlace y cierre (~95-100%)     ║
+    ║                                                                ║
+    ║ REGLAS:                                                        ║
+    ║ - act1_turn, midpoint y act2_crisis son OBLIGATORIOS           ║
+    ║ - Cada valor puede usarse SOLO UNA VEZ                         ║
+    ║ - Los demás capítulos deben tener structural_role: null        ║
+    ╚══════════════════════════════════════════════════════════════════╝
+
     Piensa paso a paso en la estructura de 3 actos antes de generar el JSON.
     Asegúrate de que cada capítulo tenga un propósito claro y avance la trama.
   `,
