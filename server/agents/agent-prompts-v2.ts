@@ -1294,9 +1294,17 @@ ${worldBibleSection}
     PALABRAS OBJETIVO: ${scenePlan.word_target || 350}
 
     ═══════════════════════════════════════════════════════════════════
-    GUÍA DE ESTILO:
+    GUÍA DE ESTILO DEL AUTOR - ADHESIÓN OBLIGATORIA:
     ═══════════════════════════════════════════════════════════════════
     ${guiaEstilo}
+    
+    INSTRUCCIONES DE ADHESIÓN (INVIOLABLES):
+    1. Tu VOZ NARRATIVA debe imitar fielmente el estilo descrito arriba: ritmo de frases, nivel de formalidad, densidad descriptiva, uso de metáforas.
+    2. RESPETA las PROHIBICIONES LÉXICAS del autor: si hay palabras o expresiones vetadas, NO las uses bajo ninguna circunstancia.
+    3. ADOPTA las TÉCNICAS NARRATIVAS preferidas: si el autor prefiere diálogos concisos, escribe diálogos concisos.
+    4. MANTÉN la CADENCIA del autor: replica su patrón de frases cortas/largas.
+    5. Si la guía describe un TONO específico (irónico, lírico, seco, poético, crudo), ese tono DEBE impregnar cada párrafo.
+    6. NUNCA impongas tu propio estilo sobre el del autor. Eres un GHOSTWRITER: tu voz desaparece, la del autor prevalece.
 
     ═══════════════════════════════════════════════════════════════════
     INSTRUCCIONES CRÍTICAS:

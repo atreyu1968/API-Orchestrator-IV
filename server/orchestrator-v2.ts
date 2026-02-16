@@ -3109,7 +3109,7 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
             totalBooks: series.totalPlannedBooks || undefined,
           };
           
-          // For books >1, fetch context from previous books
+          // For books >1, fetch comprehensive context from previous books
           if (project.seriesOrder > 1) {
             const seriesProjects = await storage.getProjectsBySeries(project.seriesId);
             const previousBooks = seriesProjects
@@ -3120,14 +3120,60 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
               const contexts: string[] = [];
               for (const prevBook of previousBooks) {
                 const prevWorldBible = await storage.getWorldBibleByProject(prevBook.id);
+                const prevChapters = await storage.getChaptersByProject(prevBook.id);
+                const bookParts: string[] = [];
+                bookParts.push(`Libro ${prevBook.seriesOrder}: "${prevBook.title}"`);
+                if (prevBook.premise) {
+                  bookParts.push(`  Premisa: ${prevBook.premise.substring(0, 300)}`);
+                }
+                
                 if (prevWorldBible) {
                   const chars = Array.isArray(prevWorldBible.characters) ? prevWorldBible.characters : [];
-                  const mainChars = chars.slice(0, 3).map((c: any) => c.name || c.nombre).join(", ");
-                  contexts.push(`Libro ${prevBook.seriesOrder}: "${prevBook.title}" - Personajes: ${mainChars}`);
+                  const charSummaries = chars.slice(0, 10).map((c: any) => {
+                    const name = c.name || c.nombre || 'Desconocido';
+                    const role = c.role || c.rol || '';
+                    const arc = c.arc || c.arco || '';
+                    const status = c.finalState || c.estadoFinal || c.status || '';
+                    return `    - ${name} (${role})${arc ? `: ${typeof arc === 'string' ? arc.substring(0, 150) : JSON.stringify(arc).substring(0, 150)}` : ''}${status ? ` [Estado final: ${status}]` : ''}`;
+                  });
+                  bookParts.push(`  Personajes:`);
+                  bookParts.push(charSummaries.join('\n'));
+                  
+                  const plotOutline = (prevWorldBible as any).plotOutline;
+                  if (plotOutline?.chapters_outline && Array.isArray(plotOutline.chapters_outline)) {
+                    const keyEvents = plotOutline.chapters_outline
+                      .filter((ch: any) => ch.key_event)
+                      .map((ch: any) => `    Cap ${ch.chapter_num}: ${ch.key_event}`)
+                      .slice(0, 10);
+                    if (keyEvents.length > 0) {
+                      bookParts.push(`  Eventos clave:`);
+                      bookParts.push(keyEvents.join('\n'));
+                    }
+                  }
                 }
+                
+                if (prevChapters && prevChapters.length > 0) {
+                  const sortedChapters = prevChapters
+                    .filter(ch => ch.summary && ch.summary.length > 10)
+                    .sort((a, b) => a.chapterNumber - b.chapterNumber);
+                  if (sortedChapters.length > 0) {
+                    bookParts.push(`  Resumen por capítulos:`);
+                    for (const ch of sortedChapters) {
+                      bookParts.push(`    Cap ${ch.chapterNumber} "${ch.title || ''}": ${(ch.summary || '').substring(0, 200)}`);
+                    }
+                  }
+                }
+                
+                contexts.push(bookParts.join('\n'));
               }
               if (contexts.length > 0) {
-                options.seriesInfo.previousBooksSummary = contexts.join('\n');
+                let fullSummary = contexts.join('\n\n');
+                const MAX_PREV_BOOKS_CHARS = 8000;
+                if (fullSummary.length > MAX_PREV_BOOKS_CHARS) {
+                  console.log(`[OrchestratorV2] Previous books summary truncated from ${fullSummary.length} to ${MAX_PREV_BOOKS_CHARS} chars`);
+                  fullSummary = fullSummary.substring(0, MAX_PREV_BOOKS_CHARS) + '\n[... contexto truncado por límite de tokens]';
+                }
+                options.seriesInfo.previousBooksSummary = fullSummary;
               }
             }
           }
@@ -3212,7 +3258,7 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
         
         if (previousBooksSummary) {
           parts.push("\nRESUMEN DE LIBROS ANTERIORES:");
-          parts.push(previousBooksSummary.substring(0, 1000));
+          parts.push(previousBooksSummary.substring(0, 5000));
         }
       } else {
         parts.push("\nCONSIDERACIONES PARA PRIMER LIBRO DE SERIE:");
@@ -4620,7 +4666,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             }
           }
           
-          // Get context from previous books in the series
+          // Get comprehensive context from previous books in the series
           if (project.seriesOrder && project.seriesOrder > 1) {
             const seriesProjects = await storage.getProjectsBySeries(project.seriesId);
             const previousBooks = seriesProjects
@@ -4631,23 +4677,73 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
               const contexts: string[] = [];
               for (const prevBook of previousBooks) {
                 const prevWorldBible = await storage.getWorldBibleByProject(prevBook.id);
-                if (prevWorldBible && prevWorldBible.characters) {
+                const prevChapters = await storage.getChaptersByProject(prevBook.id);
+                const bookParts: string[] = [];
+                bookParts.push(`\nLIBRO ${prevBook.seriesOrder}: "${prevBook.title}"`);
+                if (prevBook.premise) {
+                  bookParts.push(`  Premisa: ${prevBook.premise.substring(0, 300)}`);
+                }
+                if (prevWorldBible) {
                   const chars = Array.isArray(prevWorldBible.characters) ? prevWorldBible.characters : [];
-                  const charSummaries = chars.slice(0, 8).map((c: any) => {
+                  const charSummaries = chars.slice(0, 10).map((c: any) => {
                     const name = c.name || c.nombre || 'Desconocido';
                     const role = c.role || c.rol || '';
+                    const arc = c.arc || c.arco || '';
                     const appearance = c.appearance || {};
                     const details: string[] = [`"${name}" (${role})`];
                     if (appearance.eyes) details.push(`ojos: ${appearance.eyes}`);
                     if (appearance.hair) details.push(`cabello: ${appearance.hair}`);
-                    return details.join(', ');
+                    if (arc) details.push(`arco: ${typeof arc === 'string' ? arc.substring(0, 100) : JSON.stringify(arc).substring(0, 100)}`);
+                    return `    INMUTABLE: ${details.join(', ')}`;
                   });
-                  contexts.push(`Libro ${prevBook.seriesOrder}: "${prevBook.title}"\n  Personajes INMUTABLES: ${charSummaries.join('; ')}`);
+                  bookParts.push(`  Personajes INMUTABLES:`);
+                  bookParts.push(charSummaries.join('\n'));
+                  
+                  const plotOutline = (prevWorldBible as any).plotOutline;
+                  if (plotOutline?.chapters_outline && Array.isArray(plotOutline.chapters_outline)) {
+                    const keyEvents = plotOutline.chapters_outline
+                      .filter((ch: any) => ch.key_event)
+                      .map((ch: any) => `    Cap ${ch.chapter_num}: ${ch.key_event}`)
+                      .slice(0, 15);
+                    if (keyEvents.length > 0) {
+                      bookParts.push(`  Eventos clave de la trama:`);
+                      bookParts.push(keyEvents.join('\n'));
+                    }
+                  }
+                  
+                  const rules = prevWorldBible.worldRules || (prevWorldBible as any).rules || [];
+                  if (Array.isArray(rules) && rules.length > 0) {
+                    const ruleTexts = rules.slice(0, 5).map((r: any) => 
+                      typeof r === 'string' ? `    - ${r}` : `    - ${r.rule || r.regla || JSON.stringify(r)}`
+                    );
+                    bookParts.push(`  Reglas del mundo establecidas:`);
+                    bookParts.push(ruleTexts.join('\n'));
+                  }
                 }
+                
+                if (prevChapters && prevChapters.length > 0) {
+                  const sortedChapters = prevChapters
+                    .filter(ch => ch.summary && ch.summary.length > 10)
+                    .sort((a, b) => a.chapterNumber - b.chapterNumber);
+                  if (sortedChapters.length > 0) {
+                    bookParts.push(`  Resumen por capítulos (${sortedChapters.length} capítulos):`);
+                    for (const ch of sortedChapters) {
+                      bookParts.push(`    Cap ${ch.chapterNumber}: ${(ch.summary || '').substring(0, 200)}`);
+                    }
+                  }
+                }
+                
+                contexts.push(bookParts.join('\n'));
               }
-              const prevContext = contexts.join('\n');
-              previousBooksContext = (previousBooksContext || '') + '\n\n=== LIBROS ANTERIORES DE LA SERIE ===\n' + prevContext;
-              console.log(`[OrchestratorV2] Loaded context from ${previousBooks.length} previous books`);
+              let prevContext = contexts.join('\n');
+              const MAX_ARCHITECT_PREV_CHARS = 12000;
+              if (prevContext.length > MAX_ARCHITECT_PREV_CHARS) {
+                console.log(`[OrchestratorV2] Architect previous books context truncated from ${prevContext.length} to ${MAX_ARCHITECT_PREV_CHARS} chars`);
+                prevContext = prevContext.substring(0, MAX_ARCHITECT_PREV_CHARS) + '\n[... contexto truncado por límite de tokens]';
+              }
+              previousBooksContext = (previousBooksContext || '') + '\n\n=== LIBROS ANTERIORES DE LA SERIE (CONTEXTO COMPLETO) ===\n' + prevContext;
+              previousBooksContext += '\n\nIMPORTANTE: Los personajes, eventos y reglas de los libros anteriores son CANON. No contradigas nada de lo anterior.';
+              console.log(`[OrchestratorV2] Loaded comprehensive context from ${previousBooks.length} previous books (${prevContext.length} chars)`);
             }
           }
         }
