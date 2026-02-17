@@ -446,63 +446,276 @@ export class OrchestratorV2 {
     thinkingTokens: 0,
   };
 
-  private async syncDeathsIntoWorldBible(projectId: number, worldBible: any): Promise<void> {
+  private matchEntityName(entityName: string, wbName: string): boolean {
+    const a = entityName.toLowerCase().trim();
+    const b = wbName.toLowerCase().trim();
+    if (a === b) return true;
+    if (a.length < 3 || b.length < 3) return a === b;
+    const aParts = a.split(/\s+/);
+    const bParts = b.split(/\s+/);
+    return aParts.some((p: string) => p.length >= 3 && bParts.includes(p)) ||
+           bParts.some((p: string) => p.length >= 3 && aParts.includes(p));
+  }
+
+  private async syncEntitiesIntoWorldBible(projectId: number, worldBible: any): Promise<void> {
     try {
       const entities = await storage.getWorldEntitiesByProject(projectId);
-      const DEATH_MARKERS = ['dead', 'muerto', 'fallecido', 'deceased', 'killed', 'asesinado', 'ejecutado'];
-      
-      const deadEntities = entities.filter(e => {
-        if (e.type !== 'CHARACTER') return false;
-        const status = (e.status || '').toLowerCase();
-        const attrs = (e.attributes as any) || {};
-        const vitalStatus = (attrs.estado_vital || attrs.vital_status || attrs.status || '').toString().toLowerCase();
-        const deathChapter = attrs.capitulo_muerte || attrs.death_chapter;
-        return DEATH_MARKERS.some(m => status.includes(m) || vitalStatus.includes(m)) || deathChapter;
-      });
+      if (!entities || entities.length === 0) return;
 
-      if (deadEntities.length === 0) return;
+      const DEATH_MARKERS = ['dead', 'muerto', 'fallecido', 'deceased', 'killed', 'asesinado', 'ejecutado'];
 
       const characters: any[] = worldBible?.characters || worldBible?.personajes || [];
-      let updated = false;
+      const locations: any[] = worldBible?.ubicaciones || worldBible?.locations || worldBible?.lugares || [];
+      const objects: any[] = worldBible?.objetos || worldBible?.objects || [];
 
-      for (const dead of deadEntities) {
-        const attrs = (dead.attributes as any) || {};
-        const deathChapter = attrs.capitulo_muerte || attrs.death_chapter || '?';
-        const deathCause = attrs.causa_muerte || attrs.death_cause || '';
-        const deadNameLower = dead.name.toLowerCase();
+      const charEntities = entities.filter(e => e.type === 'CHARACTER' || e.type === 'PHYSICAL_TRAIT');
+      const personalItemEntities = entities.filter(e => e.type === 'PERSONAL_ITEM');
+      const locationEntities = entities.filter(e => e.type === 'LOCATION');
+      const objectEntities = entities.filter(e => e.type === 'OBJECT' || e.type === 'EVIDENCE');
+      const secretEntities = entities.filter(e => e.type === 'SECRET');
 
-        const wbChar = characters.find((c: any) => {
-          const name = (c.name || c.nombre || '').toLowerCase().trim();
-          if (name === deadNameLower) return true;
-          if (name.length < 3 || deadNameLower.length < 3) return name === deadNameLower;
-          const nameParts = name.split(/\s+/);
-          const deadParts = deadNameLower.split(/\s+/);
-          return nameParts.some(p => p.length >= 3 && deadParts.includes(p)) ||
-                 deadParts.some(p => p.length >= 3 && nameParts.includes(p));
-        });
+      let charsUpdated = false;
 
-        if (wbChar) {
+      const syncCharAttrs = (wbChar: any, entity: any) => {
+        const attrs = (entity.attributes as any) || {};
+        const status = (entity.status || '').toLowerCase();
+        const vitalStatus = (attrs.estado_vital || attrs.vital_status || '').toString().toLowerCase();
+        const isDead = DEATH_MARKERS.some(m => status.includes(m) || vitalStatus.includes(m)) || attrs.capitulo_muerte || attrs.death_chapter;
+
+        if (isDead) {
           const currentStatus = (wbChar.status || wbChar.estado || '').toLowerCase();
           if (!DEATH_MARKERS.some(m => currentStatus.includes(m))) {
             wbChar.status = 'muerto';
             wbChar.estado = 'muerto';
             wbChar.estado_vital = 'MUERTO';
-            wbChar.capitulo_muerte = deathChapter;
-            if (deathCause) wbChar.causa_muerte = deathCause;
-            updated = true;
-            console.log(`[OrchestratorV2] Synced death into World Bible: ${dead.name} (died cap ${deathChapter})`);
+            wbChar.capitulo_muerte = attrs.capitulo_muerte || attrs.death_chapter || '?';
+            if (attrs.causa_muerte || attrs.death_cause) wbChar.causa_muerte = attrs.causa_muerte || attrs.death_cause;
+            charsUpdated = true;
+            console.log(`[SyncFull] Death synced: ${entity.name} (cap ${wbChar.capitulo_muerte})`);
+          }
+        }
+
+        if (attrs.ubicacion_actual || attrs.current_location) {
+          const newLoc = attrs.ubicacion_actual || attrs.current_location;
+          if (wbChar.ubicacion_actual !== newLoc) {
+            wbChar.ubicacion_actual = newLoc;
+            charsUpdated = true;
+          }
+        }
+
+        if (attrs.estado_emocional || attrs.emotional_state) {
+          wbChar.estado_emocional = attrs.estado_emocional || attrs.emotional_state;
+          charsUpdated = true;
+        }
+
+        if (attrs.trauma) {
+          wbChar.trauma = attrs.trauma;
+          charsUpdated = true;
+        }
+
+        if (attrs.conoce || attrs.knows) {
+          if (!wbChar.conocimientos) wbChar.conocimientos = [];
+          const newKnowledge = attrs.conoce || attrs.knows;
+          if (!wbChar.conocimientos.includes(newKnowledge)) {
+            wbChar.conocimientos.push(newKnowledge);
+            charsUpdated = true;
+          }
+        }
+
+        if (attrs.ignora || attrs.doesnt_know) {
+          wbChar.ignora = attrs.ignora || attrs.doesnt_know;
+          charsUpdated = true;
+        }
+
+        for (const [key, value] of Object.entries(attrs)) {
+          if (key.endsWith('_INMUTABLE') && !wbChar[key]) {
+            wbChar[key] = value;
+            charsUpdated = true;
+          }
+        }
+
+        if (attrs.edad && !wbChar.edad) {
+          wbChar.edad = attrs.edad;
+          charsUpdated = true;
+        }
+      };
+
+      for (const entity of charEntities) {
+        const wbChar = characters.find((c: any) => this.matchEntityName(entity.name, c.name || c.nombre || ''));
+        if (wbChar) {
+          syncCharAttrs(wbChar, entity);
+        } else if (entity.type === 'CHARACTER') {
+          const attrs = (entity.attributes as any) || {};
+          const newChar: any = {
+            name: entity.name,
+            nombre: entity.name,
+            status: entity.status || 'active',
+            estado: entity.status || 'activo',
+          };
+          if (attrs.ubicacion_actual) newChar.ubicacion_actual = attrs.ubicacion_actual;
+          if (attrs.estado_emocional) newChar.estado_emocional = attrs.estado_emocional;
+          if (attrs.edad) newChar.edad = attrs.edad;
+          const status = (entity.status || '').toLowerCase();
+          const vitalStatus = (attrs.estado_vital || attrs.vital_status || '').toString().toLowerCase();
+          if (DEATH_MARKERS.some(m => status.includes(m) || vitalStatus.includes(m))) {
+            newChar.status = 'muerto';
+            newChar.estado = 'muerto';
+            newChar.estado_vital = 'MUERTO';
+            newChar.capitulo_muerte = attrs.capitulo_muerte || attrs.death_chapter || '?';
+          }
+          characters.push(newChar);
+          charsUpdated = true;
+          console.log(`[SyncFull] New character added to World Bible: ${entity.name}`);
+        }
+      }
+
+      for (const entity of personalItemEntities) {
+        const attrs = (entity.attributes as any) || {};
+        const ownerName = attrs.propietario || attrs.owner || '';
+        if (!ownerName) continue;
+
+        const wbChar = characters.find((c: any) => this.matchEntityName(ownerName, c.name || c.nombre || ''));
+        if (!wbChar) continue;
+
+        if (!wbChar.objetos_personales) wbChar.objetos_personales = [];
+        const itemDesc = attrs.descripcion || attrs.description || entity.name;
+        const existingItem = wbChar.objetos_personales.find((o: any) =>
+          (typeof o === 'string' ? o : (o.nombre || o.name || '')).toLowerCase() === entity.name.toLowerCase()
+        );
+        if (!existingItem) {
+          wbChar.objetos_personales.push({
+            nombre: entity.name,
+            descripcion: itemDesc,
+            estado: attrs.estado || 'presente',
+          });
+          charsUpdated = true;
+        } else if (typeof existingItem === 'object' && attrs.estado) {
+          existingItem.estado = attrs.estado;
+          charsUpdated = true;
+        }
+      }
+
+      let locsUpdated = false;
+      for (const entity of locationEntities) {
+        const attrs = (entity.attributes as any) || {};
+        const wbLoc = locations.find((l: any) => this.matchEntityName(entity.name, l.name || l.nombre || l.lugar || ''));
+
+        if (wbLoc) {
+          if (attrs.descripcion || attrs.description) {
+            wbLoc.descripcion = attrs.descripcion || attrs.description;
+            locsUpdated = true;
+          }
+          if (attrs.atmosfera || attrs.atmosphere) {
+            wbLoc.atmosfera = attrs.atmosfera || attrs.atmosphere;
+            locsUpdated = true;
+          }
+          if (attrs.caracteristicas || attrs.features) {
+            wbLoc.caracteristicas = attrs.caracteristicas || attrs.features;
+            locsUpdated = true;
+          }
+          if (attrs.estado || attrs.status) {
+            wbLoc.estado = attrs.estado || attrs.status;
+            locsUpdated = true;
+          }
+        } else {
+          locations.push({
+            nombre: entity.name,
+            name: entity.name,
+            descripcion: attrs.descripcion || attrs.description || '',
+            atmosfera: attrs.atmosfera || attrs.atmosphere || '',
+            caracteristicas: attrs.caracteristicas || attrs.features || '',
+            estado: attrs.estado || 'active',
+          });
+          locsUpdated = true;
+          console.log(`[SyncFull] New location added to World Bible: ${entity.name}`);
+        }
+      }
+
+      let objsUpdated = false;
+      for (const entity of objectEntities) {
+        const attrs = (entity.attributes as any) || {};
+        const wbObj = objects.find((o: any) => this.matchEntityName(entity.name, o.name || o.nombre || ''));
+
+        if (wbObj) {
+          if (attrs.propietario || attrs.owner) {
+            wbObj.propietario = attrs.propietario || attrs.owner;
+            objsUpdated = true;
+          }
+          if (attrs.ubicacion || attrs.location) {
+            wbObj.ubicacion = attrs.ubicacion || attrs.location;
+            objsUpdated = true;
+          }
+          if (attrs.descripcion || attrs.description) {
+            wbObj.descripcion = attrs.descripcion || attrs.description;
+            objsUpdated = true;
+          }
+          if (attrs.estado || attrs.status) {
+            wbObj.estado = attrs.estado || attrs.status;
+            objsUpdated = true;
+          }
+        } else {
+          objects.push({
+            nombre: entity.name,
+            name: entity.name,
+            descripcion: attrs.descripcion || attrs.description || '',
+            propietario: attrs.propietario || attrs.owner || '',
+            ubicacion: attrs.ubicacion || attrs.location || '',
+            estado: attrs.estado || 'present',
+          });
+          objsUpdated = true;
+          console.log(`[SyncFull] New object added to World Bible: ${entity.name}`);
+        }
+      }
+
+      for (const entity of secretEntities) {
+        const attrs = (entity.attributes as any) || {};
+        const knownBy = (attrs.conocido_por || attrs.known_by || '').toString();
+        if (!knownBy) continue;
+
+        const knowerNames = knownBy.split(/[,;y\/and]+/).map((n: string) => n.trim()).filter(Boolean);
+        for (const knowerName of knowerNames) {
+          const wbChar = characters.find((c: any) => this.matchEntityName(knowerName, c.name || c.nombre || ''));
+          if (wbChar) {
+            if (!wbChar.secretos_conocidos) wbChar.secretos_conocidos = [];
+            const secretDesc = attrs.descripcion || attrs.description || entity.name;
+            if (!wbChar.secretos_conocidos.includes(secretDesc)) {
+              wbChar.secretos_conocidos.push(secretDesc);
+              charsUpdated = true;
+            }
           }
         }
       }
 
-      if (updated) {
+      const persistData: Record<string, any> = {};
+      if (charsUpdated) {
+        persistData.characters = characters;
+        worldBible.characters = characters;
+        worldBible.personajes = characters;
+      }
+      if (locsUpdated) {
+        persistData.ubicaciones = locations;
+        persistData.locations = locations;
+        worldBible.ubicaciones = locations;
+        worldBible.locations = locations;
+        worldBible.lugares = locations;
+      }
+      if (objsUpdated) {
+        persistData.objetos = objects;
+        persistData.objects = objects;
+        worldBible.objetos = objects;
+        worldBible.objects = objects;
+      }
+
+      if (Object.keys(persistData).length > 0) {
         const wbRecord = await storage.getWorldBibleByProject(projectId);
         if (wbRecord) {
-          await storage.updateWorldBible(wbRecord.id, { characters });
+          await storage.updateWorldBible(wbRecord.id, persistData as any);
         }
+        const totalSynced = (charsUpdated ? charEntities.length : 0) + (locsUpdated ? locationEntities.length : 0) + (objsUpdated ? objectEntities.length : 0);
+        console.log(`[SyncFull] Synced ${totalSynced} entities into World Bible (chars:${charsUpdated}, locs:${locsUpdated}, objs:${objsUpdated})`);
       }
     } catch (err) {
-      console.error(`[OrchestratorV2] Error syncing deaths into World Bible:`, err);
+      console.error(`[SyncFull] Error syncing entities into World Bible:`, err);
     }
   }
 
@@ -5845,8 +6058,8 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
 
         console.log(`[OrchestratorV2] [OmniWriter] Generating Chapter ${chapterNumber}: "${chapterOutline.title}"`);
 
-        // OmniWriter Phase 2a: Sync deaths from world_entities into World Bible before each chapter
-        await this.syncDeathsIntoWorldBible(project.id, worldBible);
+        // OmniWriter Phase 2a: Full entity sync from world_entities into World Bible before each chapter
+        await this.syncEntitiesIntoWorldBible(project.id, worldBible);
 
         // OmniWriter Phase 2a: Build context for Ghostwriter
         let consistencyConstraints = "";
@@ -7976,7 +8189,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     consistencyConstraints?: string // LitAgents 2.5: Now accepts constraints with KU pacing
   ): Promise<{ content: string; summary: string; wordCount: number; sceneBreakdown: ChapterArchitectOutput }> {
     // Sync deaths from world_entities into worldBible before writing
-    await this.syncDeathsIntoWorldBible(project.id, worldBible);
+    await this.syncEntitiesIntoWorldBible(project.id, worldBible);
     
     // Plan scenes with constraints (now includes KU pacing if enabled)
     // Extract outline from worldBible if available for plot context
@@ -10556,7 +10769,7 @@ ${issuesDescription}`;
         }
 
         // Sync deaths before writing
-        await this.syncDeathsIntoWorldBible(project.id, worldBibleData);
+        await this.syncEntitiesIntoWorldBible(project.id, worldBibleData);
 
         // Plan scenes for this chapter (WITH constraints)
         this.callbacks.onAgentStatus("chapter-architect", "active", `Planificando escenas para Capítulo ${chapterNum}...`);
@@ -10862,7 +11075,7 @@ ${issuesDescription}`;
         }
 
         // Sync deaths before writing
-        await this.syncDeathsIntoWorldBible(project.id, worldBibleData);
+        await this.syncEntitiesIntoWorldBible(project.id, worldBibleData);
 
         // Plan new scenes (WITH constraints)
         // Get full outline for plot context (World Bible stores as chapterOutlines, not chapters)
@@ -11308,7 +11521,7 @@ ${issuesDescription}`;
         }
 
         // Sync deaths before writing
-        await this.syncDeathsIntoWorldBible(project.id, worldBible as any);
+        await this.syncEntitiesIntoWorldBible(project.id, worldBible as any);
 
         // Chapter Architect (WITH constraints)
         this.callbacks.onAgentStatus("chapter-architect", "active", `Planning scenes for Chapter ${chapterNumber}...`);
