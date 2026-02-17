@@ -45,6 +45,7 @@ const agentNames: Record<string, string> = {
   "estilista": "Estilista",
   "ritmo": "Agente de Ritmo",
   "ensamblador": "Ensamblador",
+  "objective-evaluator": "Evaluador Objetivo",
 };
 
 function sortChaptersForDisplay(chapters: Chapter[]): Chapter[] {
@@ -1600,6 +1601,136 @@ export default function Dashboard() {
                         Borra el historial de evaluaciones para empezar una revisión completamente nueva
                       </p>
                     </div>
+                  </div>
+                )}
+
+                {/* Objective Evaluation Display */}
+                {(currentProject as any).objectiveEvaluation && (
+                  <div className="mt-4 p-4 rounded-md border border-border" 
+                    style={{ 
+                      backgroundColor: (currentProject as any).objectiveEvaluation.verdict === "PUBLICABLE"
+                        ? 'hsl(var(--chart-2) / 0.1)' 
+                        : (currentProject as any).objectiveEvaluation.verdict === "CASI_PUBLICABLE"
+                          ? 'hsl(var(--chart-4) / 0.1)' 
+                          : 'hsl(var(--destructive) / 0.1)'
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">Evaluación Objetiva</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(currentProject as any).objectiveEvaluation.verdict === "PUBLICABLE"
+                            ? "Lista para publicar"
+                            : (currentProject as any).objectiveEvaluation.verdict === "CASI_PUBLICABLE"
+                              ? "Requiere ajustes menores"
+                              : "Requiere correcciones significativas"}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-3xl font-bold ${
+                          (currentProject as any).objectiveEvaluation.percentage >= 80 
+                            ? 'text-green-600 dark:text-green-400' 
+                            : (currentProject as any).objectiveEvaluation.percentage >= 60
+                              ? 'text-yellow-600 dark:text-yellow-400' 
+                              : 'text-red-600 dark:text-red-400'
+                        }`} data-testid="text-objective-score">
+                          {(currentProject as any).objectiveEvaluation.totalScore}/10
+                        </p>
+                        <p className="text-xs text-muted-foreground">{(currentProject as any).objectiveEvaluation.percentage}%</p>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4 space-y-2">
+                      {((currentProject as any).objectiveEvaluation.metrics as Array<{name: string; label: string; score: number; maxScore: number; weight: number; details: string; issues: string[]}>)?.map((metric) => (
+                        <div key={metric.name} className="text-xs" data-testid={`metric-${metric.name}`}>
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="font-medium">{metric.label} ({metric.weight}%)</span>
+                            <span className={`font-bold ${
+                              metric.score >= 7 ? 'text-green-600 dark:text-green-400' 
+                              : metric.score >= 5 ? 'text-yellow-600 dark:text-yellow-400' 
+                              : 'text-red-600 dark:text-red-400'
+                            }`}>{metric.score}/{metric.maxScore}</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-1.5">
+                            <div 
+                              className={`h-1.5 rounded-full ${
+                                metric.score >= 7 ? 'bg-green-500' 
+                                : metric.score >= 5 ? 'bg-yellow-500' 
+                                : 'bg-red-500'
+                              }`}
+                              style={{ width: `${(metric.score / metric.maxScore) * 100}%` }}
+                            />
+                          </div>
+                          <p className="text-muted-foreground mt-0.5">{metric.details}</p>
+                          {metric.issues.length > 0 && (
+                            <ul className="mt-1 space-y-0.5">
+                              {metric.issues.map((issue, idx) => (
+                                <li key={idx} className="text-muted-foreground pl-2 border-l-2 border-destructive/30">{issue}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {(currentProject as any).objectiveEvaluation.blockers?.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-border/50">
+                        <p className="text-xs font-medium text-destructive mb-1">Bloqueadores</p>
+                        <ul className="space-y-1">
+                          {((currentProject as any).objectiveEvaluation.blockers as string[]).map((b, idx) => (
+                            <li key={idx} className="text-xs text-destructive/80 pl-2 border-l-2 border-destructive" data-testid={`text-blocker-${idx}`}>{b}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {(currentProject as any).objectiveEvaluation.recommendations?.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-border/50">
+                        <p className="text-xs font-medium mb-1">Recomendaciones</p>
+                        <ul className="space-y-1">
+                          {((currentProject as any).objectiveEvaluation.recommendations as string[]).map((r, idx) => (
+                            <li key={idx} className="text-xs text-muted-foreground pl-2 border-l-2 border-primary/30" data-testid={`text-recommendation-${idx}`}>{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="mt-3 pt-3 border-t border-border/50">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await apiRequest("POST", `/api/projects/${currentProject.id}/objective-evaluation/run`);
+                            queryClient.invalidateQueries({ queryKey: ['/api/projects', currentProject.id] });
+                          } catch {}
+                        }}
+                        className="w-full"
+                        data-testid="button-rerun-evaluation"
+                      >
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Recalcular Evaluación Objetiva
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {!(currentProject as any).objectiveEvaluation && currentProject.status === "completed" && (
+                  <div className="mt-4">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          await apiRequest("POST", `/api/projects/${currentProject.id}/objective-evaluation/run`);
+                          queryClient.invalidateQueries({ queryKey: ['/api/projects', currentProject.id] });
+                        } catch {}
+                      }}
+                      className="w-full"
+                      data-testid="button-run-evaluation"
+                    >
+                      Ejecutar Evaluación Objetiva
+                    </Button>
                   </div>
                 )}
 

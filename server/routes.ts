@@ -17,6 +17,7 @@ import { developmentalEditor } from "./orchestrators/developmental-editor";
 import { chatService } from "./services/chatService";
 import { TranslationOrchestrator } from "./translation-orchestrator";
 import { betaReaderAgent } from "./agents/beta-reader";
+import { runObjectiveEvaluation } from "./agents/objective-evaluator";
 import cookieParser from "cookie-parser";
 import { authMiddleware, setupAuthRoutes, isAuthEnabled } from "./middleware/auth";
 
@@ -1197,6 +1198,70 @@ export async function registerRoutes(
       
       console.error("Error starting Detect and Fix:", error);
       res.status(500).json({ error: "Failed to start Detect and Fix strategy" });
+    }
+  });
+
+  // ==================== OBJECTIVE EVALUATION ====================
+
+  app.get("/api/projects/:id/objective-evaluation", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      res.json({ objectiveEvaluation: project.objectiveEvaluation || null });
+    } catch (error) {
+      console.error("Error fetching objective evaluation:", error);
+      res.status(500).json({ error: "Failed to fetch objective evaluation" });
+    }
+  });
+
+  app.post("/api/projects/:id/objective-evaluation/run", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const allChapters = await storage.getChaptersByProject(id);
+      const completedChapters = allChapters
+        .filter(c => c.status === "completed" || c.status === "approved")
+        .sort((a, b) => a.chapterNumber - b.chapterNumber);
+
+      if (completedChapters.length === 0) {
+        return res.status(400).json({ error: "No completed chapters found" });
+      }
+
+      const evalResult = await runObjectiveEvaluation({
+        projectId: id,
+        chapters: completedChapters.map(c => ({
+          chapterNumber: c.chapterNumber,
+          title: c.title || `Capítulo ${c.chapterNumber}`,
+          content: c.content || "",
+          wordCount: c.wordCount || (c.content || "").split(/\s+/).length,
+        })),
+        genre: project.genre,
+        hasPrologue: project.hasPrologue,
+        hasEpilogue: project.hasEpilogue,
+      });
+
+      await storage.updateProject(id, {
+        objectiveEvaluation: evalResult as any,
+      });
+
+      await storage.createActivityLog({
+        projectId: id,
+        level: evalResult.verdict === "PUBLICABLE" ? "success" : evalResult.verdict === "CASI_PUBLICABLE" ? "warn" : "error",
+        agentRole: "objective-evaluator",
+        message: `Evaluación Objetiva: ${evalResult.totalScore}/10 (${evalResult.percentage}%) — ${evalResult.verdict}`,
+      });
+
+      res.json(evalResult);
+    } catch (error) {
+      console.error("Error running objective evaluation:", error);
+      res.status(500).json({ error: "Failed to run objective evaluation" });
     }
   });
 
@@ -9683,6 +9748,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       const agentNames: Record<string, string> = {
         "forensic-auditor": "Auditor Forense",
         "beta-reader": "Lector Beta",
+        "objective-evaluator": "Evaluador Objetivo",
         "narrative-rewriter": "Reescritor Narrativo",
         "smart-editor": "Editor Inteligente",
         "final-reviewer": "Revisor Final",

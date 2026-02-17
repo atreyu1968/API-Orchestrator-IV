@@ -107,6 +107,7 @@ export const projects = pgTable("projects", {
   targetedRepairPlan: jsonb("targeted_repair_plan"), // Array of chapter-specific repair actions
   targetedRepairStatus: text("targeted_repair_status"), // idle | diagnosing | plan_ready | executing | verifying | completed | error
   targetedRepairProgress: jsonb("targeted_repair_progress"), // { current, total, currentChapter, message, results: [] }
+  objectiveEvaluation: jsonb("objective_evaluation"), // Objective evaluation result with measurable metrics
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

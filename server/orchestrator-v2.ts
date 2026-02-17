@@ -30,6 +30,7 @@ import { universalConsistencyAgent } from "./agents/v2/universal-consistency";
 import { FinalReviewerAgent, type FinalReviewerResult, type FinalReviewIssue } from "./agents/final-reviewer";
 import { SeriesThreadFixerAgent, type ThreadFixerResult, type ThreadFix } from "./agents/series-thread-fixer";
 import { BetaReaderAgent, type BetaReaderReport, type FlaggedChapter } from "./agents/beta-reader";
+import { runObjectiveEvaluation, type ObjectiveEvaluationResult } from "./agents/objective-evaluator";
 import { applyPatches, type PatchResult } from "./utils/patcher";
 import type { TokenUsage } from "./agents/base-agent";
 import type { Project, Chapter, InsertPlotThread, WorldEntity, WorldRuleRecord, EntityRelationship } from "@shared/schema";
@@ -6351,6 +6352,83 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             level: "warn",
             agentRole: "structural-checkpoint",
             message: `Revisión estructural final falló: ${err instanceof Error ? err.message : String(err)}. La novela se marcará como completada.`,
+          });
+        }
+      }
+
+      // === OBJECTIVE EVALUATION (v2.9.14) ===
+      // Run objective, measurable evaluation before marking complete
+      if (await this.shouldStopProcessing(project.id) === false) {
+        console.log(`[OrchestratorV2] Running objective evaluation...`);
+        this.callbacks.onAgentStatus("objective-evaluator", "active", "Calculando métricas objetivas del manuscrito...");
+        
+        try {
+          const freshChaptersForEval = await storage.getChaptersByProject(project.id);
+          const completedChaptersForEval = freshChaptersForEval
+            .filter(c => c.status === "completed" || c.status === "approved")
+            .sort((a, b) => a.chapterNumber - b.chapterNumber);
+
+          const evalResult = await runObjectiveEvaluation({
+            projectId: project.id,
+            chapters: completedChaptersForEval.map(c => ({
+              chapterNumber: c.chapterNumber,
+              title: c.title || `Capítulo ${c.chapterNumber}`,
+              content: c.content || "",
+              wordCount: c.wordCount || (c.content || "").split(/\s+/).length,
+            })),
+            genre: project.genre,
+            hasPrologue: project.hasPrologue,
+            hasEpilogue: project.hasEpilogue,
+          });
+
+          // Persist evaluation result
+          await storage.updateProject(project.id, {
+            objectiveEvaluation: evalResult as any,
+          });
+
+          // Log each metric
+          for (const metric of evalResult.metrics) {
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: metric.score >= 7 ? "success" : metric.score >= 5 ? "warn" : "error",
+              agentRole: "objective-evaluator",
+              message: `[${metric.label}] ${metric.score}/${metric.maxScore} (peso: ${metric.weight}%) — ${metric.details}`,
+              metadata: { metric: metric.name, score: metric.score, weight: metric.weight },
+            });
+          }
+
+          // Log blockers
+          if (evalResult.blockers.length > 0) {
+            await storage.createActivityLog({
+              projectId: project.id,
+              level: "error",
+              agentRole: "objective-evaluator",
+              message: `BLOQUEADORES: ${evalResult.blockers.join(" | ")}`,
+            });
+          }
+
+          // Log final verdict
+          const verdictEmoji = evalResult.verdict === "PUBLICABLE" ? "EXITO" : evalResult.verdict === "CASI_PUBLICABLE" ? "AVISO" : "ERROR";
+          await storage.createActivityLog({
+            projectId: project.id,
+            level: evalResult.verdict === "PUBLICABLE" ? "success" : evalResult.verdict === "CASI_PUBLICABLE" ? "warn" : "error",
+            agentRole: "objective-evaluator",
+            message: `[${verdictEmoji}] Evaluación Objetiva: ${evalResult.totalScore}/10 (${evalResult.percentage}%) — ${evalResult.verdict}${evalResult.recommendations.length > 0 ? ` | Recomendaciones: ${evalResult.recommendations.join("; ")}` : ""}`,
+          });
+
+          this.callbacks.onAgentStatus("objective-evaluator", "completed", 
+            `${evalResult.totalScore}/10 (${evalResult.percentage}%) — ${evalResult.verdict}`
+          );
+
+          console.log(`[OrchestratorV2] Objective evaluation complete: ${evalResult.totalScore}/10 (${evalResult.verdict})`);
+        } catch (err) {
+          console.error("[OrchestratorV2] Objective evaluation error:", err);
+          this.callbacks.onAgentStatus("objective-evaluator", "warning", "Evaluación objetiva falló (no bloquea)");
+          await storage.createActivityLog({
+            projectId: project.id,
+            level: "warn",
+            agentRole: "objective-evaluator",
+            message: `Evaluación objetiva falló: ${err instanceof Error ? err.message : String(err)}`,
           });
         }
       }
