@@ -150,6 +150,15 @@ ${input.chapterOutline.emotional_arc ? `║ ARCO EMOCIONAL: ${input.chapterOutli
 ║ el evento clave planificado. NO cambies el orden de eventos.   ║
 ║ NO añadas subtramas o personajes no mencionados en el plan.    ║
 ║ SIGUE EL PLAN EXACTAMENTE.                                    ║
+║                                                                ║
+║ PRIORIDAD DE ADHERENCIA AL PLAN:                               ║
+║ 1. El EVENTO CLAVE debe ocurrir explícitamente en el capítulo. ║
+║    No basta con insinuarlo — debe EJECUTARSE narrativamente.   ║
+║ 2. Los personajes listados en el plan DEBEN aparecer y actuar. ║
+║ 3. El ARCO EMOCIONAL planeado debe reflejarse en la prosa.     ║
+║ 4. NO desvíes la trama hacia eventos no planificados.          ║
+║ 5. Si tu escena es la ÚLTIMA del capítulo, asegúrate de que    ║
+║    el evento clave ya haya ocurrido o ocurra en esta escena.   ║
 ╚══════════════════════════════════════════════════════════════════╝`;
       prompt = `${outlineBlock}\n\n${prompt}`;
       console.log(`[GhostwriterV2] Injected original chapter outline for strict adherence`);

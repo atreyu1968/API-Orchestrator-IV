@@ -47,6 +47,39 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY || "";
 const geminiForValidation = new GoogleGenerativeAI(GEMINI_API_KEY);
 
+const GEMINI_RATE_LIMIT_RETRIES = 5;
+const GEMINI_RATE_LIMIT_DELAYS = [15000, 30000, 60000, 90000, 120000];
+
+function isGeminiRateLimitError(error: any): boolean {
+  const errStr = String(error?.message || error || '');
+  return errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED') || 
+         errStr.includes('rate limit') || errStr.includes('Too Many Requests') ||
+         errStr.includes('quota') || errStr.includes('RATELIMIT');
+}
+
+async function geminiGenerateWithRetry(
+  prompt: string, 
+  modelName: string = "gemini-2.0-flash",
+  label: string = "GeminiCall"
+): Promise<string> {
+  for (let attempt = 0; attempt <= GEMINI_RATE_LIMIT_RETRIES; attempt++) {
+    try {
+      const model = geminiForValidation.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    } catch (error) {
+      if (isGeminiRateLimitError(error) && attempt < GEMINI_RATE_LIMIT_RETRIES) {
+        const delay = GEMINI_RATE_LIMIT_DELAYS[Math.min(attempt, GEMINI_RATE_LIMIT_DELAYS.length - 1)];
+        console.warn(`[${label}] Gemini rate limit (429) on attempt ${attempt + 1}/${GEMINI_RATE_LIMIT_RETRIES + 1}. Waiting ${delay / 1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error(`[${label}] Gemini rate limit exceeded after ${GEMINI_RATE_LIMIT_RETRIES + 1} attempts`);
+}
+
 // ==================== QA AGENTS FOR LITAGENTS ====================
 
 // QA Agent 1: Continuity Sentinel - detects continuity errors
@@ -6454,6 +6487,21 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           });
         }
 
+        // OmniWriter Phase 2c.5: Post-chapter key event adherence check (lightweight, no AI call)
+        if (chapterOutline.key_event) {
+          const keyEventWords = chapterOutline.key_event.toLowerCase().split(/\s+/).filter((w: string) => w.length > 4);
+          const chapterLower = finalText.toLowerCase();
+          const matchedWords = keyEventWords.filter((w: string) => chapterLower.includes(w));
+          const coverage = keyEventWords.length > 0 ? matchedWords.length / keyEventWords.length : 1;
+          if (coverage < 0.3) {
+            console.warn(`[OmniWriter] Chapter ${chapterNumber}: Low key event coverage (${Math.round(coverage * 100)}%). Event: "${chapterOutline.key_event}"`);
+            await storage.createActivityLog({
+              projectId: project.id, level: "warn", agentRole: "omniwriter",
+              message: `Cap ${chapterNumber}: Posible desviación del plan — el evento clave "${chapterOutline.key_event}" podría no haberse ejecutado (cobertura léxica: ${Math.round(coverage * 100)}%). Se verificará en el checkpoint estructural.`,
+            });
+          }
+        }
+
         // OmniWriter Phase 2d: Consistency validation (simplified - Inquisidor already audited)
         await this.validateAndUpdateConsistency(project.id, chapterNumber, finalText, project.genre, worldBible, narrativeTimeline);
 
@@ -7107,10 +7155,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON:
 }`;
 
     try {
-      const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
-      
-      const detectResult = await model.generateContent(detectPrompt);
-      const detectResponse = detectResult.response.text();
+      const detectResponse = await geminiGenerateWithRetry(detectPrompt, "gemini-2.0-flash", "BibleValidator-Detect");
 
       const detectJsonMatch = detectResponse.match(/\{[\s\S]*\}/);
       if (!detectJsonMatch) {
@@ -7240,8 +7285,7 @@ VERIFICACIÓN FINAL antes de responder:
 - ¿Cada personaje tiene name, role, description, arc, relationships?
 - ¿Los outline_fixes abordan TODOS los problemas de estructura/coherencia listados?`;
 
-      const correctResult = await model.generateContent(correctPrompt);
-      const correctResponse = correctResult.response.text();
+      const correctResponse = await geminiGenerateWithRetry(correctPrompt, "gemini-2.0-flash", "BibleValidator-Correct");
 
       const correctJsonMatch = correctResponse.match(/\{[\s\S]*\}/);
       if (!correctJsonMatch) {
@@ -7519,9 +7563,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     const MAX_CHECKPOINT_RETRIES = 2;
     for (let attempt = 0; attempt <= MAX_CHECKPOINT_RETRIES; attempt++) {
     try {
-      const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
-      const result = await model.generateContent(prompt);
-      const response = result.response.text();
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "StructuralCheckpoint");
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -7847,9 +7889,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     const MAX_RETRIES = 2;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
-        const result = await model.generateContent(prompt);
-        const response = result.response.text();
+        const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "FinalStructuralReview");
 
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
@@ -8102,9 +8142,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
   "verdict": "Breve explicación"
 }`;
 
-      const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
-      const result = await model.generateContent(prompt);
-      const response = result.response.text();
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "PostRewriteVerify");
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return { fixed: true, remainingIssues: [] };
@@ -12788,9 +12826,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     const MAX_RETRIES = 2;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
-        const result = await model.generateContent(diagnosisPrompt);
-        const response = result.response.text();
+        const response = await geminiGenerateWithRetry(diagnosisPrompt, "gemini-2.0-flash", "DiagnosisPrompt");
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
           if (attempt < MAX_RETRIES) continue;
@@ -13641,9 +13677,7 @@ Responde SOLO en JSON:
 }`;
 
     try {
-      const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
-      const result = await model.generateContent(prompt);
-      const response = result.response.text();
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "RewriteRiskAnalysis");
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
@@ -13737,9 +13771,7 @@ Responde SOLO en JSON:
 }`;
 
     try {
-      const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
-      const result = await model.generateContent(prompt);
-      const response = result.response.text();
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "SingleIssueVerify");
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
@@ -13834,9 +13866,7 @@ Responde SOLO en JSON:
 }`;
 
     try {
-      const model = geminiForValidation.getGenerativeModel({ model: "gemini-2.0-flash" });
-      const result = await model.generateContent(prompt);
-      const response = result.response.text();
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "BatchIssueVerify");
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
