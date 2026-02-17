@@ -446,6 +446,66 @@ export class OrchestratorV2 {
     thinkingTokens: 0,
   };
 
+  private async syncDeathsIntoWorldBible(projectId: number, worldBible: any): Promise<void> {
+    try {
+      const entities = await storage.getWorldEntitiesByProject(projectId);
+      const DEATH_MARKERS = ['dead', 'muerto', 'fallecido', 'deceased', 'killed', 'asesinado', 'ejecutado'];
+      
+      const deadEntities = entities.filter(e => {
+        if (e.type !== 'CHARACTER') return false;
+        const status = (e.status || '').toLowerCase();
+        const attrs = (e.attributes as any) || {};
+        const vitalStatus = (attrs.estado_vital || attrs.vital_status || attrs.status || '').toString().toLowerCase();
+        const deathChapter = attrs.capitulo_muerte || attrs.death_chapter;
+        return DEATH_MARKERS.some(m => status.includes(m) || vitalStatus.includes(m)) || deathChapter;
+      });
+
+      if (deadEntities.length === 0) return;
+
+      const characters: any[] = worldBible?.characters || worldBible?.personajes || [];
+      let updated = false;
+
+      for (const dead of deadEntities) {
+        const attrs = (dead.attributes as any) || {};
+        const deathChapter = attrs.capitulo_muerte || attrs.death_chapter || '?';
+        const deathCause = attrs.causa_muerte || attrs.death_cause || '';
+        const deadNameLower = dead.name.toLowerCase();
+
+        const wbChar = characters.find((c: any) => {
+          const name = (c.name || c.nombre || '').toLowerCase().trim();
+          if (name === deadNameLower) return true;
+          if (name.length < 3 || deadNameLower.length < 3) return name === deadNameLower;
+          const nameParts = name.split(/\s+/);
+          const deadParts = deadNameLower.split(/\s+/);
+          return nameParts.some(p => p.length >= 3 && deadParts.includes(p)) ||
+                 deadParts.some(p => p.length >= 3 && nameParts.includes(p));
+        });
+
+        if (wbChar) {
+          const currentStatus = (wbChar.status || wbChar.estado || '').toLowerCase();
+          if (!DEATH_MARKERS.some(m => currentStatus.includes(m))) {
+            wbChar.status = 'muerto';
+            wbChar.estado = 'muerto';
+            wbChar.estado_vital = 'MUERTO';
+            wbChar.capitulo_muerte = deathChapter;
+            if (deathCause) wbChar.causa_muerte = deathCause;
+            updated = true;
+            console.log(`[OrchestratorV2] Synced death into World Bible: ${dead.name} (died cap ${deathChapter})`);
+          }
+        }
+      }
+
+      if (updated) {
+        const wbRecord = await storage.getWorldBibleByProject(projectId);
+        if (wbRecord) {
+          await storage.updateWorldBible(wbRecord.id, { characters });
+        }
+      }
+    } catch (err) {
+      console.error(`[OrchestratorV2] Error syncing deaths into World Bible:`, err);
+    }
+  }
+
   constructor(callbacks: OrchestratorV2Callbacks);
   constructor(options: OrchestratorV2Options);
   constructor(callbacksOrOptions: OrchestratorV2Callbacks | OrchestratorV2Options) {
@@ -4508,10 +4568,16 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         
         if (existing) {
           const newAttrs = { ...((existing.attributes as any) || {}), ...processedUpdate };
-          await storage.updateWorldEntity(existing.id, {
+          const updateData: any = {
             attributes: newAttrs,
             lastSeenChapter: chapterNumber,
-          });
+          };
+          const vitalStatus = (processedUpdate.estado_vital || processedUpdate.vital_status || '').toString().toLowerCase();
+          if (vitalStatus.includes('muerto') || vitalStatus.includes('dead') || vitalStatus.includes('fallecido')) {
+            updateData.status = 'dead';
+            console.log(`[OrchestratorV2] Marking entity ${fact.entityName} as DEAD in world_entities`);
+          }
+          await storage.updateWorldEntity(existing.id, updateData);
         } else {
           await storage.createWorldEntity({
             projectId,
@@ -5778,6 +5844,9 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         }
 
         console.log(`[OrchestratorV2] [OmniWriter] Generating Chapter ${chapterNumber}: "${chapterOutline.title}"`);
+
+        // OmniWriter Phase 2a: Sync deaths from world_entities into World Bible before each chapter
+        await this.syncDeathsIntoWorldBible(project.id, worldBible);
 
         // OmniWriter Phase 2a: Build context for Ghostwriter
         let consistencyConstraints = "";
@@ -7906,6 +7975,8 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     guiaEstilo: string,
     consistencyConstraints?: string // LitAgents 2.5: Now accepts constraints with KU pacing
   ): Promise<{ content: string; summary: string; wordCount: number; sceneBreakdown: ChapterArchitectOutput }> {
+    // Sync deaths from world_entities into worldBible before writing
+    await this.syncDeathsIntoWorldBible(project.id, worldBible);
     
     // Plan scenes with constraints (now includes KU pacing if enabled)
     // Extract outline from worldBible if available for plot context
@@ -10484,6 +10555,9 @@ ${issuesDescription}`;
           console.error(`[OrchestratorV2] Failed to generate constraints for extend:`, err);
         }
 
+        // Sync deaths before writing
+        await this.syncDeathsIntoWorldBible(project.id, worldBibleData);
+
         // Plan scenes for this chapter (WITH constraints)
         this.callbacks.onAgentStatus("chapter-architect", "active", `Planificando escenas para Capítulo ${chapterNum}...`);
         
@@ -10786,6 +10860,9 @@ ${issuesDescription}`;
         } catch (err) {
           console.error(`[OrchestratorV2] Failed to generate constraints for truncated regen:`, err);
         }
+
+        // Sync deaths before writing
+        await this.syncDeathsIntoWorldBible(project.id, worldBibleData);
 
         // Plan new scenes (WITH constraints)
         // Get full outline for plot context (World Bible stores as chapterOutlines, not chapters)
@@ -11229,6 +11306,9 @@ ${issuesDescription}`;
         } catch (err) {
           console.error(`[OrchestratorV2] Failed to generate constraints for fill missing:`, err);
         }
+
+        // Sync deaths before writing
+        await this.syncDeathsIntoWorldBible(project.id, worldBible as any);
 
         // Chapter Architect (WITH constraints)
         this.callbacks.onAgentStatus("chapter-architect", "active", `Planning scenes for Chapter ${chapterNumber}...`);
