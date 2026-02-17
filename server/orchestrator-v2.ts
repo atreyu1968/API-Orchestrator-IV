@@ -1529,6 +1529,54 @@ Las siguientes tramas DEBEN ser avanzadas en este capítulo. Cada escena debe co
    Próximo evento: ${nextChapter.key_event || 'No especificado'}
 `;
       }
+
+      // PROGRESSIVE THREAD CLOSURE: When approaching the end, inject urgency
+      if (outline && outline.length > 0) {
+        const regularOutline = outline.filter(ch => ch.chapter_num > 0 && ch.chapter_num < 998);
+        const totalRegularChapters = regularOutline.length;
+        const currentIdx = regularOutline.findIndex(ch => ch.chapter_num === chapterNumber);
+        if (currentIdx < 0) {
+          // Chapter not found in regular outline, skip thread closure injection
+        } else {
+        const chaptersRemaining = totalRegularChapters - currentIdx;
+        const unresolvedThreads = plotThreads.filter(t => t.status !== 'resolved');
+        
+        if (chaptersRemaining <= 5 && unresolvedThreads.length > 0) {
+          const urgencyLevel = chaptersRemaining <= 2 ? 'CRÍTICA' : chaptersRemaining <= 3 ? 'ALTA' : 'MEDIA';
+          
+          context += `
+🔴🔴🔴 URGENCIA DE CIERRE DE TRAMAS: ${urgencyLevel} 🔴🔴🔴
+Quedan ${chaptersRemaining} capítulos regulares (${chaptersRemaining <= 2 ? 'incluido este' : 'contando este'}) antes del epílogo.
+${unresolvedThreads.length} trama(s) DEBEN cerrarse antes del epílogo:
+
+`;
+          const threadsPerChapter = Math.ceil(unresolvedThreads.length / chaptersRemaining);
+          const threadsForThisChapter = unresolvedThreads.slice(0, Math.max(1, threadsPerChapter));
+          const threadsForLater = unresolvedThreads.slice(threadsForThisChapter.length);
+
+          context += `⚡ CERRAR EN ESTE CAPÍTULO (${threadsForThisChapter.length} trama(s)):\n`;
+          for (const t of threadsForThisChapter) {
+            context += `   - "${t.name}": Resolver con desenlace claro. El lector DEBE saber qué pasó con esto.\n`;
+          }
+          
+          if (threadsForLater.length > 0) {
+            context += `\n📋 Preparar para cerrar en capítulos siguientes:\n`;
+            for (const t of threadsForLater) {
+              context += `   - "${t.name}": Avanzar significativamente hacia su resolución\n`;
+            }
+          }
+          
+          context += `
+⚠️ REGLAS DE CIERRE:
+- Cada trama cerrada DEBE tener un desenlace EXPLÍCITO y satisfactorio
+- NO dejar ambigüedad: el lector debe entender claramente qué ocurrió
+- El destino de cada personaje importante debe quedar claro
+- Los objetos/secretos clave deben tener resolución (¿qué pasó con la lista? ¿la copia? etc.)
+- Priorizar cierre NATURAL integrado en la acción, no exposición forzada
+`;
+        }
+        } // end else (currentIdx >= 0)
+      }
       
       context += `
 ⚠️ OBLIGACIONES DEL ESCRITOR:
@@ -4826,22 +4874,20 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
       return { isValid: false, error: fullError };
     }
 
+    const blockedDeathEntities = new Set<string>();
     if (result.newFacts && result.newFacts.length > 0) {
       for (const fact of result.newFacts) {
         const existing = await storage.getWorldEntityByName(projectId, fact.entityName);
         
-        // LitAgents 2.1+: Mark physical traits as immutable when first discovered
         let processedUpdate = { ...fact.update };
         if (fact.entityType === 'PHYSICAL_TRAIT' || fact.entityType === 'CHARACTER') {
           const physicalKeys = ['ojos', 'eyes', 'pelo', 'hair', 'cabello', 'altura', 'height', 'edad', 'age', 'piel', 'skin', 'cicatriz', 'scar', 'tatuaje', 'tattoo', 'barba', 'beard', 'complexion', 'build'];
           for (const [key, value] of Object.entries(fact.update)) {
             const isPhysical = physicalKeys.some(pk => key.toLowerCase().includes(pk));
             if (isPhysical && !key.endsWith('_INMUTABLE')) {
-              // Mark as immutable and create a rule for it
               processedUpdate[`${key}_INMUTABLE`] = value;
               delete processedUpdate[key];
               
-              // Create immutable rule for this physical trait
               await storage.createWorldRule({
                 projectId,
                 ruleDescription: `${fact.entityName} tiene ${key} = "${value}" (DESCUBIERTO en Cap ${chapterNumber} - INMUTABLE)`,
@@ -4853,6 +4899,69 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             }
           }
         }
+
+        const vitalStatus = (processedUpdate.estado_vital || processedUpdate.vital_status || '').toString().toLowerCase();
+        const isDeathUpdate = vitalStatus.includes('muerto') || vitalStatus.includes('dead') || vitalStatus.includes('fallecido');
+
+        if (isDeathUpdate) {
+          const EXPLICIT_DEATH_PHRASES = [
+            'cayó muerto', 'murió', 'falleció', 'dejó de respirar', 'su corazón se detuvo',
+            'expiró', 'pereció', 'lo mataron', 'la mataron', 'fue asesinado', 'fue asesinada',
+            'ejecutado', 'ejecutada', 'fusilado', 'fusilada', 'apuñalado hasta la muerte',
+            'desangró', 'muerte instantánea', 'sin vida', 'cadáver', 'cuerpo sin vida',
+            'último aliento', 'vida se apagó', 'vida se extinguió', 'dejó de existir',
+            'lo encontraron muerto', 'la encontraron muerta', 'mató de un', 'disparó y mató'
+          ];
+          const DRUGGING_INDICATORS = [
+            'drogó', 'drogado', 'drogada', 'echó algo en', 'puso algo en',
+            'perdió el conocimiento', 'quedó inconsciente', 'desmayó', 'desvanecido',
+            'sobrevivió', 'aún respira', 'noqueado', 'noqueada',
+            'sedado', 'sedada', 'narcotizado', 'narcotizada', 'dado por muerto'
+          ];
+
+          const chapterTextLower = chapterText.toLowerCase();
+          const entityNameLower = fact.entityName.toLowerCase();
+          const nameParts = entityNameLower.split(/[\s"]+/).filter((p: string) => p.length >= 3);
+
+          const entityMentioned = nameParts.some((p: string) => chapterTextLower.includes(p));
+
+          const contextChunks: string[] = [];
+          if (entityMentioned) {
+            for (const part of nameParts) {
+              let idx = 0;
+              while ((idx = chapterTextLower.indexOf(part, idx)) !== -1) {
+                const start = Math.max(0, idx - 500);
+                const end = Math.min(chapterTextLower.length, idx + 500);
+                contextChunks.push(chapterTextLower.substring(start, end));
+                idx += part.length;
+              }
+            }
+          }
+          const nearNameText = contextChunks.join(' ');
+
+          const hasExplicitDeathNearName = EXPLICIT_DEATH_PHRASES.some(phrase => nearNameText.includes(phrase));
+          const hasExplicitDeathAnywhere = EXPLICIT_DEATH_PHRASES.some(phrase => chapterTextLower.includes(phrase));
+          const hasDruggingNearName = DRUGGING_INDICATORS.some(phrase => nearNameText.includes(phrase));
+
+          const deathConfirmed = hasExplicitDeathNearName || (hasExplicitDeathAnywhere && !hasDruggingNearName);
+
+          if (!deathConfirmed) {
+            console.log(`[OrchestratorV2] ⚠️ DEATH BLOCKED for ${fact.entityName} in Cap ${chapterNumber}: No explicit death near entity name (nearName=${hasExplicitDeathNearName}, anywhere=${hasExplicitDeathAnywhere}, drugging=${hasDruggingNearName}). Registering as injured/unconscious.`);
+            blockedDeathEntities.add(fact.entityName.toLowerCase());
+            const originalCause = processedUpdate.causa_muerte || processedUpdate.death_cause || 'inconsciente/herido';
+            delete processedUpdate.estado_vital;
+            delete processedUpdate.vital_status;
+            delete processedUpdate.capitulo_muerte;
+            delete processedUpdate.death_chapter;
+            delete processedUpdate.causa_muerte;
+            delete processedUpdate.death_cause;
+            delete processedUpdate.cause_of_death;
+            processedUpdate.estado_emocional = originalCause;
+            processedUpdate.estado_fisico = 'inconsciente o gravemente herido';
+          } else {
+            console.log(`[OrchestratorV2] ✓ Death CONFIRMED for ${fact.entityName} in Cap ${chapterNumber}: Explicit death phrase found in text.`);
+          }
+        }
         
         if (existing) {
           const newAttrs = { ...((existing.attributes as any) || {}), ...processedUpdate };
@@ -4860,8 +4969,8 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             attributes: newAttrs,
             lastSeenChapter: chapterNumber,
           };
-          const vitalStatus = (processedUpdate.estado_vital || processedUpdate.vital_status || '').toString().toLowerCase();
-          if (vitalStatus.includes('muerto') || vitalStatus.includes('dead') || vitalStatus.includes('fallecido')) {
+          const finalVitalStatus = (processedUpdate.estado_vital || processedUpdate.vital_status || '').toString().toLowerCase();
+          if (finalVitalStatus.includes('muerto') || finalVitalStatus.includes('dead') || finalVitalStatus.includes('fallecido')) {
             updateData.status = 'dead';
             console.log(`[OrchestratorV2] Marking entity ${fact.entityName} as DEAD in world_entities`);
           }
@@ -4881,7 +4990,19 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
     }
 
     if (result.newRules && result.newRules.length > 0) {
+      let addedRules = 0;
       for (const rule of result.newRules) {
+        if (rule.category === 'DEATH_EVENT' && blockedDeathEntities.size > 0) {
+          const ruleTextLower = rule.ruleDescription.toLowerCase();
+          const isBlockedDeath = Array.from(blockedDeathEntities).some(blockedName => {
+            const parts = blockedName.split(/[\s"]+/).filter((p: string) => p.length >= 4);
+            return parts.length > 0 && parts.some((p: string) => ruleTextLower.includes(p));
+          });
+          if (isBlockedDeath) {
+            console.log(`[OrchestratorV2] ⚠️ DEATH_EVENT rule BLOCKED (death was not confirmed): ${rule.ruleDescription.substring(0, 80)}`);
+            continue;
+          }
+        }
         await storage.createWorldRule({
           projectId,
           ruleDescription: rule.ruleDescription,
@@ -4889,8 +5010,9 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           isActive: true,
           sourceChapter: chapterNumber,
         });
+        addedRules++;
       }
-      console.log(`[OrchestratorV2] Added ${result.newRules.length} new rules`);
+      if (addedRules > 0) console.log(`[OrchestratorV2] Added ${addedRules} new rules`);
     }
 
     if (result.newRelationships && result.newRelationships.length > 0) {
@@ -6405,7 +6527,9 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
 
           // If not approved and we have attempts left, apply corrections
           if (correctionAttempt < MAX_CORRECTION_ATTEMPTS) {
-            this.callbacks.onAgentStatus("smart-editor", "active", `Correcting ${totalErrors} issues (attempt ${correctionAttempt})...`);
+            const cappedEstilistaCount = Math.min(estilistaErrors.length, 10);
+            const effectiveErrors = inquisidorErrors.length + cappedEstilistaCount + ritmoProblems.length;
+            this.callbacks.onAgentStatus("smart-editor", "active", `Correcting ${effectiveErrors} issues (attempt ${correctionAttempt})...`);
 
             // Build comprehensive correction instructions from all three audits
             let correctionInstructions = "CORRECCIONES OBLIGATORIAS DETECTADAS POR EL SISTEMA DE AUDITORÍA TRIPLE:\n\n";

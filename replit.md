@@ -66,13 +66,14 @@ Preferred communication style: Simple, everyday language.
 - **Global Architect Large Novel Support**: For novels with 20+ chapters, uses compact output, increased token limits, smart chapter completion, and truncation repair.
 - **Series Character Protection System**: Multi-layer defense to prevent AI from changing character names, genders, or roles in series.
 - **Volume Context Propagation System**: Ensures all volume-specific information from the series guide transfers completely.
-- **Death Synchronization System**: Syncs character deaths from `world_entities` to the World Bible.
+- **Death Synchronization System**: Syncs character deaths from `world_entities` to the World Bible. Includes code-level death verification: requires explicit death phrases in chapter text near the entity name and blocks drugging/unconsciousness from being registered as death.
 - **Full Entity Synchronization System**: Extends death sync to all entity types (characters, locations, objects, secrets).
-- **Objective Evaluation System**: Data-driven publishability assessment using 6 weighted metrics (coherence, plot, structure, prose, length, protagonist).
+- **Objective Evaluation System**: Data-driven publishability assessment using 6 weighted metrics (coherence, plot, structure, prose, length, protagonist). Protagonist presence uses partial name matching for accuracy.
 - **Gemini Rate Limit Resilience**: All direct Gemini API calls use `geminiGenerateWithRetry()` with exponential backoff.
 - **SmartEditor Anti-Regression System**: Full rewrite prompts include explicit anti-regression rules.
 - **Enhanced Structural Adherence**: Ghostwriter outline injection includes explicit priority rules.
 - **Minimum Chapter Word Count Enforcement**: Chapters below minimum length are automatically extended.
+- **Progressive Thread Closure System**: When 5 or fewer chapters remain, injects urgency instructions to close unresolved plot threads proactively. Distributes thread closures across remaining chapters with escalating urgency (MEDIA → ALTA → CRÍTICA). Prevents rushed endings by forcing thread resolution BEFORE the epilogue.
 - **Scene-Based Pipeline (LitAgents 2.0)**: Optimized for DeepSeek AI models with specialized agents and `fuse.js` for surgical JSON patching. Includes a four-layer prose quality detection system.
 
 ## External Dependencies

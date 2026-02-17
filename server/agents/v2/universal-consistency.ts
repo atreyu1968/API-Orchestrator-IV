@@ -659,7 +659,10 @@ CRITERIOS DE ERROR CRÍTICO (estos bloquean):
    - Eventos que ocurren ANTES de que hayan sucedido en la cronología
    - Personaje viajando 500km instantáneamente sin transición temporal
    - Confusión de orden día/noche dentro del mismo capítulo
-   EXCEPCIÓN IMPORTANTE: Los recuerdos, flashbacks, memorias y reflexiones sobre el pasado NO son violaciones temporales. Si un personaje RECUERDA o PIENSA en un evento de años anteriores (ej: "recordó aquel día de 1939..."), eso NO contradice la línea temporal actual. Solo es violación si el texto NARRA un evento pasado como si ocurriera en el presente.
+   EXCEPCIONES IMPORTANTES (NO son violaciones temporales):
+   a) Los recuerdos, flashbacks, memorias y reflexiones sobre el pasado NO son violaciones temporales. Si un personaje RECUERDA o PIENSA en un evento de años anteriores (ej: "recordó aquel día de 1939..."), eso NO contradice la línea temporal actual. Solo es violación si el texto NARRA un evento pasado como si ocurriera en el presente.
+   b) El paso del tiempo DENTRO de un mismo capítulo es normal: un capítulo puede empezar al amanecer y terminar al atardecer, o cubrir varias horas del mismo día. Esto NO es una confusión temporal — es progresión narrativa natural.
+   c) Mencionar eventos históricos que ocurrieron antes del inicio de la historia (ej: una guerra, una ejecución pasada) tampoco es violación si se mencionan como hechos del pasado.
 9. RUPTURA DE HILO NARRATIVO: Un evento clave del capítulo anterior (promesa, peligro, herida, descubrimiento) es completamente ignorado sin justificación
 
 IMPORTANTE - NO SON ERRORES CRÍTICOS:
@@ -680,8 +683,23 @@ EXTRACCIÓN DETALLADA (usar entityType correspondiente):
 
 0. [CRITICO] MUERTES DE PERSONAJES: entityType="CHARACTER"
    SOLO registrar si el personaje MUERE DEFINITIVAMENTE en este capítulo.
-   NO registrar como muerte: desmayos, envenenamientos no letales, drogas, inconsciencia, capturas, palizas, heridas no mortales.
-   Si el personaje queda inconsciente, drogado o envenenado pero NO se confirma explícitamente su muerte (ej: "cayó muerto", "dejó de respirar para siempre", "su corazón se detuvo"), NO es una muerte — registrar como estado_emocional o herida.
+   
+   ⚠️ ESTOS NO SON MUERTE — NO usar estado_vital "MUERTO":
+   - Drogar a alguien (echar algo en su bebida, sedarlo)
+   - Envenenar sin muerte explícita (cae inconsciente pero NO se confirma muerte)
+   - Perder el conocimiento, desmayarse, desvanecerse
+   - Ser dado por muerto (NO es lo mismo que estar muerto)
+   - Captura, secuestro, paliza, tortura (aunque sea brutal)
+   - Heridas graves pero no mortales
+   - "Se desplomó" / "cayó al suelo" sin confirmación de muerte
+   Ejemplo: "Elena le echó algo en el café y Lucas se desplomó" = DROGADO, NO MUERTO
+   Ejemplo: "Elena envenenó a Lucas y perdió el conocimiento" = ENVENENADO/INCONSCIENTE, NO MUERTO
+   
+   Para estos casos, registrar como:
+   update: { "estado_fisico": "inconsciente/drogado/herido", "estado_emocional": "descripción" }
+   
+   SOLO registrar muerte con CONFIRMACIÓN EXPLÍCITA e INEQUÍVOCA de muerte irreversible
+   (ej: "cayó muerto", "dejó de respirar para siempre", "su corazón se detuvo", "murió", "falleció", "su cadáver"):
    Solo si hay CONFIRMACIÓN EXPLÍCITA de muerte irreversible:
    update: { 
      "estado_vital": "MUERTO",

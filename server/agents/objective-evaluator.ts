@@ -315,9 +315,19 @@ export async function runObjectiveEvaluation(input: EvaluationInput): Promise<Ob
   if (protagonistName) {
     let chaptersWithProtagonist = 0;
     const nameLower = protagonistName.toLowerCase();
+    const nameSearchParts = nameLower
+      .replace(/["'«»""'']/g, ' ')
+      .split(/\s+/)
+      .filter(p => p.length >= 3 && !['el', 'la', 'los', 'las', 'del', 'de', 'the'].includes(p));
+    
     for (const ch of regularChapters) {
-      if (ch.content && ch.content.toLowerCase().includes(nameLower)) {
-        chaptersWithProtagonist++;
+      if (ch.content) {
+        const contentLower = ch.content.toLowerCase();
+        const found = contentLower.includes(nameLower) || 
+          nameSearchParts.some(part => contentLower.includes(part));
+        if (found) {
+          chaptersWithProtagonist++;
+        }
       }
     }
     const presenceRate = regularChapters.length > 0
