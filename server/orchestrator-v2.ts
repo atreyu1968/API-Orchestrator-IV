@@ -686,6 +686,49 @@ export class OrchestratorV2 {
         }
       }
 
+      const wbRecord = await storage.getWorldBibleByProject(projectId);
+
+      if (wbRecord) {
+        const dbTimeline = (wbRecord as any).timeline;
+        if (dbTimeline && Array.isArray(dbTimeline) && dbTimeline.length > 0) {
+          worldBible.timeline = dbTimeline;
+        }
+
+        const dbInjuries = (wbRecord as any).persistentInjuries;
+        if (dbInjuries && Array.isArray(dbInjuries)) {
+          worldBible.persistentInjuries = dbInjuries;
+          worldBible.lesiones_activas = dbInjuries.filter((i: any) => i.estado_actual === 'activa');
+
+          for (const injury of dbInjuries) {
+            if (!injury.personaje || injury.estado_actual !== 'activa') continue;
+            const wbChar = characters.find((c: any) => this.matchEntityName(injury.personaje, c.name || c.nombre || ''));
+            if (wbChar) {
+              if (!wbChar.lesiones_activas) wbChar.lesiones_activas = [];
+              const exists = wbChar.lesiones_activas.some((l: any) =>
+                l.tipo_lesion === injury.tipo_lesion && l.parte_afectada === injury.parte_afectada
+              );
+              if (!exists) {
+                wbChar.lesiones_activas.push({
+                  tipo_lesion: injury.tipo_lesion,
+                  parte_afectada: injury.parte_afectada || 'no especificada',
+                  severidad: injury.severidad || 'moderada',
+                  efecto_esperado: injury.efecto_esperado || '',
+                  capitulo_ocurre: injury.capitulo_ocurre,
+                  es_temporal: injury.es_temporal || false,
+                });
+                charsUpdated = true;
+              }
+            }
+          }
+        }
+
+        const dbDecisions = (wbRecord as any).plotDecisions;
+        if (dbDecisions && Array.isArray(dbDecisions)) {
+          worldBible.plotDecisions = dbDecisions;
+          worldBible.decisiones = dbDecisions;
+        }
+      }
+
       const persistData: Record<string, any> = {};
       if (charsUpdated) {
         persistData.characters = characters;
@@ -707,7 +750,6 @@ export class OrchestratorV2 {
       }
 
       if (Object.keys(persistData).length > 0) {
-        const wbRecord = await storage.getWorldBibleByProject(projectId);
         if (wbRecord) {
           await storage.updateWorldBible(wbRecord.id, persistData as any);
         }
