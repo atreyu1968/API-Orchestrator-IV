@@ -659,6 +659,7 @@ CRITERIOS DE ERROR CRÍTICO (estos bloquean):
    - Eventos que ocurren ANTES de que hayan sucedido en la cronología
    - Personaje viajando 500km instantáneamente sin transición temporal
    - Confusión de orden día/noche dentro del mismo capítulo
+   EXCEPCIÓN IMPORTANTE: Los recuerdos, flashbacks, memorias y reflexiones sobre el pasado NO son violaciones temporales. Si un personaje RECUERDA o PIENSA en un evento de años anteriores (ej: "recordó aquel día de 1939..."), eso NO contradice la línea temporal actual. Solo es violación si el texto NARRA un evento pasado como si ocurriera en el presente.
 9. RUPTURA DE HILO NARRATIVO: Un evento clave del capítulo anterior (promesa, peligro, herida, descubrimiento) es completamente ignorado sin justificación
 
 IMPORTANTE - NO SON ERRORES CRÍTICOS:
@@ -678,7 +679,10 @@ TAMBIÉN EXTRAE (siempre, incluso si el capítulo es válido):
 EXTRACCIÓN DETALLADA (usar entityType correspondiente):
 
 0. [CRITICO] MUERTES DE PERSONAJES: entityType="CHARACTER"
-   Si un personaje MUERE en este capítulo, OBLIGATORIO registrar:
+   SOLO registrar si el personaje MUERE DEFINITIVAMENTE en este capítulo.
+   NO registrar como muerte: desmayos, envenenamientos no letales, drogas, inconsciencia, capturas, palizas, heridas no mortales.
+   Si el personaje queda inconsciente, drogado o envenenado pero NO se confirma explícitamente su muerte (ej: "cayó muerto", "dejó de respirar para siempre", "su corazón se detuvo"), NO es una muerte — registrar como estado_emocional o herida.
+   Solo si hay CONFIRMACIÓN EXPLÍCITA de muerte irreversible:
    update: { 
      "estado_vital": "MUERTO",
      "capitulo_muerte": ${chapterNumber},

@@ -18,7 +18,7 @@ interface QueueEvent {
   error?: string;
 }
 
-const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes without activity = frozen (reduced for faster recovery)
+const HEARTBEAT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes without activity = frozen (increased to avoid cutting long audits)
 const HEARTBEAT_CHECK_INTERVAL_MS = 30 * 1000; // Check every 30 seconds
 
 export class QueueManager {
@@ -315,10 +315,10 @@ export class QueueManager {
         
         const timeSinceActivity = Date.now() - new Date(activityTime).getTime();
         
-        // Use extended timeout for final_review_in_progress since it can take longer (20 min vs 5 min)
+        // Use extended timeout for final_review_in_progress since it can take longer (20 min vs 10 min)
         const effectiveTimeout = project.status === "final_review_in_progress" 
-          ? HEARTBEAT_TIMEOUT_MS * 4  // 20 minutes for final review
-          : HEARTBEAT_TIMEOUT_MS;     // 5 minutes for other states
+          ? HEARTBEAT_TIMEOUT_MS * 2  // 20 minutes for final review
+          : HEARTBEAT_TIMEOUT_MS;     // 10 minutes for other states
         
         // LitAgents 2.9.6: Check if project was paused due to quality validation failure
         // If the last log contains "PROYECTO PAUSADO" or "validation failed", do NOT auto-recover

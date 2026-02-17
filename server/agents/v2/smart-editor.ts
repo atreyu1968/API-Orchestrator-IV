@@ -537,16 +537,21 @@ INSTRUCCIONES ESTRICTAS:
 7. NO elimines escenas o eventos importantes del original
 8. VERIFICA que cada problema listado haya sido corregido antes de entregar
 
-=== ANTI-REGRESIÓN (CRÍTICO) ===
-Al corregir los problemas listados, NO introduzcas NUEVOS defectos:
+=== ANTI-REGRESIÓN (CRÍTICO — LA REGLA MÁS IMPORTANTE) ===
+ALCANCE MÍNIMO: Tu trabajo es como cirugía. Corrige ÚNICAMENTE los fragmentos específicos mencionados en los problemas. 
+El 90% del capítulo debe quedar EXACTAMENTE igual al original, carácter por carácter.
+
+PROHIBIDO al corregir:
+- NO reescribas párrafos que no están mencionados en los problemas.
 - NO uses etiquetas forzadas de diálogo (dijo/exclamó/murmuró en cada línea). Varía o elimina tags innecesarios.
 - NO repitas la misma palabra o frase en párrafos consecutivos. Si el original no la repetía, tú tampoco.
 - NO uses clichés literarios: "un suspiro escapó de sus labios", "el silencio se hizo palpable", "una lágrima rodó por su mejilla", "el corazón le latía con fuerza".
 - NO cambies el registro narrativo (si el original usa narrador cercano, no cambies a omnisciente distante).
 - NO acortes el capítulo. El resultado debe tener al menos la misma longitud que el original.
+- NO cambies vocabulario, estructura de frases ni puntuación de líneas no mencionadas en los problemas.
 - PRESERVA las transiciones entre escenas tal como están en el original.
 - Si una corrección de ritmo pide "más tensión", añade tensión SIN destruir la prosa existente que ya funciona.
-REGLA DE ORO: Cada párrafo que NO está afectado por los problemas listados debe permanecer IDÉNTICO al original.
+REGLA DE ORO: Cada párrafo que NO está afectado por los problemas listados debe permanecer IDÉNTICO al original. Copia y pega mentalmente el original y solo cambia las líneas específicas del error.
 
 El resultado debe ser el capítulo COMPLETO y CORREGIDO.
 Responde ÚNICAMENTE con el capítulo reescrito, sin explicaciones, comentarios ni formato markdown.`;

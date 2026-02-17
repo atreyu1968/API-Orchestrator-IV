@@ -155,10 +155,18 @@ ${input.chapterOutline.emotional_arc ? `║ ARCO EMOCIONAL: ${input.chapterOutli
 ║ 1. El EVENTO CLAVE debe ocurrir explícitamente en el capítulo. ║
 ║    No basta con insinuarlo — debe EJECUTARSE narrativamente.   ║
 ║ 2. Los personajes listados en el plan DEBEN aparecer y actuar. ║
+║    NO sustituyas personajes del plan por otros (ej: si el plan ║
+║    dice "Ramiro", NO lo reemplaces por otro personaje).        ║
 ║ 3. El ARCO EMOCIONAL planeado debe reflejarse en la prosa.     ║
 ║ 4. NO desvíes la trama hacia eventos no planificados.          ║
+║    NO inventes rescates, capturas, traiciones o revelaciones   ║
+║    que no estén en el plan. La creatividad se aplica al CÓMO,  ║
+║    no al QUÉ ocurre.                                           ║
 ║ 5. Si tu escena es la ÚLTIMA del capítulo, asegúrate de que    ║
 ║    el evento clave ya haya ocurrido o ocurra en esta escena.   ║
+║ 6. CONSECUENCIA: Los capítulos que se desvíen del plan serán   ║
+║    descartados y reescritos. Ahorrar ese paso siguiendo el     ║
+║    plan desde el inicio.                                       ║
 ╚══════════════════════════════════════════════════════════════════╝`;
       prompt = `${outlineBlock}\n\n${prompt}`;
       console.log(`[GhostwriterV2] Injected original chapter outline for strict adherence`);

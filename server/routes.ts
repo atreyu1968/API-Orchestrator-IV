@@ -8639,11 +8639,11 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       }
 
       if (project.status === "processing") {
-        // Check if project is orphaned (no heartbeat in 5 minutes)
+        // Check if project is orphaned (no heartbeat in 10 minutes)
         const heartbeatAge = project.heartbeatAt 
           ? Date.now() - new Date(project.heartbeatAt).getTime()
           : Infinity;
-        const ORPHAN_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+        const ORPHAN_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
         
         if (heartbeatAge < ORPHAN_THRESHOLD_MS) {
           return res.status(400).json({ error: "Project is already being processed" });
@@ -8709,11 +8709,11 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
       }
 
       if (project.status === "processing") {
-        // Check if project is orphaned (no heartbeat in 5 minutes)
+        // Check if project is orphaned (no heartbeat in 10 minutes)
         const heartbeatAge = project.heartbeatAt 
           ? Date.now() - new Date(project.heartbeatAt).getTime()
           : Infinity;
-        const ORPHAN_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+        const ORPHAN_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
         
         if (heartbeatAge < ORPHAN_THRESHOLD_MS) {
           return res.status(400).json({ error: "Project is already being processed" });

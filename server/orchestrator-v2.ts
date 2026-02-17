@@ -6418,8 +6418,15 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             }
 
             if (estilistaErrors.length > 0) {
-              correctionInstructions += "=== ERRORES ESTILÍSTICOS (Estilista) ===\n";
-              for (const err of estilistaErrors) {
+              const MAX_STYLE_CORRECTIONS = 10;
+              const sortedStyleErrors = [...estilistaErrors].sort((a: any, b: any) => {
+                const sevOrder: Record<string, number> = { 'grave': 0, 'mayor': 1, 'menor': 2, 'leve': 3 };
+                return (sevOrder[a.severidad] ?? 2) - (sevOrder[b.severidad] ?? 2);
+              });
+              const cappedStyleErrors = sortedStyleErrors.slice(0, MAX_STYLE_CORRECTIONS);
+              correctionInstructions += `=== ERRORES ESTILÍSTICOS (Estilista) — ${cappedStyleErrors.length} de ${estilistaErrors.length} más graves ===\n`;
+              correctionInstructions += `IMPORTANTE: Corrige SOLO estos ${cappedStyleErrors.length} fragmentos específicos. NO modifiques el resto del texto.\n\n`;
+              for (const err of cappedStyleErrors) {
                 correctionInstructions += `- [${err.severidad}] ${err.tipo}: "${err.fragmento_original}" → "${err.correccion}"\n  Razón: ${err.explicacion}\n\n`;
               }
             }
@@ -6504,6 +6511,59 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
 
         // OmniWriter Phase 2d: Consistency validation (simplified - Inquisidor already audited)
         await this.validateAndUpdateConsistency(project.id, chapterNumber, finalText, project.genre, worldBible, narrativeTimeline);
+
+        // OmniWriter Phase 2d.5: Minimum word count enforcement
+        const preCheckWordCount = finalText.split(/\s+/).length;
+        const projectMinWords = project.minWordCount || 1500;
+        const minWords = chapterNumber === 0 ? Math.round(projectMinWords * 0.6) : projectMinWords;
+        if (preCheckWordCount < minWords) {
+          console.warn(`[OmniWriter] Chapter ${chapterNumber}: Too short (${preCheckWordCount} words, minimum ${minWords}). Extending...`);
+          await storage.createActivityLog({
+            projectId: project.id, level: "warn", agentRole: "omniwriter",
+            message: `Cap ${chapterNumber}: Capítulo demasiado corto (${preCheckWordCount} palabras, mínimo ${minWords}). Extendiendo con más detalle...`,
+          });
+          const MAX_EXTEND_ATTEMPTS = 2;
+          for (let extAttempt = 1; extAttempt <= MAX_EXTEND_ATTEMPTS; extAttempt++) {
+            const currentWC = finalText.split(/\s+/).length;
+            if (currentWC >= minWords) break;
+            const extendPrompt = `El capítulo actual tiene solo ${currentWC} palabras y el mínimo requerido es ${minWords}. EXTIENDE las escenas existentes con más detalles sensoriales, diálogo y desarrollo de personajes. NO cambies los eventos ni la estructura, solo amplía y enriquece. Mantén la calidad literaria. Objetivo: al menos ${minWords} palabras.`;
+            const extendResult = await this.smartEditor.fullRewrite({
+              chapterContent: finalText,
+              errorDescription: extendPrompt,
+              worldBible: {
+                characters: ((worldBible as any).characters || (worldBible as any).personajes || []) as any[],
+                locations: ((worldBible as any).locations || (worldBible as any).lugares || []) as any[],
+                worldRules: ((worldBible as any).worldRules || (worldBible as any).rules || (worldBible as any).reglas || []) as any[],
+              },
+              chapterNumber,
+              chapterTitle: chapterOutline.title,
+              projectTitle: project.title,
+              genre: project.genre,
+            });
+            this.addTokenUsage(extendResult.tokenUsage);
+            await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", extendResult.tokenUsage, chapterNumber);
+            if (extendResult.rewrittenContent && extendResult.rewrittenContent.split(/\s+/).length > currentWC) {
+              finalText = extendResult.rewrittenContent;
+              const newWC = finalText.split(/\s+/).length;
+              console.log(`[OmniWriter] Chapter ${chapterNumber}: Extended from ${currentWC} to ${newWC} words (attempt ${extAttempt})`);
+            } else {
+              console.warn(`[OmniWriter] Chapter ${chapterNumber}: Extension attempt ${extAttempt} failed (no improvement)`);
+              break;
+            }
+          }
+          const finalWC = finalText.split(/\s+/).length;
+          if (finalWC < minWords) {
+            await storage.createActivityLog({
+              projectId: project.id, level: "warn", agentRole: "omniwriter",
+              message: `Cap ${chapterNumber}: No se alcanzó el mínimo de ${minWords} palabras tras extensión (${finalWC} palabras). Se guarda tal cual.`,
+            });
+          } else {
+            await storage.createActivityLog({
+              projectId: project.id, level: "info", agentRole: "omniwriter",
+              message: `Cap ${chapterNumber}: Extendido exitosamente a ${finalWC} palabras (mínimo: ${minWords}).`,
+            });
+          }
+        }
 
         // OmniWriter Phase 2e: Summarizer - Compress for memory
         this.callbacks.onAgentStatus("summarizer", "active", "Compressing for memory...");
