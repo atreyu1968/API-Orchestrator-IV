@@ -77,6 +77,10 @@ Preferred communication style: Simple, everyday language.
 - **Auto Thread Status Update**: After each chapter, analyzes summary and text to auto-detect resolved threads (using keyword proximity + resolution indicators). Updates thread status in real-time for accurate progressive closure.
 - **Chapter Backup System**: Automatic backups before destructive chapter operations.
 - **Scene-Based Pipeline (LitAgents 2.0)**: Optimized for DeepSeek AI models with specialized agents and `fuse.js` for surgical JSON patching. Includes a four-layer prose quality detection system.
+- **Enforced Continuity Corrections (LitAgents 3.2)**: When Universal Consistency detects critical violations (dead characters reappearing), SmartEditor auto-corrects with up to 2 rewrite attempts before proceeding.
+- **Plot Thread DB Sync (LitAgents 3.2)**: Final structural review now updates plot_threads status to "resolved" in DB after closing threads in the last chapter. Objective Evaluator performs content-based verification to detect threads resolved in text but still "active" in DB.
+- **Truncation Detection & Repair (LitAgents 3.2)**: After chapter finalization, detects text ending mid-sentence (no final punctuation or last line < 3 words) and auto-repairs via SmartEditor.
+- **Estilista Issue Cap (LitAgents 3.2)**: Maximum 30 style issues per chapter, prioritized by severity (critica > mayor > menor), preventing inflated correction lists.
 
 ## External Dependencies
 
