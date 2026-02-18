@@ -180,14 +180,14 @@ export async function registerRoutes(
 ): Promise<Server> {
 
   // Unified tracking for ALL correction processes (both detect-fix and legacy)
-  const activeCorrections = new Map<number, { type: 'detect-fix' | 'legacy'; startTime: Date; cancelled: boolean }>();
+  const activeCorrections = new Map<number, { type: string; startTime: Date; cancelled: boolean }>();
   
   // Helper functions for correction tracking
   const isAnyCorrectionActive = (projectId: number) => {
     const correction = activeCorrections.get(projectId);
     return correction && !correction.cancelled;
   };
-  const startCorrection = (projectId: number, type: 'detect-fix' | 'legacy') => {
+  const startCorrection = (projectId: number, type: string) => {
     // CRITICAL: Don't overwrite an active correction - this prevents duplicate processes
     const existing = activeCorrections.get(projectId);
     if (existing && !existing.cancelled) {
@@ -220,36 +220,10 @@ export async function registerRoutes(
   (global as any).endCorrection = endCorrection;
   (global as any).isAnyCorrectionActive = isAnyCorrectionActive;
   
-  // Legacy compatibility
-  const activeDetectAndFix = new Set<number>();
-  const isDetectAndFixActive = (projectId: number) => activeDetectAndFix.has(projectId) || isAnyCorrectionActive(projectId);
-  
-  // Global correction system preference (used by orchestrator for automatic corrections)
-  let globalCorrectionSystem: 'detect-fix' | 'legacy' = 'detect-fix';
-  
-  // Export getter for orchestrator to use
-  (global as any).getCorrectionSystem = () => globalCorrectionSystem;
-
   // Setup cookie parser and authentication
   app.use(cookieParser());
   setupAuthRoutes(app);
   app.use(authMiddleware);
-
-  // Global correction system configuration endpoints
-  app.get("/api/config/correction-system", (_req: Request, res: Response) => {
-    res.json({ correctionSystem: globalCorrectionSystem });
-  });
-
-  app.post("/api/config/correction-system", (req: Request, res: Response) => {
-    const { correctionSystem } = req.body;
-    if (correctionSystem === 'detect-fix' || correctionSystem === 'legacy') {
-      globalCorrectionSystem = correctionSystem;
-      console.log(`[Config] Correction system set to: ${globalCorrectionSystem}`);
-      res.json({ correctionSystem: globalCorrectionSystem });
-    } else {
-      res.status(400).json({ error: "Invalid correction system. Use 'detect-fix' or 'legacy'" });
-    }
-  });
 
   // Get active correction status for a project
   app.get("/api/projects/:id/correction-status", (req: Request, res: Response) => {
@@ -1051,156 +1025,6 @@ export async function registerRoutes(
     }
   });
 
-  // ============================================
-  // LitAgents 2.9.4 - Detect All, Then Fix Strategy
-  // ============================================
-  
-  app.post("/api/projects/:id/detect-and-fix", async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const project = await storage.getProject(id);
-
-      if (!project) {
-        return res.status(404).json({ error: "Project not found" });
-      }
-
-      // CRITICAL: Block if project is actively being processed by ANY system
-      const blockedStatuses = ["generating", "processing", "reviewing", "correcting"];
-      if (blockedStatuses.includes(project.status)) {
-        return res.status(409).json({ 
-          error: `El proyecto está siendo procesado (estado: ${project.status}). Espera a que termine o cancela el proceso actual.`,
-          currentStatus: project.status
-        });
-      }
-
-      // CRITICAL: Block if ANY correction is already running for this project
-      if (isAnyCorrectionActive(id)) {
-        const correction = activeCorrections.get(id);
-        return res.status(409).json({ 
-          error: `Ya hay una corrección '${correction?.type}' en ejecución. Espera a que termine o cancélala primero.`,
-          activeType: correction?.type,
-          startTime: correction?.startTime
-        });
-      }
-
-      // Must have chapters to review
-      const chapters = await storage.getChaptersByProject(id);
-      if (chapters.length === 0) {
-        return res.status(400).json({ 
-          error: "El proyecto no tiene capítulos. Primero genera la novela.",
-          hint: "Usa el endpoint /api/projects/:id/start-v2 para generar la novela."
-        });
-      }
-
-      // Mark this project as having an active correction process (unified tracking)
-      startCorrection(id, 'detect-fix');
-      activeDetectAndFix.add(id); // Legacy compatibility
-
-      res.json({ 
-        message: "Iniciando estrategia 'Detect All, Then Fix'",
-        strategy: "Fase 1: 3 revisiones exhaustivas → Fase 2: Corrección verificada issue por issue"
-      });
-
-      // Get SSE streams
-      const projectStreams = activeStreams.get(id);
-      const sendToStreams = (data: any) => {
-        if (projectStreams && projectStreams.size > 0) {
-          const message = `data: ${JSON.stringify(data)}\n\n`;
-          projectStreams.forEach((streamRes: Response) => streamRes.write(message));
-        }
-      };
-
-      // Helper to persist activity logs
-      const persistActivityLog = async (projectId: number, level: string, message: string, agentRole: string) => {
-        try {
-          await storage.createActivityLog({ projectId, level: level as any, message, agentRole });
-        } catch (e) {
-          console.error("Failed to persist activity log:", e);
-        }
-      };
-
-      // Update project status
-      await storage.updateProject(id, { status: "processing" });
-
-      // Create orchestrator with callbacks
-      const orchestrator = new OrchestratorV2({
-        onAgentStatus: (role, status, message) => {
-          sendToStreams({ type: "agent_status", role, status, message });
-        },
-        onChapterComplete: (chapterNumber, wordCount, chapterTitle) => {
-          sendToStreams({ type: "chapter_complete", chapterNumber, wordCount, chapterTitle });
-        },
-        onSceneComplete: (chapterNumber, sceneNumber, totalScenes, wordCount) => {
-          sendToStreams({ type: "scene_complete", chapterNumber, sceneNumber, totalScenes, wordCount });
-        },
-        onProjectComplete: async () => {
-          sendToStreams({ type: "project_complete" });
-          await persistActivityLog(id, "success", "Estrategia 'Detect All, Then Fix' completada", "orchestrator-v2");
-        },
-        onError: async (error) => {
-          sendToStreams({ type: "error", message: error });
-          await persistActivityLog(id, "error", error, "orchestrator-v2");
-        },
-        onDetectAndFixProgress: (progress) => {
-          sendToStreams({ type: "detect_and_fix_progress", ...progress });
-        },
-      });
-
-      // Pass Gemini QA flags if provided
-      const useGeminiQADetect = req.body?.useGeminiQA || {};
-      if (useGeminiQADetect.finalReviewer || useGeminiQADetect.continuitySentinel || useGeminiQADetect.narrativeDirector) {
-        orchestrator.setGeminiQAFlags(useGeminiQADetect);
-      }
-
-      // Run the new strategy
-      orchestrator.detectAndFixStrategy(project).then(async (result) => {
-        const { registry, finalScore } = result;
-        
-        // CRITICAL: Remove from active sets when complete (unified + legacy)
-        endCorrection(id);
-        activeDetectAndFix.delete(id);
-        
-        await storage.updateProject(id, { 
-          finalScore,
-          status: registry.totalEscalated === 0 ? "completed" : "paused"
-        });
-
-        sendToStreams({ 
-          type: "detect_and_fix_complete",
-          totalDetected: registry.totalDetected,
-          totalResolved: registry.totalResolved,
-          totalEscalated: registry.totalEscalated,
-          finalScore
-        });
-
-        await persistActivityLog(
-          id, 
-          registry.totalEscalated === 0 ? "success" : "warn",
-          `Detect & Fix completado: ${registry.totalResolved}/${registry.totalDetected} resueltos, ${registry.totalEscalated} escalados. Puntuación: ${finalScore}/10`,
-          "orchestrator-v2"
-        );
-      }).catch(async (error) => {
-        // CRITICAL: Remove from active sets on error (unified + legacy)
-        endCorrection(id);
-        activeDetectAndFix.delete(id);
-        
-        console.error("Detect and Fix error:", error);
-        await storage.updateProject(id, { status: "paused" });
-        sendToStreams({ type: "error", message: error.message || "Error en Detect & Fix" });
-        await persistActivityLog(id, "error", `Error: ${error.message || 'Unknown error'}`, "orchestrator-v2");
-      });
-
-    } catch (error) {
-      // CRITICAL: Remove from active sets on early error (unified + legacy)
-      const id = parseInt(req.params.id);
-      endCorrection(id);
-      activeDetectAndFix.delete(id);
-      
-      console.error("Error starting Detect and Fix:", error);
-      res.status(500).json({ error: "Failed to start Detect and Fix strategy" });
-    }
-  });
-
   // ==================== OBJECTIVE EVALUATION ====================
 
   app.get("/api/projects/:id/objective-evaluation", async (req: Request, res: Response) => {
@@ -1930,26 +1754,20 @@ export async function registerRoutes(
         });
       }
 
-      // Allow re-running final review on completed, awaiting, or failed projects
-      const allowedStatuses = ["completed", "awaiting_final_review", "failed_final_review"];
+      const allowedStatuses = ["completed", "awaiting_final_review", "failed_final_review", "paused", "awaiting_rewrite_decision"];
       if (!allowedStatuses.includes(project.status)) {
-        return res.status(400).json({ error: "Solo se puede ejecutar la revisión final en proyectos completados o con revisión fallida" });
+        return res.status(400).json({ error: "Solo se puede analizar proyectos completados o pausados" });
       }
 
-      // Register this correction in unified tracking
-      startCorrection(id, 'legacy');
+      startCorrection(id, 'analysis');
 
-      // Reset audit flags to allow full re-analysis
-      // Use 'final_review_in_progress' to prevent auto-recovery from treating this as a normal generation
       await storage.updateProject(id, { 
         status: "final_review_in_progress",
-        revisionCycle: 0,
         finalReviewResult: null,
-        voiceAuditCompleted: false,
-        semanticCheckCompleted: false
+        rewriteRecommendation: null,
       } as any);
 
-      res.json({ message: "Final review started", projectId: id });
+      res.json({ message: "Manuscript analysis started", projectId: id });
 
       const sendToStreams = (data: any) => {
         const streams = activeStreams.get(id);
@@ -1965,7 +1783,6 @@ export async function registerRoutes(
         }
       };
 
-      // Run final review using OrchestratorV2
       const orchestratorV2 = new OrchestratorV2({
         onAgentStatus: (agentName, status, currentTask) => {
           storage.updateAgentStatus(id, agentName, { status, currentTask });
@@ -1976,34 +1793,195 @@ export async function registerRoutes(
         },
         onSceneComplete: () => {},
         onProjectComplete: () => {
-          endCorrection(id); // Clean up tracking
+          endCorrection(id);
           sendToStreams({ type: "project_complete" });
-          persistActivityLog(id, "success", "Revisión final completada", "smart-editor");
+          persistActivityLog(id, "success", "Análisis del manuscrito completado", "final-reviewer");
         },
         onError: (error) => {
-          endCorrection(id); // Clean up tracking on error
+          endCorrection(id);
           sendToStreams({ type: "error", error });
-          persistActivityLog(id, "error", error, "smart-editor");
+          persistActivityLog(id, "error", error, "final-reviewer");
         },
-        onChaptersBeingCorrected: (chapterNumbers, revisionCycle) => {
-          sendToStreams({ type: "chapters_being_corrected", chapterNumbers, revisionCycle });
-        },
+        onChaptersBeingCorrected: () => {},
       });
 
-      const useGeminiQA = req.body?.useGeminiQA || {};
-      if (useGeminiQA.finalReviewer || useGeminiQA.continuitySentinel || useGeminiQA.narrativeDirector) {
-        orchestratorV2.setGeminiQAFlags(useGeminiQA);
-      }
-
-      orchestratorV2.runFinalReviewOnly(project).finally(() => {
-        endCorrection(id); // Ensure cleanup
+      orchestratorV2.runManuscriptAnalysis(project).then(async (result) => {
+        endCorrection(id);
+        if (result.recommendation) {
+          sendToStreams({ 
+            type: "rewrite_recommendation",
+            ...result.recommendation,
+            score: result.score,
+          });
+        }
+      }).catch(async (error) => {
+        endCorrection(id);
+        console.error("Manuscript analysis error:", error);
+        await storage.updateProject(id, { status: "paused" });
+        sendToStreams({ type: "error", message: error.message || "Error en análisis" });
       });
-      
-      console.log(`[FinalReview] Started final review for project ${id} (v2 pipeline)${useGeminiQA.finalReviewer ? ' [Gemini FR]' : ''}`);
+
+      console.log(`[Analysis] Started manuscript analysis for project ${id}`);
 
     } catch (error) {
       console.error("Error starting final review:", error);
       res.status(500).json({ error: "Failed to start final review" });
+    }
+  });
+
+  // LitAgents 3.3: Rewrite from a specific chapter with analysis-derived instructions
+  app.post("/api/projects/:id/rewrite-from", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const allowedStatuses = ["completed", "paused", "awaiting_rewrite_decision", "awaiting_final_review", "failed_final_review"];
+      if (!allowedStatuses.includes(project.status)) {
+        return res.status(400).json({
+          error: `No se puede reescribir desde estado '${project.status}'.`
+        });
+      }
+
+      const { fromChapter, customInstructions } = req.body as {
+        fromChapter: number;
+        customInstructions?: string;
+      };
+
+      if (!fromChapter || fromChapter < 0) {
+        return res.status(400).json({ error: "Se requiere un número de capítulo válido (fromChapter)" });
+      }
+
+      const chapters = await storage.getChaptersByProject(id);
+      const chaptersToDelete = chapters.filter(c => c.chapterNumber >= fromChapter);
+
+      if (chaptersToDelete.length === 0) {
+        return res.status(400).json({ error: `No hay capítulos desde el capítulo ${fromChapter} para reescribir` });
+      }
+
+      const recommendation = project.rewriteRecommendation as any;
+      let guidance = "";
+
+      if (recommendation?.instructions?.length > 0) {
+        guidance += "INSTRUCCIONES DE CORRECCIÓN (basadas en análisis previo):\n";
+        guidance += "Estos problemas fueron detectados en la generación anterior. DEBES corregirlos:\n\n";
+        for (const inst of recommendation.instructions) {
+          guidance += `• ${inst}\n`;
+        }
+        guidance += "\n";
+      }
+
+      if (recommendation?.threadsClosure?.length > 0) {
+        guidance += "TRAMAS PENDIENTES POR CERRAR:\n";
+        guidance += "Estas tramas deben resolverse antes del final de la novela:\n\n";
+        for (const thread of recommendation.threadsClosure) {
+          guidance += `• ${thread}\n`;
+        }
+        guidance += "\n";
+      }
+
+      if (customInstructions) {
+        guidance += "INSTRUCCIONES ADICIONALES DEL AUTOR:\n";
+        guidance += customInstructions + "\n\n";
+      }
+
+      const keptChapters = chapters
+        .filter(c => c.chapterNumber < fromChapter && (c.status === "completed" || c.status === "approved"))
+        .sort((a, b) => a.chapterNumber - b.chapterNumber);
+
+      console.log(`[RewriteFrom] Deleting ${chaptersToDelete.length} chapters (from ch ${fromChapter}), keeping ${keptChapters.length} chapters`);
+
+      for (const chapter of chaptersToDelete) {
+        await storage.deleteChapter(chapter.id);
+        console.log(`[RewriteFrom] Deleted chapter ${chapter.chapterNumber} (id: ${chapter.id})`);
+      }
+
+      await storage.updateProject(id, {
+        status: "generating",
+        rewriteGuidance: guidance || null,
+        rewriteRecommendation: null,
+        finalReviewResult: null,
+        revisionCycle: 0,
+        consecutiveHighScores: 0,
+      } as any);
+
+      await storage.createActivityLog({
+        projectId: id,
+        level: "info",
+        agentRole: "orchestrator",
+        message: `Reescritura iniciada desde capítulo ${fromChapter}. ${chaptersToDelete.length} capítulos eliminados, ${keptChapters.length} conservados.${guidance ? ' Instrucciones de corrección inyectadas.' : ''}`,
+      });
+
+      res.json({
+        message: `Rewriting from chapter ${fromChapter}`,
+        deletedChapters: chaptersToDelete.length,
+        keptChapters: keptChapters.length,
+        hasGuidance: !!guidance,
+      });
+
+      const sendToStreams = (data: any) => {
+        const streams = activeStreams.get(id);
+        if (streams) {
+          const message = `data: ${JSON.stringify(data)}\n\n`;
+          streams.forEach(stream => {
+            try {
+              stream.write(message);
+            } catch (e) {
+              console.error("Error writing to stream:", e);
+            }
+          });
+        }
+      };
+
+      const orchestrator = new OrchestratorV2({
+        onAgentStatus: async (role, status, message) => {
+          await storage.updateAgentStatus(id, role, { status, currentTask: message });
+          sendToStreams({ type: "agent_status", role, status, message });
+          if (message) await persistActivityLog(id, "info", message, role);
+        },
+        onChapterComplete: async (chapterNumber, wordCount, chapterTitle) => {
+          sendToStreams({ type: "chapter_complete", chapterNumber, wordCount, chapterTitle });
+          await persistActivityLog(id, "success", `Capítulo ${chapterNumber} completado (${wordCount} palabras)`, "ghostwriter-v2");
+        },
+        onSceneComplete: async (chapterNumber, sceneNumber, totalScenes, wordCount) => {
+          sendToStreams({ type: "scene_complete", chapterNumber, sceneNumber, totalScenes, wordCount });
+        },
+        onProjectComplete: async () => {
+          sendToStreams({ type: "project_complete" });
+          await persistActivityLog(id, "success", "Reescritura completada exitosamente", "orchestrator");
+        },
+        onError: async (error) => {
+          sendToStreams({ type: "error", message: error });
+          await persistActivityLog(id, "error", error, "orchestrator");
+        },
+        onChaptersBeingCorrected: () => {},
+      });
+
+      orchestrator.generateNovel(project).catch(console.error);
+
+      console.log(`[RewriteFrom] Started rewrite for project ${id} from chapter ${fromChapter}`);
+
+    } catch (error) {
+      console.error("Error starting rewrite:", error);
+      res.status(500).json({ error: "Failed to start rewrite" });
+    }
+  });
+
+  // Get rewrite recommendation for a project
+  app.get("/api/projects/:id/rewrite-recommendation", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getProject(id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      res.json({ recommendation: project.rewriteRecommendation || null });
+    } catch (error) {
+      console.error("Error fetching rewrite recommendation:", error);
+      res.status(500).json({ error: "Failed to fetch rewrite recommendation" });
     }
   });
 

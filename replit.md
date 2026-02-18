@@ -82,6 +82,9 @@ Preferred communication style: Simple, everyday language.
 - **Truncation Detection & Repair (LitAgents 3.2)**: After chapter finalization, detects text ending mid-sentence (no final punctuation or last line < 3 words) and auto-repairs via SmartEditor.
 - **Estilista Issue Cap (LitAgents 3.2)**: Maximum 30 style issues per chapter, prioritized by severity (critica > mayor > menor), preventing inflated correction lists.
 - **Real Cost Tracking (LitAgents 3.2)**: Dashboard cost panel uses real per-event costs from `ai_usage_events` (tracking actual model used: DeepSeek + Gemini) via `/api/projects/:id/real-cost` endpoint, with per-model breakdown in tooltip. Falls back to weighted-average estimate if events unavailable.
+- **Single-Pass Analysis & Rewrite Flow (LitAgents 3.3)**: Replaces the iterative Detect & Fix system with a simplified flow: `runManuscriptAnalysis()` performs one FinalReviewer pass, computes a rewrite recommendation (earliest problematic chapter), and sets project status to `awaiting_rewrite_decision`. User decides whether to accept or override the recommendation via `POST /api/projects/:id/rewrite-from`, which deletes chapters from the selected point and resumes generation with analysis-derived correction instructions injected into Ghostwriter context.
+- **Rewrite Guidance Injection (LitAgents 3.3)**: When `rewriteGuidance` is set on a project, it is injected as top-priority instructions into the Ghostwriter's `enrichedConstraints` during chapter generation, ensuring corrections from the analysis are applied during rewriting.
+- **Rewrite Recommendation UI (LitAgents 3.3)**: Dashboard shows a recommendation panel with issue summary, pending plot threads, and buttons to accept or customize the rewrite starting point. A dialog allows selecting any chapter and adding custom instructions.
 
 ## External Dependencies
 

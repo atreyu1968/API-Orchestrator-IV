@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Play, FileText, Clock, CheckCircle, Download, Archive, Copy, Trash2, ClipboardCheck, RefreshCw, Ban, CheckCheck, Plus, Upload, Database, Info, ExternalLink, Loader2, BookOpen, Crosshair, Merge, Pencil } from "lucide-react";
+import { Play, FileText, Clock, CheckCircle, Download, Archive, Copy, Trash2, ClipboardCheck, RefreshCw, Ban, CheckCheck, Plus, Upload, Database, Info, ExternalLink, Loader2, BookOpen, Crosshair, Merge, Pencil, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProject } from "@/lib/project-context";
@@ -130,23 +130,7 @@ El costo mostrado se calcula por evento real con el modelo usado.`;
 
 type ConfirmType = "cancel" | "forceComplete" | "resume" | "delete" | null;
 
-interface DetectAndFixProgress {
-  phase: 'detection' | 'correction';
-  subPhase?: string;
-  current: number;
-  total: number;
-  details?: {
-    reviewNumber?: number;
-    issuesFoundThisReview?: number;
-    totalUniqueIssues?: number;
-    issueIndex?: number;
-    issueType?: string;
-    issueChapter?: number;
-    issueSeverity?: string;
-    resolved?: number;
-    escalated?: number;
-  };
-}
+
 
 export default function Dashboard() {
   const { toast } = useToast();
@@ -170,6 +154,9 @@ export default function Dashboard() {
   const [rewriteChapterNumber, setRewriteChapterNumber] = useState<number | null>(null);
   const [rewriteInstructions, setRewriteInstructions] = useState("");
   const [showRewriteDialog, setShowRewriteDialog] = useState(false);
+  const [rewriteFromChapter, setRewriteFromChapter] = useState<number | null>(null);
+  const [rewriteFromInstructions, setRewriteFromInstructions] = useState("");
+  const [showRewriteFromDialog, setShowRewriteFromDialog] = useState(false);
   const [mergeSource, setMergeSource] = useState<number | null>(null);
   const [mergeTarget, setMergeTarget] = useState<number | null>(null);
   const [targetChapters, setTargetChapters] = useState("");
@@ -178,32 +165,9 @@ export default function Dashboard() {
   const [useGeminiQA, setUseGeminiQA] = useState<{ finalReviewer: boolean; continuitySentinel: boolean; narrativeDirector: boolean }>({ finalReviewer: false, continuitySentinel: false, narrativeDirector: false });
   const [sceneProgress, setSceneProgress] = useState<{chapterNumber: number; sceneNumber: number; totalScenes: number; wordCount: number} | null>(null);
   const [chaptersBeingCorrected, setChaptersBeingCorrected] = useState<{chapterNumbers: number[]; revisionCycle: number} | null>(null);
-  const [detectAndFixProgress, setDetectAndFixProgress] = useState<DetectAndFixProgress | null>(null);
-  const [correctionSystem, setCorrectionSystem] = useState<'detect-fix' | 'legacy'>('detect-fix');
   const { projects, currentProject, setSelectedProjectId } = useProject();
   
-  // Load correction system preference from server on mount
-  useEffect(() => {
-    fetch('/api/config/correction-system')
-      .then(res => res.json())
-      .then(data => {
-        if (data.correctionSystem === 'detect-fix' || data.correctionSystem === 'legacy') {
-          setCorrectionSystem(data.correctionSystem);
-        }
-      })
-      .catch(() => {/* ignore, use default */});
-  }, []);
-  
-  // Sync correction system preference to server and localStorage
-  const updateCorrectionSystem = (value: 'detect-fix' | 'legacy') => {
-    setCorrectionSystem(value);
-    localStorage.setItem('litagents-correction-system', value);
-    fetch('/api/config/correction-system', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ correctionSystem: value })
-    }).catch(() => {/* ignore errors */});
-  };
+
 
   const handleExportData = async () => {
     setIsExporting(true);
@@ -327,7 +291,6 @@ export default function Dashboard() {
     setWarningStages([]);
     setSceneProgress(null);
     setChaptersBeingCorrected(null);
-    setDetectAndFixProgress(null);
     
     // Update ref with current project ID
     currentProjectIdRef.current = currentProject?.id ?? null;
@@ -539,20 +502,7 @@ export default function Dashboard() {
     },
   });
 
-  const detectAndFixMutation = useMutation({
-    mutationFn: async (params: { id: number; useGeminiQA?: { finalReviewer?: boolean; continuitySentinel?: boolean; narrativeDirector?: boolean } }) => {
-      const response = await apiRequest("POST", `/api/projects/${params.id}/detect-and-fix`, { useGeminiQA: params.useGeminiQA || {} });
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      toast({ title: "Detectar y Corregir iniciado", description: "Fase 1: 3 revisiones exhaustivas → Fase 2: Corrección verificada" });
-      addLog("thinking", "Iniciando estrategia 'Detect All, Then Fix'...", "final-reviewer");
-    },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo iniciar la detección y corrección", variant: "destructive" });
-    },
-  });
+
 
   const cancelProjectMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -825,6 +775,27 @@ export default function Dashboard() {
     },
   });
 
+  const rewriteFromMutation = useMutation({
+    mutationFn: async ({ projectId, fromChapter, customInstructions }: { projectId: number; fromChapter: number; customInstructions?: string }) => {
+      const response = await apiRequest("POST", `/api/projects/${projectId}/rewrite-from`, { fromChapter, customInstructions });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", currentProject?.id, "chapters"] });
+      toast({
+        title: "Reescritura iniciada",
+        description: data.message || `Reescribiendo desde capítulo ${rewriteFromChapter}. ${data.deletedChapters} capítulos eliminados.`,
+      });
+      setShowRewriteFromDialog(false);
+      setRewriteFromChapter(null);
+      setRewriteFromInstructions("");
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "No se pudo iniciar la reescritura", variant: "destructive" });
+    },
+  });
+
   const addLog = (type: LogEntry["type"], message: string, agent?: string) => {
     const newLog: LogEntry = {
       id: crypto.randomUUID(),
@@ -886,6 +857,13 @@ export default function Dashboard() {
                                `Capítulo ${data.chapterNumber}`;
             addLog("success", `${sectionName} completado (${data.wordCount} palabras)`);
             queryClient.invalidateQueries({ queryKey: ["/api/projects", activeProject.id, "chapters"] });
+          } else if (data.type === "rewrite_recommendation") {
+            addLog("thinking", `Análisis: ${data.score}/10. Recomendación: reescribir desde capítulo ${data.fromChapter} (${data.totalIssues} problemas).`, "final-reviewer");
+            queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+            toast({
+              title: "Análisis completado",
+              description: `Puntuación: ${data.score}/10. Se recomienda reescribir desde capítulo ${data.fromChapter}.`,
+            });
           } else if (data.type === "project_complete") {
             addLog("success", "¡Manuscrito completado!");
             toast({
@@ -907,21 +885,6 @@ export default function Dashboard() {
             } else {
               setChaptersBeingCorrected(null);
             }
-          } else if (data.type === "detect_and_fix_progress") {
-            setDetectAndFixProgress({
-              phase: data.phase,
-              subPhase: data.subPhase,
-              current: data.current,
-              total: data.total,
-              details: data.details
-            });
-          } else if (data.type === "detect_and_fix_complete") {
-            setDetectAndFixProgress(null);
-            queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-            toast({
-              title: "Detección y Corrección completada",
-              description: `Resueltos: ${data.totalResolved}/${data.totalDetected}, Escalados: ${data.totalEscalated}`,
-            });
           } else if (data.type === "targeted_repair_diagnosis_complete") {
             queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
             toast({
@@ -1014,18 +977,6 @@ export default function Dashboard() {
               Generando: {activeProject.title}
             </Badge>
           )}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-card">
-            <span className="text-sm text-muted-foreground whitespace-nowrap">Sistema de Corrección:</span>
-            <Select value={correctionSystem} onValueChange={(v) => updateCorrectionSystem(v as 'detect-fix' | 'legacy')}>
-              <SelectTrigger className="w-[200px] h-8" data-testid="select-correction-system-global">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="detect-fix">Detect & Fix (v2.9.4)</SelectItem>
-                <SelectItem value="legacy">Revisión Clásica</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
         </div>
       </div>
 
@@ -1164,60 +1115,7 @@ export default function Dashboard() {
                       Corrigiendo Cap. {chaptersBeingCorrected.chapterNumbers.join(', ')} (Ciclo {chaptersBeingCorrected.revisionCycle})
                     </Badge>
                   )}
-                  {detectAndFixProgress && (
-                    <div className="flex flex-col gap-2 mt-2 p-3 rounded-lg bg-muted/50 border" data-testid="detect-and-fix-progress">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Crosshair className={`h-4 w-4 ${detectAndFixProgress.phase === 'detection' ? 'text-blue-500' : 'text-green-500'}`} />
-                          <span className="font-medium text-sm">
-                            {detectAndFixProgress.phase === 'detection' ? 'Fase 1: Detección' : 'Fase 2: Corrección'}
-                          </span>
-                        </div>
-                        <Badge variant={detectAndFixProgress.phase === 'detection' ? 'default' : 'secondary'}>
-                          {detectAndFixProgress.current}/{detectAndFixProgress.total}
-                        </Badge>
-                      </div>
-                      <div className="w-full bg-muted rounded-full h-2">
-                        <div 
-                          className={`h-2 rounded-full transition-all duration-300 ${detectAndFixProgress.phase === 'detection' ? 'bg-blue-500' : 'bg-green-500'}`}
-                          style={{ width: `${(detectAndFixProgress.current / detectAndFixProgress.total) * 100}%` }}
-                        />
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {detectAndFixProgress.phase === 'detection' ? (
-                          <>
-                            {detectAndFixProgress.subPhase === 'reviewing' && `Revisión ${detectAndFixProgress.details?.reviewNumber}/3 en progreso...`}
-                            {detectAndFixProgress.subPhase === 'review_complete' && `Revisión ${detectAndFixProgress.details?.reviewNumber} completada: ${detectAndFixProgress.details?.issuesFoundThisReview} nuevos issues (${detectAndFixProgress.details?.totalUniqueIssues} únicos)`}
-                            {detectAndFixProgress.subPhase === 'complete' && `Detección completa: ${detectAndFixProgress.details?.totalUniqueIssues} issues únicos encontrados`}
-                            {detectAndFixProgress.subPhase === 'starting' && 'Iniciando 3 revisiones exhaustivas...'}
-                          </>
-                        ) : (
-                          <>
-                            {detectAndFixProgress.subPhase === 'fixing' && (
-                              <span className="flex items-center gap-1">
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                Cap {detectAndFixProgress.details?.issueChapter}: {detectAndFixProgress.details?.issueType}
-                                <Badge variant="outline" className="text-xs ml-1">
-                                  {detectAndFixProgress.details?.issueSeverity}
-                                </Badge>
-                              </span>
-                            )}
-                            {detectAndFixProgress.subPhase === 'issue_resolved' && `Issue resuelto - Cap ${detectAndFixProgress.details?.issueChapter}`}
-                            {detectAndFixProgress.subPhase === 'issue_escalated' && `Issue escalado - Cap ${detectAndFixProgress.details?.issueChapter}`}
-                            {detectAndFixProgress.subPhase === 'complete' && `Completado: ${detectAndFixProgress.details?.resolved} resueltos, ${detectAndFixProgress.details?.escalated} escalados`}
-                            {detectAndFixProgress.subPhase === 'starting' && `Iniciando corrección de ${detectAndFixProgress.total} issues...`}
-                          </>
-                        )}
-                      </div>
-                      {detectAndFixProgress.phase === 'correction' && detectAndFixProgress.details && (
-                        <div className="flex gap-2 text-xs">
-                          <span className="text-green-600 dark:text-green-400">Resueltos: {detectAndFixProgress.details.resolved || 0}</span>
-                          <span className="text-yellow-600 dark:text-yellow-400">Escalados: {detectAndFixProgress.details.escalated || 0}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {(currentProject.status === "completed" || currentProject.status === "awaiting_final_review") && (
+                  {(currentProject.status === "completed" || currentProject.status === "awaiting_final_review" || currentProject.status === "awaiting_rewrite_decision" || currentProject.status === "paused") && (
                     <>
                       <Button
                         variant="outline"
@@ -1232,24 +1130,12 @@ export default function Dashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          if (correctionSystem === 'detect-fix') {
-                            detectAndFixMutation.mutate({ id: currentProject.id, useGeminiQA });
-                          } else {
-                            finalReviewMutation.mutate({ id: currentProject.id, useGeminiQA });
-                          }
-                        }}
-                        disabled={finalReviewMutation.isPending || detectAndFixMutation.isPending}
-                        data-testid="button-run-correction"
+                        onClick={() => finalReviewMutation.mutate({ id: currentProject.id, useGeminiQA })}
+                        disabled={finalReviewMutation.isPending}
+                        data-testid="button-analyze-manuscript"
                       >
-                        {correctionSystem === 'detect-fix' ? (
-                          <Crosshair className="h-4 w-4 mr-2" />
-                        ) : (
-                          <ClipboardCheck className="h-4 w-4 mr-2" />
-                        )}
-                        {(finalReviewMutation.isPending || detectAndFixMutation.isPending) 
-                          ? "Procesando..." 
-                          : correctionSystem === 'detect-fix' ? "Detect & Fix" : "Revisión Final"}
+                        <ClipboardCheck className="h-4 w-4 mr-2" />
+                        {finalReviewMutation.isPending ? "Analizando..." : "Analizar Manuscrito"}
                       </Button>
                       <Button
                         variant="outline"
@@ -1590,6 +1476,60 @@ export default function Dashboard() {
                       </div>
                     )}
                     
+                    {/* Rewrite Recommendation Panel */}
+                    {(currentProject.rewriteRecommendation as any) && (
+                      <div className="mt-4 pt-4 border-t border-border/50" data-testid="panel-rewrite-recommendation">
+                        <div className="p-3 rounded-md border border-orange-500/30 bg-orange-500/5">
+                          <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                            <AlertTriangle className="h-4 w-4 text-orange-500" />
+                            Recomendación de Reescritura
+                          </p>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            {(currentProject.rewriteRecommendation as any).reason}
+                          </p>
+                          
+                          {(currentProject.rewriteRecommendation as any).threadsClosure?.length > 0 && (
+                            <div className="mb-3">
+                              <p className="text-xs font-medium mb-1">Tramas Pendientes:</p>
+                              <div className="space-y-1">
+                                {((currentProject.rewriteRecommendation as any).threadsClosure as string[]).map((thread, idx) => (
+                                  <p key={idx} className="text-xs text-muted-foreground pl-2 border-l-2 border-orange-500/30">{thread}</p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => {
+                                setRewriteFromChapter((currentProject.rewriteRecommendation as any).fromChapter);
+                                setRewriteFromInstructions("");
+                                setShowRewriteFromDialog(true);
+                              }}
+                              data-testid="button-accept-rewrite"
+                            >
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Reescribir desde Cap. {(currentProject.rewriteRecommendation as any).fromChapter}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setRewriteFromChapter(null);
+                                setRewriteFromInstructions("");
+                                setShowRewriteFromDialog(true);
+                              }}
+                              data-testid="button-custom-rewrite"
+                            >
+                              Elegir otro capítulo
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Reset Reviewer Button */}
                     <div className="mt-4 pt-4 border-t border-border/50">
                       <Button 
@@ -1914,24 +1854,12 @@ export default function Dashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          if (correctionSystem === 'detect-fix') {
-                            detectAndFixMutation.mutate({ id: currentProject.id, useGeminiQA });
-                          } else {
-                            finalReviewMutation.mutate({ id: currentProject.id, useGeminiQA });
-                          }
-                        }}
-                        disabled={finalReviewMutation.isPending || detectAndFixMutation.isPending}
-                        data-testid="button-run-correction-paused"
+                        onClick={() => finalReviewMutation.mutate({ id: currentProject.id, useGeminiQA })}
+                        disabled={finalReviewMutation.isPending}
+                        data-testid="button-analyze-manuscript-paused"
                       >
-                        {correctionSystem === 'detect-fix' ? (
-                          <Crosshair className="h-4 w-4 mr-2" />
-                        ) : (
-                          <ClipboardCheck className="h-4 w-4 mr-2" />
-                        )}
-                        {(finalReviewMutation.isPending || detectAndFixMutation.isPending) 
-                          ? "Procesando..." 
-                          : correctionSystem === 'detect-fix' ? "Detect & Fix" : "Revisión Final"}
+                        <ClipboardCheck className="h-4 w-4 mr-2" />
+                        {finalReviewMutation.isPending ? "Analizando..." : "Analizar Manuscrito"}
                       </Button>
                       <Button
                         variant="outline"
@@ -2048,7 +1976,9 @@ export default function Dashboard() {
                 <p className="text-xs text-muted-foreground">
                   {currentProject.title} - {currentProject.status === "completed" ? "Completado" : 
                    currentProject.status === "archived" ? "Archivado" :
-                   currentProject.status === "generating" ? "Generando" : "Pendiente"}
+                   currentProject.status === "generating" ? "Generando" : 
+                   currentProject.status === "awaiting_rewrite_decision" ? "Esperando decisión de reescritura" :
+                   currentProject.status === "final_review_in_progress" ? "Analizando manuscrito" : "Pendiente"}
                 </p>
               </CardContent>
             </Card>
@@ -2619,6 +2549,102 @@ export default function Dashboard() {
                 </>
               ) : (
                 "Reescribir Capítulo"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rewrite From Chapter Dialog */}
+      <Dialog open={showRewriteFromDialog} onOpenChange={(open) => {
+        setShowRewriteFromDialog(open);
+        if (!open) {
+          setRewriteFromChapter(null);
+          setRewriteFromInstructions("");
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Reescribir desde {rewriteFromChapter !== null 
+                ? rewriteFromChapter === 0 ? "el Prólogo" : `Capítulo ${rewriteFromChapter}`
+                : "..."}
+            </DialogTitle>
+            <DialogDescription>
+              Se eliminarán todos los capítulos desde el punto seleccionado y se regenerarán con las instrucciones del análisis previo incorporadas. Los capítulos anteriores se mantienen intactos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="rewrite-from-chapter">Reescribir desde capítulo</Label>
+              <select
+                id="rewrite-from-chapter"
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                value={rewriteFromChapter ?? ""}
+                onChange={(e) => setRewriteFromChapter(e.target.value ? parseInt(e.target.value) : null)}
+                data-testid="select-rewrite-from-chapter"
+              >
+                <option value="">Seleccionar capítulo...</option>
+                {chapters?.filter(c => c.status === "completed" || c.status === "approved")
+                  .sort((a, b) => a.chapterNumber - b.chapterNumber)
+                  .map(c => (
+                    <option key={c.id} value={c.chapterNumber}>
+                      {c.chapterNumber === 0 ? "Prólogo" : c.chapterNumber === 998 ? "Epílogo" : c.chapterNumber === 999 ? "Nota del Autor" : `Capítulo ${c.chapterNumber}`}: {c.title?.replace(/^Capítulo \d+\s*[-:]?\s*/i, '') || 'Sin título'}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            {rewriteFromChapter !== null && chapters && (
+              <div className="text-sm text-muted-foreground bg-muted p-3 rounded-md">
+                <p><strong>Se eliminarán:</strong> {chapters.filter(c => c.chapterNumber >= rewriteFromChapter).length} capítulos</p>
+                <p><strong>Se conservarán:</strong> {chapters.filter(c => c.chapterNumber < rewriteFromChapter && (c.status === "completed" || c.status === "approved")).length} capítulos</p>
+                {(currentProject?.rewriteRecommendation as any)?.instructions?.length > 0 && (
+                  <p className="text-orange-600 dark:text-orange-400 mt-2">Las instrucciones del análisis se inyectarán automáticamente.</p>
+                )}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="rewrite-from-instructions">Instrucciones adicionales (opcional)</Label>
+              <Textarea
+                id="rewrite-from-instructions"
+                placeholder="Ej: Cambiar el tono a más oscuro, añadir subplot romántico, hacer el desenlace más impactante..."
+                value={rewriteFromInstructions}
+                onChange={(e) => setRewriteFromInstructions(e.target.value)}
+                className="min-h-[100px]"
+                data-testid="input-rewrite-from-instructions"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => {
+              setShowRewriteFromDialog(false);
+              setRewriteFromChapter(null);
+              setRewriteFromInstructions("");
+            }}
+            data-testid="button-cancel-rewrite-from"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (currentProject && rewriteFromChapter !== null) {
+                  rewriteFromMutation.mutate({
+                    projectId: currentProject.id,
+                    fromChapter: rewriteFromChapter,
+                    customInstructions: rewriteFromInstructions.trim() || undefined,
+                  });
+                }
+              }}
+              disabled={rewriteFromMutation.isPending || rewriteFromChapter === null}
+              data-testid="button-confirm-rewrite-from"
+            >
+              {rewriteFromMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Iniciando reescritura...
+                </>
+              ) : (
+                "Confirmar Reescritura"
               )}
             </Button>
           </DialogFooter>

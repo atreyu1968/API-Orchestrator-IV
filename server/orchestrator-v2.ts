@@ -6465,6 +6465,15 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         const thoughtContext = await this.getChapterDecisionContext(project.id, chapterNumber);
         let enrichedConstraints = consistencyConstraints + thoughtContext;
 
+        if (project.rewriteGuidance) {
+          enrichedConstraints = "═══════════════════════════════════════════════════════════════════\n" +
+            "INSTRUCCIONES DE REESCRITURA (PRIORIDAD MÁXIMA)\n" +
+            "═══════════════════════════════════════════════════════════════════\n" +
+            project.rewriteGuidance +
+            "═══════════════════════════════════════════════════════════════════\n\n" +
+            enrichedConstraints;
+        }
+
         const patternTracker = getPatternTracker(project.id);
         const patternAnalysis = patternTracker.analyzeForChapter(chapterNumber);
         const patternAnalysisContext = patternTracker.formatForPrompt(patternAnalysis);
@@ -13081,6 +13090,218 @@ ${relatedIssue.instrucciones ? `Instrucciones: ${relatedIssue.instrucciones}` : 
     });
 
     return registry;
+  }
+
+  /**
+   * LitAgents 3.3: Single-pass manuscript analysis that produces a rewrite recommendation
+   * instead of iterative corrections. Runs FinalReviewer once, analyzes issues,
+   * and recommends rewriting from the earliest problematic chapter.
+   */
+  async runManuscriptAnalysis(project: any): Promise<{
+    score: number;
+    recommendation: {
+      fromChapter: number;
+      reason: string;
+      instructions: string[];
+      issuesSummary: string;
+      threadsClosure: string[];
+      totalIssues: number;
+      criticalIssues: number;
+    } | null;
+  }> {
+    this.callbacks.onAgentStatus("final-reviewer", "active", "Analizando manuscrito completo...");
+
+    const chapters = await storage.getChaptersByProject(project.id);
+    const completedChapters = chapters
+      .filter(c => c.status === "completed" || c.status === "approved")
+      .sort((a, b) => a.chapterNumber - b.chapterNumber);
+
+    if (completedChapters.length === 0) {
+      this.callbacks.onError("No hay capítulos completados para analizar");
+      return { score: 0, recommendation: null };
+    }
+
+    const worldBible = await storage.getWorldBibleByProject(project.id);
+    if (!worldBible) {
+      this.callbacks.onError("No se encontró la World Bible para este proyecto");
+      return { score: 0, recommendation: null };
+    }
+
+    let guiaEstilo = "";
+    if ((worldBible as any).styleGuide) {
+      guiaEstilo = (worldBible as any).styleGuide;
+    } else if (project.styleGuideId) {
+      const styleGuide = await storage.getStyleGuide(project.styleGuideId);
+      if (styleGuide?.content) {
+        guiaEstilo = await this.analyzeAndSaveStyleGuide(project.id, styleGuide.content);
+        if (guiaEstilo.length < 100) guiaEstilo = styleGuide.content.substring(0, 3000);
+      }
+    }
+
+    const worldBibleData: any = {
+      characters: worldBible.characters || [],
+      rules: worldBible.worldRules || [],
+      worldRules: worldBible.worldRules || [],
+      locations: (worldBible as any).locations || [],
+      settings: (worldBible as any).settings || [],
+      plotOutline: worldBible.plotOutline || {},
+      timeline: (worldBible as any).timeline || [],
+      plotDecisions: worldBible.plotDecisions || [],
+      persistentInjuries: worldBible.persistentInjuries || [],
+      threeActStructure: (worldBible.plotOutline as any)?.threeActStructure || null,
+      three_act_structure: (worldBible.plotOutline as any)?.three_act_structure || null,
+    };
+
+    const chaptersForReview = completedChapters.map(c => ({
+      numero: c.chapterNumber,
+      titulo: c.title || `Capítulo ${c.chapterNumber}`,
+      contenido: c.content || "",
+    }));
+
+    const rawActStructure = worldBibleData?.threeActStructure || worldBibleData?.three_act_structure;
+    const threeActStructure = rawActStructure as {
+      act1: { chapters: number[]; goal: string };
+      act2: { chapters: number[]; goal: string };
+      act3: { chapters: number[]; goal: string };
+    } | undefined;
+
+    const frForceProvider = "gemini" as const;
+    const reviewResult = await this.finalReviewer.execute({
+      projectTitle: project.title,
+      chapters: chaptersForReview,
+      worldBible: worldBibleData,
+      guiaEstilo,
+      pasadaNumero: 1,
+      threeActStructure,
+      onTrancheProgress: (currentTranche, totalTranches, chaptersInTranche) => {
+        this.callbacks.onAgentStatus("final-reviewer", "active", `Revisando ${chaptersInTranche}...`);
+      },
+    }, { forceProvider: frForceProvider });
+
+    this.addTokenUsage(reviewResult.tokenUsage);
+    await this.logAiUsage(project.id, "final-reviewer", "gemini-3-pro-preview", reviewResult.tokenUsage);
+
+    if (!reviewResult.result) {
+      this.callbacks.onError("Error al analizar el manuscrito");
+      await storage.updateProject(project.id, { status: "paused" });
+      return { score: 0, recommendation: null };
+    }
+
+    const { veredicto, puntuacion_global, issues, capitulos_para_reescribir, resumen_general } = reviewResult.result;
+
+    await storage.updateProject(project.id, {
+      finalReviewResult: {
+        ...reviewResult.result,
+        analysisOnly: true,
+        analysisDate: new Date().toISOString(),
+      } as any,
+      finalScore: puntuacion_global,
+    });
+
+    await storage.createActivityLog({
+      projectId: project.id,
+      level: puntuacion_global >= 9 ? "success" : puntuacion_global >= 7 ? "warn" : "error",
+      agentRole: "final-reviewer",
+      message: `Análisis completo: ${puntuacion_global}/10 — ${veredicto}. ${issues?.length || 0} problemas detectados.`,
+    });
+
+    if (puntuacion_global >= 9 && (!issues || issues.length === 0)) {
+      this.callbacks.onAgentStatus("final-reviewer", "completed",
+        `Manuscrito aprobado: ${puntuacion_global}/10. Sin problemas detectados.`);
+
+      await storage.updateProject(project.id, {
+        rewriteRecommendation: null,
+        status: "completed",
+      });
+
+      this.callbacks.onProjectComplete();
+      return { score: puntuacion_global, recommendation: null };
+    }
+
+    const allIssues = issues || [];
+    const criticalIssues = allIssues.filter(i => i.severidad === "critica");
+    const majorIssues = allIssues.filter(i => i.severidad === "mayor");
+
+    let affectedChapters: number[] = capitulos_para_reescribir || [];
+    if (affectedChapters.length === 0 && allIssues.length > 0) {
+      for (const issue of allIssues) {
+        if (issue.capitulos_afectados?.length > 0) {
+          affectedChapters.push(...issue.capitulos_afectados.map(ch => this.normalizeToDbChapterNumber(ch)));
+        }
+      }
+      affectedChapters = Array.from(new Set(affectedChapters));
+    }
+
+    const regularChapters = affectedChapters
+      .filter(ch => ch > 0 && ch < 998)
+      .sort((a, b) => a - b);
+
+    let fromChapter: number;
+    if (regularChapters.length > 0) {
+      fromChapter = regularChapters[0];
+    } else if (affectedChapters.length > 0) {
+      fromChapter = Math.min(...affectedChapters);
+    } else {
+      const totalRegularChapters = completedChapters.filter(c => c.chapterNumber > 0 && c.chapterNumber < 998);
+      fromChapter = Math.max(1, Math.floor(totalRegularChapters.length * 0.6));
+    }
+
+    const instructions: string[] = [];
+    const threadsClosure: string[] = [];
+
+    for (const issue of allIssues) {
+      if (issue.instrucciones_correccion) {
+        const chapInfo = issue.capitulos_afectados?.length
+          ? `(Cap ${issue.capitulos_afectados.join(', ')})`
+          : '';
+        instructions.push(`[${(issue.severidad || 'mayor').toUpperCase()}] ${issue.descripcion} ${chapInfo} → ${issue.instrucciones_correccion}`);
+      }
+    }
+
+    const plotThreads = await storage.getPlotThreadsByProject(project.id);
+    const unresolvedThreads = plotThreads.filter(t => t.status === "active" || t.status === "developing");
+    for (const thread of unresolvedThreads) {
+      threadsClosure.push(`Cerrar trama "${thread.title}": ${thread.description || 'resolver antes del final'}`);
+    }
+
+    const issuesSummary = allIssues.slice(0, 10).map(i =>
+      `- [${(i.severidad || 'mayor').toUpperCase()}] ${i.categoria}: ${(i.descripcion || '').substring(0, 120)}`
+    ).join('\n');
+
+    const reason = `Se detectaron ${allIssues.length} problemas (${criticalIssues.length} críticos, ${majorIssues.length} mayores). ` +
+      `Los primeros problemas aparecen en el capítulo ${fromChapter}. ` +
+      `Reescribiendo desde ahí, se pueden resolver ${affectedChapters.length} capítulos afectados` +
+      (unresolvedThreads.length > 0 ? ` y cerrar ${unresolvedThreads.length} tramas pendientes` : '') +
+      `. Puntuación actual: ${puntuacion_global}/10.`;
+
+    const recommendation = {
+      fromChapter,
+      reason,
+      instructions,
+      issuesSummary,
+      threadsClosure,
+      totalIssues: allIssues.length,
+      criticalIssues: criticalIssues.length,
+    };
+
+    await storage.updateProject(project.id, {
+      rewriteRecommendation: recommendation as any,
+      status: "awaiting_rewrite_decision",
+    });
+
+    this.callbacks.onAgentStatus("final-reviewer", "completed",
+      `Análisis: ${puntuacion_global}/10. Recomendación: reescribir desde capítulo ${fromChapter} (${allIssues.length} problemas).`);
+
+    await storage.createActivityLog({
+      projectId: project.id,
+      level: "info",
+      agentRole: "orchestrator",
+      message: `Recomendación: reescribir desde capítulo ${fromChapter}. ${allIssues.length} problemas, ${unresolvedThreads.length} tramas sin cerrar.`,
+    });
+
+    await this.updateProjectTokens(project.id);
+
+    return { score: puntuacion_global, recommendation };
   }
 
   /**
