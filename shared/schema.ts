@@ -232,6 +232,7 @@ export const plotThreads = pgTable("plot_threads", {
   status: text("status").notNull().default("active"), // active, resolved, ignored
   intensityScore: integer("intensity_score").default(5), // 1-10
   lastUpdatedChapter: integer("last_updated_chapter").default(0),
+  resolutionChapter: integer("resolution_chapter"), // LitAgents 3.3: Planned resolution chapter
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

@@ -6062,7 +6062,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           } as any,
         });
 
-        // Store Plot Threads for Narrative Director
+        // Store Plot Threads for Narrative Director (with resolution_chapter from GA)
         for (const thread of plotThreads) {
           await storage.createProjectPlotThread({
             projectId: project.id,
@@ -6072,7 +6072,8 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             status: "active",
             intensityScore: 5,
             lastUpdatedChapter: 0,
-          });
+            resolutionChapter: thread.resolution_chapter || null,
+          } as any);
         }
 
         // LitAgents 2.1: Initialize Universal Consistency Database
@@ -6158,6 +6159,32 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
                 console.log(`[OrchestratorV2] ${fixesApplied} outline fixes applied and persisted`);
               }
               delete bibleValidation.correctedBible._outlineFixes;
+            }
+            
+            // LitAgents 3.3: Apply thread resolution fixes to in-memory plotThreads AND persist to DB
+            if (bibleValidation.correctedBible._threadResolutionFixes && Array.isArray(bibleValidation.correctedBible._threadResolutionFixes)) {
+              for (const fix of bibleValidation.correctedBible._threadResolutionFixes) {
+                if (fix.thread_name && fix.resolution_chapter) {
+                  const thread = plotThreads.find((t: any) => t.name.toLowerCase() === fix.thread_name.toLowerCase());
+                  if (thread) {
+                    (thread as any).resolution_chapter = fix.resolution_chapter;
+                    console.log(`[OrchestratorV2] Thread "${fix.thread_name}" resolution assigned to Cap ${fix.resolution_chapter}`);
+                    
+                    // Persist to DB
+                    try {
+                      const dbThreads = await storage.getPlotThreadsByProject(project.id);
+                      const dbThread = dbThreads.find(t => t.name.toLowerCase() === fix.thread_name.toLowerCase());
+                      if (dbThread) {
+                        await storage.updateProjectPlotThread(dbThread.id, { resolutionChapter: fix.resolution_chapter });
+                        console.log(`[OrchestratorV2] Persisted resolution_chapter=${fix.resolution_chapter} for thread "${fix.thread_name}" (id=${dbThread.id})`);
+                      }
+                    } catch (err) {
+                      console.error(`[OrchestratorV2] Failed to persist thread resolution:`, err);
+                    }
+                  }
+                }
+              }
+              delete bibleValidation.correctedBible._threadResolutionFixes;
             }
             
             worldBible = bibleValidation.correctedBible;
@@ -7533,9 +7560,11 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
       return `${label}: "${ch.title}" - ${ch.summary || 'Sin resumen'} [Evento clave: ${ch.key_event || 'N/A'}]`;
     }).join('\n');
 
-    const threadsContent = plotThreads ? plotThreads.map(t => 
-      `- ${t.name}: ${t.description || t.goal || 'Sin descripción'}`
-    ).join('\n') : 'No definidos';
+    const threadsContent = plotThreads ? plotThreads.map(t => {
+      const resChapter = (t as any).resolution_chapter;
+      const resInfo = resChapter ? ` [Resolución planificada: Cap ${resChapter}]` : ' [SIN RESOLUCIÓN PLANIFICADA]';
+      return `- ${t.name}: ${t.description || t.goal || 'Sin descripción'}${resInfo}`;
+    }).join('\n') : 'No definidos';
 
     let previousIssuesSection = '';
     if (previousIssues && previousIssues.length > 0) {
@@ -7573,14 +7602,20 @@ DETECTA SOLO ESTOS TIPOS DE PROBLEMAS:
 5. SUBTRAMAS: Hilos que se ABREN EXPLÍCITAMENTE pero NUNCA se resuelven ni mencionan de nuevo
 6. ESTRUCTURA: Clímax AUSENTE o actos sin contenido narrativo
 7. COHERENCIA ESCALETA-BIBLIA: Hechos en la escaleta que CONTRADICEN DIRECTAMENTE datos de la biblia
+8. CIERRE DE TRAMAS (CRÍTICO): Cada hilo narrativo DEBE tener un punto de resolución CLARO en la escaleta. Verifica que:
+   - Cada plot_thread tiene un capítulo donde se resuelve EXPLÍCITAMENTE (mencionado en summary o key_event)
+   - Si un hilo tiene "resolution_chapter", verifica que ESE capítulo realmente menciona la resolución del hilo
+   - Si un hilo NO tiene resolución planificada en ningún capítulo de la escaleta, es SIEMPRE "critica"
+   - Si la resolución es vaga o implícita (no se menciona explícitamente el cierre), es "mayor"
 
 === REGLAS ESTRICTAS DE SEVERIDAD ===
 IMPORTANTE: La mayoría de los problemas deben ser "menor". Reserva "critica" y "mayor" para problemas FACTUALES y VERIFICABLES.
 
-- "critica": SOLO contradicciones FACTUALES verificables. Ejemplos:
+- "critica": SOLO contradicciones FACTUALES verificables O tramas sin cierre. Ejemplos:
   • La biblia dice que X muere en Cap 5, pero aparece vivo en Cap 20
   • Un personaje referenciado en la escaleta NO EXISTE en la biblia
   • Una regla del mundo dice A, pero un evento depende de que sea NO-A
+  • Un hilo narrativo NO tiene resolución planificada en NINGÚN capítulo de la escaleta
   
 - "mayor": SOLO problemas estructurales CONCRETOS y verificables. Ejemplos:
   • Una subtrama se abre explícitamente y NUNCA se cierra ni menciona de nuevo
@@ -7631,6 +7666,76 @@ RESPONDE EXCLUSIVAMENTE EN JSON:
 
       const detected = JSON.parse(detectJsonMatch[0]);
       const issues = detected.issues || [];
+      
+      // LitAgents 3.3: Code-level thread closure verification (AI-independent)
+      if (plotThreads && plotThreads.length > 0) {
+        const outlineSummaries = outline.map(ch => {
+          const text = `${ch.summary || ''} ${ch.key_event || ''} ${ch.title || ''}`.toLowerCase();
+          return { chapter_num: ch.chapter_num, text };
+        });
+        
+        for (const thread of plotThreads) {
+          const threadName = (thread.name || '').toLowerCase();
+          const resChapter = (thread as any).resolution_chapter;
+          const threadGoal = ((thread as any).goal || '').toLowerCase();
+          const threadDesc = ((thread as any).description || '').toLowerCase();
+          const allThreadText = `${threadName} ${threadGoal} ${threadDesc}`;
+          const threadWords = Array.from(new Set(allThreadText.split(/\s+/).filter((w: string) => w.length > 3)));
+          
+          const mentionedInAnyChapter = outlineSummaries.some(ch => 
+            threadWords.some((word: string) => ch.text.includes(word))
+          );
+          
+          const hasValidResolution = resChapter && outline.some(ch => ch.chapter_num === resChapter);
+          
+          if (!hasValidResolution && !mentionedInAnyChapter) {
+            const alreadyReported = issues.some((i: any) => 
+              i.type === 'subtrama' && i.description?.toLowerCase().includes(threadName)
+            );
+            if (!alreadyReported) {
+              issues.push({
+                type: 'subtrama',
+                severity: 'critica',
+                description: `El hilo narrativo "${thread.name}" NO tiene resolución planificada en la escaleta y no se menciona en ningún capítulo. Debe asignarse un capítulo de resolución.`,
+                fix: `Asignar un capítulo de resolución para "${thread.name}" y mencionarlo explícitamente en el summary/key_event de ese capítulo.`
+              });
+              console.log(`[BibleValidator] Code-level: Added CRITICAL issue for unresolved thread "${thread.name}"`);
+            }
+          } else if (!hasValidResolution) {
+            const alreadyReported = issues.some((i: any) => 
+              i.type === 'subtrama' && i.description?.toLowerCase().includes(threadName)
+            );
+            if (!alreadyReported) {
+              issues.push({
+                type: 'subtrama',
+                severity: 'mayor',
+                description: `El hilo narrativo "${thread.name}" se menciona en la escaleta pero no tiene un capítulo de resolución (resolution_chapter) asignado explícitamente.`,
+                fix: `Asignar resolution_chapter para "${thread.name}" y asegurar que el summary del capítulo de resolución mencione explícitamente el cierre de este hilo.`
+              });
+              console.log(`[BibleValidator] Code-level: Added MAJOR issue for thread "${thread.name}" without resolution_chapter`);
+            }
+          } else if (hasValidResolution) {
+            const resolutionEntry = outlineSummaries.find(ch => ch.chapter_num === resChapter);
+            if (resolutionEntry) {
+              const threadMentioned = threadWords.some((word: string) => resolutionEntry.text.includes(word));
+              if (!threadMentioned) {
+                const alreadyReported = issues.some((i: any) => 
+                  i.type === 'subtrama' && i.description?.toLowerCase().includes(threadName) && i.description?.toLowerCase().includes('resolución')
+                );
+                if (!alreadyReported) {
+                  issues.push({
+                    type: 'subtrama',
+                    severity: 'mayor',
+                    description: `El hilo "${thread.name}" tiene resolution_chapter=${resChapter}, pero el summary/key_event de Cap ${resChapter} NO menciona explícitamente la resolución de este hilo.`,
+                    fix: `Modificar el summary o key_event del Cap ${resChapter} para incluir explícitamente la resolución del hilo "${thread.name}".`
+                  });
+                  console.log(`[BibleValidator] Code-level: Resolution chapter ${resChapter} for "${thread.name}" doesn't mention thread closure`);
+                }
+              }
+            }
+          }
+        }
+      }
       
       // POST-VALIDATION FILTER: Auto-correct misclassified severities
       const subjectivePatterns = /podría|debería|convendría|podria|deberia|conviene|puede ser más|puede mejorar|falta.*desarrollo|falta.*profundidad|necesita más|podría ser más|abrupto|poco convincente|algo.*rápid|algo.*lent|desaprovechad|insuficiente(?!.*capítulo)/i;
@@ -7733,19 +7838,25 @@ ${outlineContent}
    - Incluye chapter_num, corrected_title (opcional), corrected_summary (obligatorio), corrected_key_event (opcional).
    - Si el problema es de pacing (ej: revelación demasiado temprana), mueve la información entre capítulos redistribuyendo los summaries.
    
+4. CIERRE DE TRAMAS (thread_resolution_fixes): Si hay hilos narrativos sin resolución:
+   - Asigna un capítulo de resolución (preferiblemente en Acto 3).
+   - Modifica el summary/key_event del capítulo elegido para mencionar EXPLÍCITAMENTE el cierre del hilo.
+
 RESPONDE EXCLUSIVAMENTE EN JSON:
 {
   "corrections": {
     "characters": [ARRAY COMPLETO de TODOS los personajes con correcciones integradas],
     "rules": [ARRAY COMPLETO de reglas corregidas] o null,
-    "outline_fixes": [{"chapter_num": N, "corrected_summary": "...", "corrected_title": "...", "corrected_key_event": "..."}]
+    "outline_fixes": [{"chapter_num": N, "corrected_summary": "...", "corrected_title": "...", "corrected_key_event": "..."}],
+    "thread_resolution_fixes": [{"thread_name": "Nombre del hilo", "resolution_chapter": N, "resolution_description": "Cómo se resuelve en ese capítulo"}]
   }
 }
 
 VERIFICACIÓN FINAL antes de responder:
 - ¿Incluiste TODOS los ${(worldBible.characters || []).length} personajes existentes + los nuevos?
 - ¿Cada personaje tiene name, role, description, arc, relationships?
-- ¿Los outline_fixes abordan TODOS los problemas de estructura/coherencia listados?`;
+- ¿Los outline_fixes abordan TODOS los problemas de estructura/coherencia listados?
+- ¿TODOS los hilos narrativos tienen un capítulo de resolución asignado?`;
 
       const correctResponse = await geminiGenerateWithRetry(correctPrompt, "gemini-2.0-flash", "BibleValidator-Correct");
 
@@ -7805,13 +7916,40 @@ VERIFICACIÓN FINAL antes de responder:
         console.log(`[BibleValidator] Outline fixes: ${corrections.outline_fixes.length} chapters to fix`);
       }
 
+      // LitAgents 3.3: Apply thread resolution fixes
+      if (corrections.thread_resolution_fixes && Array.isArray(corrections.thread_resolution_fixes) && corrections.thread_resolution_fixes.length > 0) {
+        correctedBible._threadResolutionFixes = corrections.thread_resolution_fixes;
+        console.log(`[BibleValidator] Thread resolution fixes: ${corrections.thread_resolution_fixes.length} threads resolved`);
+        
+        for (const fix of corrections.thread_resolution_fixes) {
+          if (fix.resolution_chapter && fix.thread_name) {
+            if (!correctedBible._outlineFixes) correctedBible._outlineFixes = [];
+            const existingOutlineFix = correctedBible._outlineFixes.find((of: any) => of.chapter_num === fix.resolution_chapter);
+            if (existingOutlineFix) {
+              if (existingOutlineFix.corrected_summary && !existingOutlineFix.corrected_summary.includes(fix.thread_name)) {
+                existingOutlineFix.corrected_summary += ` [Resolución del hilo: ${fix.thread_name} - ${fix.resolution_description || ''}]`;
+              }
+            } else {
+              const outlineEntry = outline.find(ch => ch.chapter_num === fix.resolution_chapter);
+              if (outlineEntry) {
+                correctedBible._outlineFixes.push({
+                  chapter_num: fix.resolution_chapter,
+                  corrected_summary: `${outlineEntry.summary} [Resolución del hilo: ${fix.thread_name} - ${fix.resolution_description || ''}]`,
+                });
+              }
+            }
+          }
+        }
+      }
+
       // Log correction summary
       const charCount = corrections.characters?.length || 0;
       const rulesCount = corrections.rules?.length || 0;
       const outlineFixCount = corrections.outline_fixes?.length || 0;
+      const threadFixCount = corrections.thread_resolution_fixes?.length || 0;
       await storage.createActivityLog({
         projectId, level: "info", agentRole: "bible-validator",
-        message: `Correcciones generadas: ${charCount} personajes, ${rulesCount} reglas, ${outlineFixCount} fixes de escaleta.`,
+        message: `Correcciones generadas: ${charCount} personajes, ${rulesCount} reglas, ${outlineFixCount} fixes de escaleta, ${threadFixCount} resoluciones de hilos.`,
       });
 
       const statusMsg = `${criticalIssues.length} críticos, ${majorIssues.length} mayores detectados — correcciones aplicadas`;
@@ -13261,7 +13399,7 @@ ${relatedIssue.instrucciones ? `Instrucciones: ${relatedIssue.instrucciones}` : 
     const plotThreads = await storage.getPlotThreadsByProject(project.id);
     const unresolvedThreads = plotThreads.filter(t => t.status === "active" || t.status === "developing");
     for (const thread of unresolvedThreads) {
-      threadsClosure.push(`Cerrar trama "${thread.title}": ${thread.description || 'resolver antes del final'}`);
+      threadsClosure.push(`Cerrar trama "${thread.name}": ${thread.description || 'resolver antes del final'}`);
     }
 
     const issuesSummary = allIssues.slice(0, 10).map(i =>

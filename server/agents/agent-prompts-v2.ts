@@ -882,7 +882,7 @@ export const PROMPTS_V2 = {
         }
       },
       "plot_threads": [ 
-        { "name": "Nombre del hilo narrativo", "description": "Qué impulsa este hilo", "goal": "Resolución esperada" }
+        { "name": "Nombre del hilo narrativo", "description": "Qué impulsa este hilo", "goal": "Resolución esperada", "resolution_chapter": 10 }
       ],
       ${chapters > 20 ? `"timeline_master": {
         "story_duration": "X días/semanas/meses",
@@ -971,8 +971,31 @@ export const PROMPTS_V2 = {
     ║ - Los demás capítulos deben tener structural_role: null        ║
     ╚══════════════════════════════════════════════════════════════════╝
 
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║ ⚠️ CIERRE OBLIGATORIO DE TODOS LOS HILOS NARRATIVOS            ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║                                                                  ║
+    ║ CADA hilo narrativo (plot_thread) DEBE tener un capítulo de     ║
+    ║ resolución asignado EXPLÍCITAMENTE en "resolution_chapter".     ║
+    ║                                                                  ║
+    ║ REGLAS:                                                          ║
+    ║ 1. TODOS los hilos DEBEN cerrarse ANTES del epílogo.            ║
+    ║ 2. El "resolution_chapter" debe ser un chapter_num EXISTENTE    ║
+    ║    en el outline.                                                ║
+    ║ 3. El "summary" o "key_event" del capítulo de resolución DEBE   ║
+    ║    mencionar EXPLÍCITAMENTE el cierre de ese hilo.              ║
+    ║ 4. Los hilos principales deben resolverse en el Acto 3.         ║
+    ║ 5. Los hilos secundarios pueden resolverse desde el Acto 2.     ║
+    ║ 6. NUNCA dejes un hilo sin "resolution_chapter".                ║
+    ║                                                                  ║
+    ║ VERIFICACIÓN: El sistema RECHAZARÁ la estructura si algún hilo  ║
+    ║ narrativo no tiene un capítulo de resolución asignado o si el   ║
+    ║ capítulo de resolución no existe en el outline.                  ║
+    ╚══════════════════════════════════════════════════════════════════╝
+
     Piensa paso a paso en la estructura de 3 actos antes de generar el JSON.
     Asegúrate de que cada capítulo tenga un propósito claro y avance la trama.
+    ANTES DE FINALIZAR: Verifica que cada plot_thread tiene un resolution_chapter válido y que el outline lo refleja.
   `,
 
   // 2. CHAPTER ARCHITECT (R1) - Divide capítulo en escenas

@@ -75,6 +75,7 @@ export interface GlobalArchitectOutput {
     name: string;
     description?: string;
     goal: string;
+    resolution_chapter?: number;
   }>;
   timeline_master?: {
     story_duration?: string;
@@ -660,13 +661,73 @@ REGLAS:
     
     console.log(`[GlobalArchitect] Successfully parsed and validated: ${regularChapters.length} regular chapters, ${parsed.plot_threads?.length || 0} threads`);
     
+    // LitAgents 3.3: Validate ALL plot threads have resolution_chapter assigned
+    if (parsed.plot_threads && parsed.plot_threads.length > 0) {
+      const outlineChapterNums = new Set(parsed.outline.map(ch => ch.chapter_num));
+      const threadsWithoutResolution: string[] = [];
+      const threadsWithInvalidChapter: string[] = [];
+      
+      for (const thread of parsed.plot_threads) {
+        if (!thread.resolution_chapter && thread.resolution_chapter !== 0) {
+          threadsWithoutResolution.push(thread.name);
+        } else if (!outlineChapterNums.has(thread.resolution_chapter)) {
+          threadsWithInvalidChapter.push(`${thread.name} (cap ${thread.resolution_chapter} no existe)`);
+        }
+      }
+      
+      const allUnresolved = [...threadsWithoutResolution, ...threadsWithInvalidChapter];
+      
+      if (allUnresolved.length > 0) {
+        console.warn(`[GlobalArchitect] ${allUnresolved.length} plot threads without valid resolution. Attempting auto-fix...`);
+        
+        const lastRegularChapter = Math.max(...regularChapters.map(ch => ch.chapter_num));
+        const act3Chapters = regularChapters
+          .filter(ch => ch.chapter_num >= Math.ceil(lastRegularChapter * 0.7))
+          .map(ch => ch.chapter_num)
+          .sort((a, b) => a - b);
+        
+        let fixedCount = 0;
+        for (const thread of parsed.plot_threads) {
+          const needsFix = !thread.resolution_chapter || !outlineChapterNums.has(thread.resolution_chapter);
+          if (needsFix && act3Chapters.length > 0) {
+            const assignedChapter = act3Chapters[Math.min(fixedCount, act3Chapters.length - 1)];
+            thread.resolution_chapter = assignedChapter;
+            
+            const outlineEntry = parsed.outline.find(ch => ch.chapter_num === assignedChapter);
+            if (outlineEntry && !outlineEntry.summary.toLowerCase().includes(thread.name.toLowerCase())) {
+              outlineEntry.summary += ` [Resolución del hilo: ${thread.name}]`;
+            }
+            fixedCount++;
+            console.log(`[GlobalArchitect] Auto-assigned resolution for "${thread.name}" -> Cap ${assignedChapter}`);
+          }
+        }
+        
+        const stillUnresolved = parsed.plot_threads.filter(t => 
+          !t.resolution_chapter || !outlineChapterNums.has(t.resolution_chapter)
+        );
+        
+        if (stillUnresolved.length > 0) {
+          const unresolvedNames = stillUnresolved.map(t => t.name).join(', ');
+          console.error(`[GlobalArchitect] CRITICAL: ${stillUnresolved.length} threads still unresolved after auto-fix: ${unresolvedNames}`);
+          return {
+            ...response,
+            error: `La estructura narrativa tiene ${stillUnresolved.length} hilo(s) sin resolución planificada: ${unresolvedNames}. Cada hilo narrativo debe tener un capítulo de resolución asignado. Por favor, regenere el proyecto.`,
+            parsed: undefined
+          };
+        } else {
+          console.log(`[GlobalArchitect] All ${parsed.plot_threads.length} plot threads now have valid resolution chapters`);
+        }
+      } else {
+        console.log(`[GlobalArchitect] All ${parsed.plot_threads.length} plot threads have valid resolution chapters`);
+      }
+    }
+    
     // LitAgents 2.8: Validate subplot coherence BEFORE writing begins
     const subplotValidation = this.validateSubplotCoherence(parsed);
     if (subplotValidation.hasIssues) {
       console.warn(`[GlobalArchitect] SUBPLOT COHERENCE ISSUES DETECTED:`);
       subplotValidation.issues.forEach(issue => console.warn(`  - ${issue}`));
       
-      // Attach warnings to the response but don't fail - let the user decide
       return { 
         ...response, 
         parsed,
