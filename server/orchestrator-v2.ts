@@ -2517,6 +2517,60 @@ ${decisions.join('\n')}
   }
 
   // ============================================
+  // GARBLED TEXT DETECTION (LitAgents 3.3)
+  // ============================================
+
+  /**
+   * Detect garbled/corrupted text where words are truncated throughout (not just at the end).
+   * This happens when the AI produces corrupted output with words like "incorpor" instead of 
+   * "incorporó", "camin" instead of "caminó", etc.
+   * 
+   * Detection: In Spanish prose, words almost always end in vowels, -n, -s, -r, -l, -d, -z, -y, -x.
+   * If a high percentage of words end in unusual consonant clusters, the text is garbled.
+   * Additional check: abnormally high ratio of very short words (1-3 chars) that aren't articles/prepositions.
+   */
+  private detectGarbledText(text: string): boolean {
+    if (!text || text.length < 200) return false;
+
+    const segments: string[] = [];
+    if (text.length <= 6000) {
+      segments.push(text);
+    } else {
+      segments.push(text.substring(0, 2000));
+      const mid = Math.floor(text.length / 2);
+      segments.push(text.substring(mid - 1000, mid + 1000));
+      segments.push(text.substring(text.length - 2000));
+    }
+    const sampleText = segments.join(' ');
+    
+    const words = sampleText
+      .replace(/["""''«».,;:!?¡¿()—\-\[\]\n\r#*_~`]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 3 && /^[a-záéíóúüñ]+$/i.test(w));
+
+    if (words.length < 30) return false;
+
+    const validSpanishEndings = /[aeiouyáéíóúnslrdz]$/i;
+
+    let badEndingCount = 0;
+
+    for (const word of words) {
+      const lower = word.toLowerCase();
+      if (!validSpanishEndings.test(lower) && lower.length >= 4) {
+        badEndingCount++;
+      }
+    }
+
+    const badEndingRatio = badEndingCount / words.length;
+
+    if (badEndingRatio > 0.15) {
+      console.warn(`[GarbledDetector] Text appears garbled: badEndingRatio=${(badEndingRatio * 100).toFixed(1)}% (${words.length} words sampled from ${segments.length} segments)`);
+      return true;
+    }
+
+    return false;
+  }
+
   // STRUCTURAL ISSUE DETECTION (LitAgents 2.7)
   // ============================================
   
@@ -6415,15 +6469,28 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         const minWords = isSpecialChapter(c.chapterNumber) ? MIN_WORDS_SPECIAL_CHAPTER : MIN_WORDS_REGULAR_CHAPTER;
         return wordCount < minWords;
       });
+
+      const garbledChapters = existingChapters.filter(c => {
+        if (c.status !== "completed" && c.status !== "approved") return false;
+        if (!c.content || c.content.length < 200) return false;
+        return this.detectGarbledText(c.content);
+      });
+
+      const chaptersToRegenerate = new Map<number, any>();
+      for (const ch of [...truncatedChapters, ...garbledChapters]) {
+        chaptersToRegenerate.set(ch.id, ch);
+      }
       
-      if (truncatedChapters.length > 0) {
-        console.log(`[OrchestratorV2] [CRITICAL] Found ${truncatedChapters.length} truncated chapters - will regenerate them`);
-        this.callbacks.onAgentStatus("orchestrator", "active", `Detectados ${truncatedChapters.length} capitulos truncados - regenerando...`);
+      if (chaptersToRegenerate.size > 0) {
+        const truncCount = truncatedChapters.length;
+        const garbledCount = garbledChapters.length;
+        console.log(`[OrchestratorV2] [CRITICAL] Found ${chaptersToRegenerate.size} problematic chapters (${truncCount} truncated, ${garbledCount} garbled) - will regenerate them`);
+        this.callbacks.onAgentStatus("orchestrator", "active", `Detectados ${chaptersToRegenerate.size} capitulos problemáticos — regenerando...`);
         
-        // Mark truncated chapters as "draft" so they get regenerated
-        for (const chapter of truncatedChapters) {
+        for (const chapter of Array.from(chaptersToRegenerate.values())) {
           await storage.updateChapter(chapter.id, { status: "draft" as any });
-          console.log(`[OrchestratorV2] Marked Chapter ${chapter.chapterNumber} as draft (was truncated: ${chapter.content?.split(/\s+/).length || 0} words)`);
+          const reason = this.detectGarbledText(chapter.content || '') ? 'garbled' : 'truncated';
+          console.log(`[OrchestratorV2] Marked Chapter ${chapter.chapterNumber} as draft (${reason}: ${chapter.content?.split(/\s+/).length || 0} words)`);
         }
       }
       
@@ -6435,7 +6502,9 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             if (c.status !== "completed" && c.status !== "approved") return false;
             const wordCount = c.content?.split(/\s+/).length || 0;
             const minWords = isSpecialChapter(c.chapterNumber) ? MIN_WORDS_SPECIAL_CHAPTER : MIN_WORDS_REGULAR_CHAPTER;
-            return wordCount >= minWords;
+            if (wordCount < minWords) return false;
+            if (c.content && this.detectGarbledText(c.content)) return false;
+            return true;
           })
           .map(c => c.chapterNumber)
       );
@@ -7008,17 +7077,26 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         const endsWithSentence = /[.!?…»"\u201D\u2019]$/.test(trimmedText);
         const lastLine = trimmedText.split('\n').filter(l => l.trim().length > 0).pop() || '';
         const lastLineWords = lastLine.trim().split(/\s+/).length;
-        const isTruncated = !endsWithSentence || lastLineWords < 3;
+        const isEndTruncated = !endsWithSentence || lastLineWords < 3;
+
+        const isGarbled = this.detectGarbledText(finalText);
+        const isTruncated = isEndTruncated || isGarbled;
         
         if (isTruncated && finalText.length > 500) {
-          console.warn(`[OmniWriter] Chapter ${chapterNumber}: Text appears truncated (last char: "${lastChar}", last line words: ${lastLineWords}). Repairing...`);
+          const truncationType = isGarbled ? 'garbled' : 'end-truncated';
+          console.warn(`[OmniWriter] Chapter ${chapterNumber}: Text appears ${truncationType} (last char: "${lastChar}", last line words: ${lastLineWords}, garbled: ${isGarbled}). Repairing...`);
           await storage.createActivityLog({
             projectId: project.id, level: "warn", agentRole: "omniwriter",
-            message: `Cap ${chapterNumber}: Texto truncado detectado — reparando final del capítulo...`,
+            message: isGarbled
+              ? `Cap ${chapterNumber}: Texto CORRUPTO detectado — palabras truncadas a lo largo del capítulo. Requiere reescritura completa.`
+              : `Cap ${chapterNumber}: Texto truncado detectado — reparando final del capítulo...`,
           });
+          const repairDescription = isGarbled
+            ? `El texto del capítulo está GRAVEMENTE CORRUPTO — contiene palabras truncadas/cortadas a lo largo de todo el texto (ejemplo: "incorpor" en lugar de "incorporó", "camin" en lugar de "caminó"). DEBES:\n1. REESCRIBIR COMPLETAMENTE el capítulo con todas las palabras completas y correctas\n2. Mantener la misma trama, eventos y escenas descritas en el texto corrupto\n3. Escribir cada palabra completa — NINGUNA palabra debe estar cortada\n4. Mantener el estilo, tono y extensión aproximada del capítulo original`
+            : `El texto del capítulo está TRUNCADO — termina a mitad de frase o párrafo. DEBES:\n1. Completar la última frase/párrafo de forma natural\n2. Asegurar que el capítulo tiene un cierre coherente (puede ser un cliffhanger, pero debe ser una frase completa)\n3. NO elimines contenido existente, solo completa el final\n4. Mantén el estilo y tono del capítulo`;
           const repairResult = await this.smartEditor.fullRewrite({
             chapterContent: finalText,
-            errorDescription: `El texto del capítulo está TRUNCADO — termina a mitad de frase o párrafo. DEBES:\n1. Completar la última frase/párrafo de forma natural\n2. Asegurar que el capítulo tiene un cierre coherente (puede ser un cliffhanger, pero debe ser una frase completa)\n3. NO elimines contenido existente, solo completa el final\n4. Mantén el estilo y tono del capítulo`,
+            errorDescription: repairDescription,
             worldBible: {
               characters: ((worldBible as any).characters || (worldBible as any).personajes || []) as any[],
               locations: ((worldBible as any).locations || (worldBible as any).lugares || []) as any[],
