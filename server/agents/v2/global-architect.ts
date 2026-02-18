@@ -538,8 +538,19 @@ export class GlobalArchitectAgent extends BaseAgent {
     );
     const expectedChapters = input.chapterCount;
     
-    if (regularChapters.length !== expectedChapters) {
-      console.warn(`[GlobalArchitect] CHAPTER COUNT MISMATCH: Expected ${expectedChapters} regular chapters, got ${regularChapters.length}`);
+    const maxChapters = expectedChapters + Math.ceil(expectedChapters * 0.3);
+    if (regularChapters.length > maxChapters) {
+      console.warn(`[GlobalArchitect] TOO MANY CHAPTERS: Got ${regularChapters.length}, max allowed is ${maxChapters}. Trimming excess.`);
+      parsed.outline = [
+        ...parsed.outline.filter(ch => ch.chapter_num <= 0 || ch.chapter_num >= 998),
+        ...regularChapters.slice(0, maxChapters),
+      ];
+      parsed.outline.sort((a, b) => a.chapter_num - b.chapter_num);
+      regularChapters = parsed.outline.filter(ch => ch.chapter_num > 0 && ch.chapter_num < 998);
+    }
+    
+    if (regularChapters.length < expectedChapters) {
+      console.warn(`[GlobalArchitect] CHAPTER COUNT BELOW MINIMUM: Expected at least ${expectedChapters} regular chapters, got ${regularChapters.length}`);
       console.warn(`[GlobalArchitect] Outline chapter_nums: ${parsed.outline.map(ch => ch.chapter_num).join(', ')}`);
       
       // If we got SOME chapters (at least 25% of expected), try to complete the missing ones
@@ -637,11 +648,11 @@ REGLAS:
       
       // Final check after completion attempt
       regularChapters = parsed.outline.filter(ch => ch.chapter_num > 0 && ch.chapter_num < 998);
-      if (regularChapters.length !== expectedChapters) {
-        console.error(`[GlobalArchitect] Still ${regularChapters.length}/${expectedChapters} chapters after completion attempt`);
+      if (regularChapters.length < expectedChapters) {
+        console.error(`[GlobalArchitect] Still ${regularChapters.length}/${expectedChapters} chapters after completion attempt (minimum: ${expectedChapters})`);
         return {
           ...response,
-          error: `El outline generado tiene ${regularChapters.length} capítulos regulares pero se solicitaron ${expectedChapters}. Por favor, regenere el proyecto.`,
+          error: `El outline generado tiene ${regularChapters.length} capítulos regulares pero se solicitaron un mínimo de ${expectedChapters}. Por favor, regenere el proyecto.`,
           parsed: undefined
         };
       }

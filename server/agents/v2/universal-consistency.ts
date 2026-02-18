@@ -711,6 +711,7 @@ EXTRACCIÓN DETALLADA (usar entityType correspondiente):
 
 1. DETALLES FÍSICOS: entityType="PHYSICAL_TRAIT"
    Color de ojos, pelo, altura, edad, cicatrices, tatuajes
+   update: { "ojos": "color", "cabello": "descripción", "piel": "tono", "altura": "aprox", "rasgos_distintivos": ["rasgo1"], "descripcion_fisica": "resumen de apariencia en 1 frase" }
 
 1b. [NUEVO] EDAD DEL PERSONAJE: entityType="CHARACTER"
    Si se menciona la edad de un personaje, registrar OBLIGATORIAMENTE:

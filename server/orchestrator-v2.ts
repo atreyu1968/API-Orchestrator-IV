@@ -571,6 +571,31 @@ export class OrchestratorV2 {
           wbChar.edad = attrs.edad;
           charsUpdated = true;
         }
+        
+        if ((attrs.descripcion_fisica || attrs.physical_description) && !wbChar.descripcion_fisica) {
+          wbChar.descripcion_fisica = attrs.descripcion_fisica || attrs.physical_description;
+          charsUpdated = true;
+        }
+        if ((attrs.ojos || attrs.eyes) && !wbChar.ojos) {
+          wbChar.ojos = attrs.ojos || attrs.eyes;
+          charsUpdated = true;
+        }
+        if ((attrs.cabello || attrs.hair) && !wbChar.cabello) {
+          wbChar.cabello = attrs.cabello || attrs.hair;
+          charsUpdated = true;
+        }
+        if ((attrs.rasgos_distintivos || attrs.distinguishing_features) && !wbChar.rasgos_distintivos) {
+          wbChar.rasgos_distintivos = attrs.rasgos_distintivos || attrs.distinguishing_features;
+          charsUpdated = true;
+        }
+        if ((attrs.rol || attrs.role) && !wbChar.rol) {
+          wbChar.rol = attrs.rol || attrs.role;
+          charsUpdated = true;
+        }
+        if ((attrs.perfil_psicologico || attrs.personality) && !wbChar.perfil_psicologico) {
+          wbChar.perfil_psicologico = attrs.perfil_psicologico || attrs.personality;
+          charsUpdated = true;
+        }
       };
 
       for (const entity of charEntities) {
@@ -584,10 +609,21 @@ export class OrchestratorV2 {
             nombre: entity.name,
             status: entity.status || 'active',
             estado: entity.status || 'activo',
+            primera_aparicion: entity.lastSeenChapter || '?',
           };
-          if (attrs.ubicacion_actual) newChar.ubicacion_actual = attrs.ubicacion_actual;
-          if (attrs.estado_emocional) newChar.estado_emocional = attrs.estado_emocional;
+          if (attrs.ubicacion_actual || attrs.current_location) newChar.ubicacion_actual = attrs.ubicacion_actual || attrs.current_location;
+          if (attrs.estado_emocional || attrs.emotional_state) newChar.estado_emocional = attrs.estado_emocional || attrs.emotional_state;
           if (attrs.edad) newChar.edad = attrs.edad;
+          if (attrs.rol || attrs.role) newChar.rol = attrs.rol || attrs.role;
+          if (attrs.descripcion_fisica || attrs.physical_description) newChar.descripcion_fisica = attrs.descripcion_fisica || attrs.physical_description;
+          if (attrs.ojos || attrs.eyes) newChar.ojos = attrs.ojos || attrs.eyes;
+          if (attrs.cabello || attrs.hair) newChar.cabello = attrs.cabello || attrs.hair;
+          if (attrs.piel || attrs.skin) newChar.piel = attrs.piel || attrs.skin;
+          if (attrs.altura || attrs.height) newChar.altura = attrs.altura || attrs.height;
+          if (attrs.rasgos_distintivos || attrs.distinguishing_features) newChar.rasgos_distintivos = attrs.rasgos_distintivos || attrs.distinguishing_features;
+          if (attrs.perfil_psicologico || attrs.personality) newChar.perfil_psicologico = attrs.perfil_psicologico || attrs.personality;
+          if (attrs.trauma) newChar.trauma = attrs.trauma;
+          if (attrs.conoce || attrs.knows) newChar.conocimientos = [attrs.conoce || attrs.knows];
           const status = (entity.status || '').toLowerCase();
           const vitalStatus = (attrs.estado_vital || attrs.vital_status || '').toString().toLowerCase();
           if (DEATH_MARKERS.some(m => status.includes(m) || vitalStatus.includes(m))) {
@@ -598,7 +634,7 @@ export class OrchestratorV2 {
           }
           characters.push(newChar);
           charsUpdated = true;
-          console.log(`[SyncFull] New character added to World Bible: ${entity.name}`);
+          console.log(`[SyncFull] New character added to World Bible: ${entity.name} (attrs: ${Object.keys(attrs).join(', ')})`);
         }
       }
 
@@ -1541,8 +1577,8 @@ Las siguientes tramas DEBEN ser avanzadas en este capítulo. Cada escena debe co
         const chaptersRemaining = totalRegularChapters - currentIdx;
         const unresolvedThreads = plotThreads.filter(t => t.status !== 'resolved');
         
-        if (chaptersRemaining <= 5 && unresolvedThreads.length > 0) {
-          const urgencyLevel = chaptersRemaining <= 2 ? 'CRÍTICA' : chaptersRemaining <= 3 ? 'ALTA' : 'MEDIA';
+        if (chaptersRemaining <= 6 && unresolvedThreads.length > 0) {
+          const urgencyLevel = chaptersRemaining <= 2 ? 'CRÍTICA' : chaptersRemaining <= 4 ? 'ALTA' : 'MEDIA';
           
           context += `
 🔴🔴🔴 URGENCIA DE CIERRE DE TRAMAS: ${urgencyLevel} 🔴🔴🔴

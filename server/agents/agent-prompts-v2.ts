@@ -948,7 +948,8 @@ export const PROMPTS_V2 = {
     }
 
     ${chapters > 20 ? `
-    RECORDATORIO FINAL: Tu outline DEBE tener EXACTAMENTE ${chapters} entradas (chapter_num 1 a ${chapters}).
+    RECORDATORIO FINAL: Tu outline DEBE tener AL MENOS ${chapters} entradas regulares (chapter_num 1 en adelante).
+    Puedes añadir hasta ${chapters + Math.ceil(chapters * 0.3)} si la historia lo requiere.
     Sé CONCISO en cada entrada. Prioriza COMPLETAR TODOS LOS CAPÍTULOS sobre el detalle.
     ` : ''}
     ╔══════════════════════════════════════════════════════════════════╗

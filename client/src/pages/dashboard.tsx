@@ -109,12 +109,9 @@ function generateExpectedChapters(project: Project, existingChapters: Chapter[])
 }
 
 function calculateCost(inputTokens: number, outputTokens: number, thinkingTokens: number): number {
-  // DeepSeek weighted average pricing (R1 for planning, V3 for writing)
-  // R1: $0.55 input, $2.19 output | V3: $0.28 input, $0.42 output
-  // Approx 30% R1 (planning), 70% V3 (writing/editing)
-  const INPUT_PRICE_PER_MILLION = 0.36;  // 0.30*0.55 + 0.70*0.28
-  const OUTPUT_PRICE_PER_MILLION = 0.95; // 0.30*2.19 + 0.70*0.42
-  const THINKING_PRICE_PER_MILLION = 0.55; // R1 thinking rate
+  const INPUT_PRICE_PER_MILLION = 0.36;
+  const OUTPUT_PRICE_PER_MILLION = 0.95;
+  const THINKING_PRICE_PER_MILLION = 0.55;
   
   const inputCost = (inputTokens / 1_000_000) * INPUT_PRICE_PER_MILLION;
   const outputCost = (outputTokens / 1_000_000) * OUTPUT_PRICE_PER_MILLION;
@@ -123,11 +120,13 @@ function calculateCost(inputTokens: number, outputTokens: number, thinkingTokens
   return inputCost + outputCost + thinkingCost;
 }
 
-const MODEL_PRICING_INFO = `Modelos DeepSeek usados:
-• R1 (Arquitecto Global, Arquitecto Capítulos, Director Narrativo): $0.55/$2.19/M
-• V3 (Escritor, Editor, Compresor): $0.28/$0.42/M
+const MODEL_PRICING_INFO = `Precios por modelo (Input/Output por 1M tokens):
+• DeepSeek R1: $0.55 / $2.19
+• DeepSeek V3: $0.28 / $0.42
+• Gemini 2.5 Flash: $0.30 / $2.50
+• Gemini 3 Pro: $1.25 / $10.00
 
-Precios promedio ponderados: Input $0.36/M, Output $0.95/M, Thinking $0.55/M`;
+El costo mostrado se calcula por evento real con el modelo usado.`;
 
 type ConfirmType = "cancel" | "forceComplete" | "resume" | "delete" | null;
 
@@ -280,6 +279,12 @@ export default function Dashboard() {
   const { data: worldBible } = useQuery<{ plotOutline?: { chapterOutlines?: Array<{ number: number; summary: string; keyEvents: string[] }> } }>({
     queryKey: ["/api/projects", currentProject?.id, "world-bible"],
     enabled: !!currentProject?.id,
+  });
+
+  const { data: realCostData } = useQuery<{ totalRealCostUsd: number; costByModel: Record<string, { input: number; output: number; thinking: number; cost: number; events: number }> }>({
+    queryKey: ["/api/projects", currentProject?.id, "real-cost"],
+    enabled: !!currentProject?.id && (!!currentProject.totalInputTokens || !!currentProject.totalOutputTokens),
+    refetchInterval: currentProject?.status === "generating" ? 10000 : false,
   });
 
   // Extract chapter titles from outline
@@ -1754,20 +1759,30 @@ export default function Dashboard() {
                       </div>
                       <div className="text-right">
                         <p className="text-2xl font-bold text-primary" data-testid="text-total-cost">
-                          ${calculateCost(
-                            currentProject.totalInputTokens || 0,
-                            currentProject.totalOutputTokens || 0,
-                            currentProject.totalThinkingTokens || 0
+                          ${(realCostData?.totalRealCostUsd != null
+                            ? realCostData.totalRealCostUsd
+                            : calculateCost(
+                                currentProject.totalInputTokens || 0,
+                                currentProject.totalOutputTokens || 0,
+                                currentProject.totalThinkingTokens || 0
+                              )
                           ).toFixed(2)}
                         </p>
                         <div className="flex items-center justify-end gap-1">
-                          <p className="text-xs text-muted-foreground">USD estimado</p>
+                          <p className="text-xs text-muted-foreground">
+                            {realCostData?.totalRealCostUsd != null ? 'USD real (DeepSeek + Gemini)' : 'USD estimado'}
+                          </p>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                             </TooltipTrigger>
                             <TooltipContent side="left" className="max-w-xs whitespace-pre-line text-xs">
-                              {MODEL_PRICING_INFO}
+                              {realCostData?.costByModel
+                                ? Object.entries(realCostData.costByModel).map(([model, data]) =>
+                                    `${model}: $${data.cost.toFixed(4)} (${data.events} llamadas)`
+                                  ).join('\n') + '\n\n' + MODEL_PRICING_INFO
+                                : MODEL_PRICING_INFO
+                              }
                             </TooltipContent>
                           </Tooltip>
                         </div>

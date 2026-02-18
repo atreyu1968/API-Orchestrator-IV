@@ -2801,6 +2801,41 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/projects/:id/real-cost", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const events = await storage.getAiUsageEventsByProject(id);
+      
+      let totalRealCost = 0;
+      const costByModel: Record<string, { input: number; output: number; thinking: number; cost: number; events: number }> = {};
+      
+      for (const event of events) {
+        const eventCost = parseFloat(event.totalCostUsd || '0');
+        totalRealCost += eventCost;
+        
+        const model = event.model || 'unknown';
+        if (!costByModel[model]) {
+          costByModel[model] = { input: 0, output: 0, thinking: 0, cost: 0, events: 0 };
+        }
+        costByModel[model].input += event.inputTokens || 0;
+        costByModel[model].output += event.outputTokens || 0;
+        costByModel[model].thinking += event.thinkingTokens || 0;
+        costByModel[model].cost += eventCost;
+        costByModel[model].events += 1;
+      }
+      
+      res.json({
+        projectId: id,
+        totalRealCostUsd: Math.round(totalRealCost * 1000000) / 1000000,
+        totalEvents: events.length,
+        costByModel,
+      });
+    } catch (error) {
+      console.error("Error calculating real cost:", error);
+      res.status(500).json({ error: "Failed to calculate real cost" });
+    }
+  });
+
   app.get("/api/agent-statuses", async (req: Request, res: Response) => {
     try {
       const projects = await storage.getAllProjects();

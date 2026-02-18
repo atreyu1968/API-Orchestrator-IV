@@ -81,6 +81,7 @@ Preferred communication style: Simple, everyday language.
 - **Plot Thread DB Sync (LitAgents 3.2)**: Final structural review now updates plot_threads status to "resolved" in DB after closing threads in the last chapter. Objective Evaluator performs content-based verification to detect threads resolved in text but still "active" in DB.
 - **Truncation Detection & Repair (LitAgents 3.2)**: After chapter finalization, detects text ending mid-sentence (no final punctuation or last line < 3 words) and auto-repairs via SmartEditor.
 - **Estilista Issue Cap (LitAgents 3.2)**: Maximum 30 style issues per chapter, prioritized by severity (critica > mayor > menor), preventing inflated correction lists.
+- **Real Cost Tracking (LitAgents 3.2)**: Dashboard cost panel uses real per-event costs from `ai_usage_events` (tracking actual model used: DeepSeek + Gemini) via `/api/projects/:id/real-cost` endpoint, with per-model breakdown in tooltip. Falls back to weighted-average estimate if events unavailable.
 
 ## External Dependencies
 
