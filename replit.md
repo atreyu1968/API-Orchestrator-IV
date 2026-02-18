@@ -91,8 +91,9 @@ Preferred communication style: Simple, everyday language.
 ## External Dependencies
 
 ### AI Services
-- **DeepSeek**: Primary AI provider (requires `DEEPSEEK_API_KEY`, `DEEPSEEK_TRANSLATOR_API_KEY`, `DEEPSEEK_REEDITOR_API_KEY`).
-- **Replit AI Integrations**: Gemini API access (requires `AI_INTEGRATIONS_GEMINI_API_KEY`, `AI_INTEGRATIONS_GEMINI_BASE_URL`).
+- **Gemini**: Primary AI provider using `gemini-2.5-flash` model (requires `GEMINI_API_KEY` - user's own Google API key, NOT Replit AI Integrations).
+- **DeepSeek**: Alternative AI provider (requires `DEEPSEEK_API_KEY`, `DEEPSEEK_TRANSLATOR_API_KEY`, `DEEPSEEK_REEDITOR_API_KEY`). Selectable via `AI_PROVIDER=deepseek` env var.
+- **AI Provider Selection**: Set `AI_PROVIDER` env var to `gemini` (default) or `deepseek` to switch primary model.
 
 ### Database
 - **PostgreSQL**: Accessed via `DATABASE_URL`.
