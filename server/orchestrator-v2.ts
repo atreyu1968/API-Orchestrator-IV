@@ -2521,6 +2521,18 @@ ${decisions.join('\n')}
   // ============================================
 
   /**
+   * Strip JSON wrappers from AI responses that should be plain text.
+   * Sometimes the AI wraps chapter content in JSON like {"capitulo_reescrito": "..."}
+   * This function extracts the actual text content.
+   */
+  private cleanChapterContent(text: string): string {
+    if (!text) return text;
+    const trimmed = text.trim();
+    if (!trimmed.startsWith('{')) return trimmed;
+    return SmartEditorAgent.stripJsonWrapper(trimmed);
+  }
+
+  /**
    * Detect garbled/corrupted text where words are truncated throughout (not just at the end).
    * This happens when the AI produces corrupted output with words like "incorpor" instead of 
    * "incorporó", "camin" instead of "caminó", etc.

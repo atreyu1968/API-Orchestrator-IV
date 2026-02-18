@@ -571,11 +571,13 @@ Responde ÚNICAMENTE con el capítulo reescrito, sin explicaciones, comentarios 
       return { ...response, rewrittenContent: undefined };
     }
 
-    // Clean up the response - remove any markdown formatting
+    // Clean up the response - remove any markdown formatting and JSON wrappers
     let rewrittenContent = response.content
       .replace(/^```[\w]*\n?/gm, '')
       .replace(/```$/gm, '')
       .trim();
+    
+    rewrittenContent = SmartEditorAgent.stripJsonWrapper(rewrittenContent);
     
     // Validate the rewrite is substantial
     if (rewrittenContent.length < 100) {
@@ -591,5 +593,33 @@ Responde ÚNICAMENTE con el capítulo reescrito, sin explicaciones, comentarios 
     console.log(`[SmartEditor] Full rewrite complete: ${rewrittenContent.length} chars (original: ${input.chapterContent.length})`);
     
     return { ...response, rewrittenContent };
+  }
+
+  static stripJsonWrapper(text: string): string {
+    const trimmed = text.trim();
+    if (!trimmed.startsWith('{')) return trimmed;
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      const textKeys = [
+        'capitulo_reescrito', 'chapter_rewritten', 'rewritten_chapter',
+        'texto_reescrito', 'rewritten_text', 'content', 'texto',
+        'chapter_content', 'capitulo', 'chapter', 'text',
+      ];
+      for (const key of textKeys) {
+        if (typeof parsed[key] === 'string' && parsed[key].length > 100) {
+          console.warn(`[SmartEditor] Stripped JSON wrapper (key: "${key}") from AI response`);
+          return parsed[key].trim();
+        }
+      }
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === 'string' && (value as string).length > 200) {
+          console.warn(`[SmartEditor] Stripped JSON wrapper (unknown key: "${key}") from AI response`);
+          return (value as string).trim();
+        }
+      }
+    } catch {
+    }
+    return trimmed;
   }
 }
