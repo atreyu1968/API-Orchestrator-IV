@@ -6769,8 +6769,58 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           }
         }
 
-        // OmniWriter Phase 2d: Consistency validation (simplified - Inquisidor already audited)
-        await this.validateAndUpdateConsistency(project.id, chapterNumber, finalText, project.genre, worldBible, narrativeTimeline);
+        // OmniWriter Phase 2d: Consistency validation — ENFORCE corrections for critical violations
+        const consistencyResult = await this.validateAndUpdateConsistency(project.id, chapterNumber, finalText, project.genre, worldBible, narrativeTimeline);
+        if (!consistencyResult.isValid && consistencyResult.error) {
+          console.warn(`[OmniWriter] Chapter ${chapterNumber}: Critical consistency violation detected. Forcing correction...`);
+          await storage.createActivityLog({
+            projectId: project.id, level: "error", agentRole: "universal-consistency",
+            message: `Cap ${chapterNumber}: Violación crítica detectada — forzando corrección: ${consistencyResult.error.substring(0, 200)}`,
+          });
+          const MAX_CONSISTENCY_FIX_ATTEMPTS = 2;
+          for (let cFixAttempt = 1; cFixAttempt <= MAX_CONSISTENCY_FIX_ATTEMPTS; cFixAttempt++) {
+            const correctionResult = await this.smartEditor.fullRewrite({
+              chapterContent: finalText,
+              errorDescription: `VIOLACIÓN DE CONTINUIDAD CRÍTICA — CORREGIR OBLIGATORIAMENTE:\n${consistencyResult.error}\n\nREGLAS:\n1. Elimina la contradicción manteniendo la coherencia con capítulos anteriores\n2. Si un personaje está MUERTO, NO puede aparecer vivo — elimínalo de escenas activas\n3. Mantén la estructura narrativa y los eventos clave del capítulo\n4. NO inventes explicaciones — simplemente corrige el error`,
+              worldBible: {
+                characters: ((worldBible as any).characters || (worldBible as any).personajes || []) as any[],
+                locations: ((worldBible as any).locations || (worldBible as any).lugares || []) as any[],
+                worldRules: ((worldBible as any).worldRules || (worldBible as any).rules || (worldBible as any).reglas || []) as any[],
+              },
+              chapterNumber,
+              chapterTitle: chapterOutline.title,
+              projectTitle: project.title,
+              genre: project.genre,
+            });
+            this.addTokenUsage(correctionResult.tokenUsage);
+            await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", correctionResult.tokenUsage, chapterNumber);
+            if (correctionResult.rewrittenContent && correctionResult.rewrittenContent.length > 200) {
+              finalText = correctionResult.rewrittenContent;
+              const recheck = await this.validateAndUpdateConsistency(project.id, chapterNumber, finalText, project.genre, worldBible, narrativeTimeline);
+              if (recheck.isValid) {
+                console.log(`[OmniWriter] Chapter ${chapterNumber}: Consistency violation fixed on attempt ${cFixAttempt}`);
+                await storage.createActivityLog({
+                  projectId: project.id, level: "success", agentRole: "universal-consistency",
+                  message: `Cap ${chapterNumber}: Violación de continuidad corregida exitosamente (intento ${cFixAttempt}).`,
+                });
+                const violationsToResolve = await storage.getConsistencyViolationsByChapter(project.id, chapterNumber);
+                for (const v of violationsToResolve) {
+                  await storage.updateConsistencyViolation(v.id, { wasAutoFixed: true });
+                }
+                break;
+              } else if (cFixAttempt === MAX_CONSISTENCY_FIX_ATTEMPTS) {
+                console.warn(`[OmniWriter] Chapter ${chapterNumber}: Consistency violation persists after ${MAX_CONSISTENCY_FIX_ATTEMPTS} attempts`);
+                await storage.createActivityLog({
+                  projectId: project.id, level: "warn", agentRole: "universal-consistency",
+                  message: `Cap ${chapterNumber}: Violación de continuidad persiste tras ${MAX_CONSISTENCY_FIX_ATTEMPTS} intentos de corrección. Se guarda con la mejor versión disponible.`,
+                });
+              }
+            } else {
+              console.warn(`[OmniWriter] Chapter ${chapterNumber}: Consistency fix attempt ${cFixAttempt} returned no content`);
+              break;
+            }
+          }
+        }
 
         // OmniWriter Phase 2d.5: Minimum word count enforcement
         const preCheckWordCount = finalText.split(/\s+/).length;
@@ -6821,6 +6871,45 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             await storage.createActivityLog({
               projectId: project.id, level: "info", agentRole: "omniwriter",
               message: `Cap ${chapterNumber}: Extendido exitosamente a ${finalWC} palabras (mínimo: ${minWords}).`,
+            });
+          }
+        }
+
+        // OmniWriter Phase 2d.7: Truncation detection and repair
+        const trimmedText = finalText.trimEnd();
+        const lastChar = trimmedText.charAt(trimmedText.length - 1);
+        const endsWithSentence = /[.!?…»"\u201D\u2019]$/.test(trimmedText);
+        const lastLine = trimmedText.split('\n').filter(l => l.trim().length > 0).pop() || '';
+        const lastLineWords = lastLine.trim().split(/\s+/).length;
+        const isTruncated = !endsWithSentence || lastLineWords < 3;
+        
+        if (isTruncated && finalText.length > 500) {
+          console.warn(`[OmniWriter] Chapter ${chapterNumber}: Text appears truncated (last char: "${lastChar}", last line words: ${lastLineWords}). Repairing...`);
+          await storage.createActivityLog({
+            projectId: project.id, level: "warn", agentRole: "omniwriter",
+            message: `Cap ${chapterNumber}: Texto truncado detectado — reparando final del capítulo...`,
+          });
+          const repairResult = await this.smartEditor.fullRewrite({
+            chapterContent: finalText,
+            errorDescription: `El texto del capítulo está TRUNCADO — termina a mitad de frase o párrafo. DEBES:\n1. Completar la última frase/párrafo de forma natural\n2. Asegurar que el capítulo tiene un cierre coherente (puede ser un cliffhanger, pero debe ser una frase completa)\n3. NO elimines contenido existente, solo completa el final\n4. Mantén el estilo y tono del capítulo`,
+            worldBible: {
+              characters: ((worldBible as any).characters || (worldBible as any).personajes || []) as any[],
+              locations: ((worldBible as any).locations || (worldBible as any).lugares || []) as any[],
+              worldRules: ((worldBible as any).worldRules || (worldBible as any).rules || (worldBible as any).reglas || []) as any[],
+            },
+            chapterNumber,
+            chapterTitle: chapterOutline.title,
+            projectTitle: project.title,
+            genre: project.genre,
+          });
+          this.addTokenUsage(repairResult.tokenUsage);
+          await this.logAiUsage(project.id, "smart-editor", "deepseek-chat", repairResult.tokenUsage, chapterNumber);
+          if (repairResult.rewrittenContent && repairResult.rewrittenContent.length >= finalText.length * 0.9) {
+            finalText = repairResult.rewrittenContent;
+            console.log(`[OmniWriter] Chapter ${chapterNumber}: Truncation repaired successfully`);
+            await storage.createActivityLog({
+              projectId: project.id, level: "success", agentRole: "omniwriter",
+              message: `Cap ${chapterNumber}: Truncamiento reparado exitosamente.`,
             });
           }
         }
@@ -8406,6 +8495,25 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
                 this.addTokenUsage(summaryResult.tokenUsage);
                 if (summaryResult.content) {
                   await storage.updateChapter(updatedLast.id, { summary: summaryResult.content });
+                }
+              }
+              
+              // LitAgents 3.2: Mark closed threads as resolved in the DB
+              const allPlotThreads = await storage.getPlotThreadsByProject(projectId);
+              for (const threadName of unresolvedThreads) {
+                const threadNameLower = (threadName as string).toLowerCase();
+                const matchingThread = allPlotThreads.find(t => {
+                  const tNameLower = (t.name || '').toLowerCase();
+                  const tDescLower = (t.description || '').toLowerCase();
+                  return tNameLower.includes(threadNameLower) || threadNameLower.includes(tNameLower) ||
+                    threadNameLower.split(/\s+/).filter((w: string) => w.length >= 4).some((w: string) => tNameLower.includes(w) || tDescLower.includes(w));
+                });
+                if (matchingThread && matchingThread.status !== 'resolved') {
+                  await storage.updateProjectPlotThread(matchingThread.id, {
+                    status: 'resolved',
+                    lastUpdatedChapter: lastWritten.chapterNumber,
+                  });
+                  console.log(`[FinalStructuralReview] Thread "${matchingThread.name}" marked as resolved in DB (closed in final review)`);
                 }
               }
             }

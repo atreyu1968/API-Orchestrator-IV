@@ -94,9 +94,20 @@ Analiza el texto buscando errores ortográficos, tipográficos, de tono y de for
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const raw = JSON.parse(jsonMatch[0]);
+        let errores: EstilistaIssue[] = Array.isArray(raw.errores) ? raw.errores : [];
+        
+        // LitAgents 3.2: Cap maximum issues to prevent inflated lists (e.g., 151 issues)
+        const MAX_ESTILISTA_ISSUES = 30;
+        if (errores.length > MAX_ESTILISTA_ISSUES) {
+          console.warn(`[Estilista] Chapter ${input.chapterNumber}: ${errores.length} issues reported, capping to ${MAX_ESTILISTA_ISSUES} (prioritizing by severity)`);
+          const severityOrder: Record<string, number> = { critica: 0, mayor: 1, menor: 2 };
+          errores.sort((a, b) => (severityOrder[a.severidad] ?? 2) - (severityOrder[b.severidad] ?? 2));
+          errores = errores.slice(0, MAX_ESTILISTA_ISSUES);
+        }
+        
         parsed = {
-          errores: Array.isArray(raw.errores) ? raw.errores : [],
-          veredicto: raw.veredicto || (Array.isArray(raw.errores) && raw.errores.length > 0 ? "requiere_correccion" : "aprobado"),
+          errores,
+          veredicto: raw.veredicto || (errores.length > 0 ? "requiere_correccion" : "aprobado"),
           puntuacion_estilo: typeof raw.puntuacion_estilo === "number" ? raw.puntuacion_estilo : 8,
           resumen: raw.resumen || "",
         };

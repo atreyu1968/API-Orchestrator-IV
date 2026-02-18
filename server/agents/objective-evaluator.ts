@@ -106,10 +106,54 @@ export async function runObjectiveEvaluation(input: EvaluationInput): Promise<Ob
   });
 
   // === METRIC 2: PLOT COMPLETENESS (unresolved threads) ===
+  // LitAgents 3.2: Content-based verification for threads marked as "active" in DB
+  // The DB status may be stale if auto-update didn't detect resolution or final review closed them
   const plotThreads = await storage.getPlotThreadsByProject(projectId);
-  const activeThreads = plotThreads.filter(t => t.status === "active");
-  const resolvedThreads = plotThreads.filter(t => t.status === "resolved");
+  let activeThreads = plotThreads.filter(t => t.status === "active" || t.status === "developing");
+  let resolvedThreads = plotThreads.filter(t => t.status === "resolved");
   const totalThreads = plotThreads.length;
+
+  // Content-based fallback: check last 5 chapters for thread resolution keywords
+  if (activeThreads.length > 0 && chapters.length > 0) {
+    const lastChapters = chapters
+      .filter(c => c.content && c.content.length > 100)
+      .sort((a, b) => (a.chapterNumber || 0) - (b.chapterNumber || 0))
+      .slice(-5);
+    const lastChaptersText = lastChapters.map(c => (c.content || '').toLowerCase()).join(' ');
+
+    const resolutionKeywords = [
+      'resuelve', 'resuelto', 'resolvió', 'concluye', 'concluyó', 'cierra', 'cerró',
+      'desenlace', 'se completa', 'pone fin', 'revelación', 'verdad', 'final',
+      'destino', 'consecuencia', 'muerte', 'muere', 'murió', 'sacrificio', 'sacrifica',
+      'traición', 'venganza', 'justicia', 'castigo', 'redención', 'perdón',
+    ];
+
+    const stillActive: typeof activeThreads = [];
+    for (const thread of activeThreads) {
+      const threadWords = [
+        ...(thread.name || '').toLowerCase().split(/\s+/),
+        ...(thread.goal || '').toLowerCase().split(/\s+/),
+        ...(thread.description || '').toLowerCase().split(/\s+/),
+      ].filter(w => w.length >= 4);
+      const uniqueWords = Array.from(new Set(threadWords)).slice(0, 8);
+
+      const textMatches = uniqueWords.filter(w => lastChaptersText.includes(w)).length;
+      const hasResolutionNearby = resolutionKeywords.some(rk => {
+        const idx = lastChaptersText.indexOf(rk);
+        if (idx < 0) return false;
+        const nearby = lastChaptersText.substring(Math.max(0, idx - 300), Math.min(lastChaptersText.length, idx + 300));
+        return uniqueWords.filter(w => nearby.includes(w)).length >= 2;
+      });
+
+      if (textMatches >= 2 && hasResolutionNearby) {
+        resolvedThreads.push(thread);
+        console.log(`[ObjectiveEvaluator] Thread "${thread.name}" detected as content-resolved in final chapters (DB status was: ${thread.status})`);
+      } else {
+        stillActive.push(thread);
+      }
+    }
+    activeThreads = stillActive;
+  }
 
   let plotScore = 10;
   const plotIssues: string[] = [];
