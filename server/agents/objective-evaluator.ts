@@ -72,24 +72,26 @@ export async function runObjectiveEvaluation(input: EvaluationInput): Promise<Ob
 
   let coherenceScore = 10;
   const coherenceIssues: string[] = [];
+  const formatChapLabel = (num: number) => num === 0 ? 'Prólogo' : num === 998 ? 'Epílogo' : num === 999 ? 'Nota del Autor' : `Cap ${num}`;
+
   if (deathViolations.length > 0) {
     coherenceScore = 0;
     blockers.push(`${deathViolations.length} personaje(s) muerto(s) que aparecen vivos en capítulos posteriores`);
     for (const v of deathViolations.slice(0, 5)) {
-      coherenceIssues.push(`Cap ${v.chapterNumber}: ${v.description.substring(0, 120)}`);
+      coherenceIssues.push(`${formatChapLabel(v.chapterNumber)}: ${v.description.substring(0, 120)}`);
     }
   }
   const nonDeathCritical = criticalViolations.filter(v => v.violationType !== "DEAD_CHARACTER_ACTS");
   if (nonDeathCritical.length > 0) {
     coherenceScore = Math.max(0, coherenceScore - Math.min(nonDeathCritical.length * 3, 8));
     for (const v of nonDeathCritical.slice(0, 3)) {
-      coherenceIssues.push(`[CRÍTICO] Cap ${v.chapterNumber}: ${v.description.substring(0, 120)}`);
+      coherenceIssues.push(`[CRÍTICO] ${formatChapLabel(v.chapterNumber)}: ${v.description.substring(0, 120)}`);
     }
   }
   if (majorViolations.length > 0) {
     coherenceScore = Math.max(0, coherenceScore - Math.min(majorViolations.length, 4));
     for (const v of majorViolations.slice(0, 3)) {
-      coherenceIssues.push(`[MAYOR] Cap ${v.chapterNumber}: ${v.description.substring(0, 120)}`);
+      coherenceIssues.push(`[MAYOR] ${formatChapLabel(v.chapterNumber)}: ${v.description.substring(0, 120)}`);
     }
   }
 
@@ -324,7 +326,8 @@ export async function runObjectiveEvaluation(input: EvaluationInput): Promise<Ob
   }
 
   const errorCheckpoints = activityLogs.filter(l =>
-    l.agentRole === "structural-checkpoint" && l.level === "error" && l.message?.includes("[FINAL]")
+    l.agentRole === "structural-checkpoint" && l.level === "error" && l.message?.includes("[FINAL]") &&
+    !l.message?.includes("Cap 998") && !l.message?.includes("Cap 999")
   );
   if (errorCheckpoints.length > 0) {
     const errPenalty = Math.min(errorCheckpoints.length, 3);
