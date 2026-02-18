@@ -2525,9 +2525,15 @@ ${decisions.join('\n')}
    * This happens when the AI produces corrupted output with words like "incorpor" instead of 
    * "incorporó", "camin" instead of "caminó", etc.
    * 
-   * Detection: In Spanish prose, words almost always end in vowels, -n, -s, -r, -l, -d, -z, -y, -x.
-   * If a high percentage of words end in unusual consonant clusters, the text is garbled.
-   * Additional check: abnormally high ratio of very short words (1-3 chars) that aren't articles/prepositions.
+   * Detection uses two independent checks (either one triggers garbled status):
+   * 
+   * 1. TRUNCATED ENDINGS: In Spanish prose, words almost always end in vowels, -n, -s, -r, -l, -d, -z, -y.
+   *    If >15% of 4+ letter words end in unusual consonants, the text has truncated words.
+   * 
+   * 2. TELEGRAM MODE: Normal Spanish prose contains ~40-45% function words (articles, prepositions,
+   *    conjunctions, pronouns). When the AI degrades into "telegram mode", it drops these connecting
+   *    words while keeping content words intact. If function word density drops below 20%, the text
+   *    has lost its grammatical structure.
    */
   private detectGarbledText(text: string): boolean {
     if (!text || text.length < 200) return false;
@@ -2543,28 +2549,54 @@ ${decisions.join('\n')}
     }
     const sampleText = segments.join(' ');
     
-    const words = sampleText
+    const contentWords = sampleText
       .replace(/["""''«».,;:!?¡¿()—\-\[\]\n\r#*_~`]/g, ' ')
       .split(/\s+/)
       .filter(w => w.length >= 3 && /^[a-záéíóúüñ]+$/i.test(w));
 
-    if (words.length < 30) return false;
+    if (contentWords.length < 30) return false;
 
     const validSpanishEndings = /[aeiouyáéíóúnslrdz]$/i;
-
     let badEndingCount = 0;
-
-    for (const word of words) {
+    for (const word of contentWords) {
       const lower = word.toLowerCase();
       if (!validSpanishEndings.test(lower) && lower.length >= 4) {
         badEndingCount++;
       }
     }
-
-    const badEndingRatio = badEndingCount / words.length;
+    const badEndingRatio = badEndingCount / contentWords.length;
 
     if (badEndingRatio > 0.15) {
-      console.warn(`[GarbledDetector] Text appears garbled: badEndingRatio=${(badEndingRatio * 100).toFixed(1)}% (${words.length} words sampled from ${segments.length} segments)`);
+      console.warn(`[GarbledDetector] Truncated words detected: badEndingRatio=${(badEndingRatio * 100).toFixed(1)}% (${contentWords.length} words sampled from ${segments.length} segments)`);
+      return true;
+    }
+
+    const spanishFunctionWords = new Set([
+      'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
+      'de', 'del', 'al', 'en', 'con', 'por', 'para', 'sin', 'sobre', 'entre', 'hacia', 'desde', 'hasta', 'tras', 'bajo',
+      'y', 'o', 'e', 'u', 'ni', 'que', 'pero', 'sino', 'aunque', 'porque', 'pues', 'si',
+      'se', 'lo', 'le', 'les', 'me', 'te', 'nos', 'os',
+      'su', 'sus', 'mi', 'mis', 'tu', 'tus',
+      'no', 'ya', 'más', 'muy', 'tan',
+      'este', 'esta', 'estos', 'estas', 'ese', 'esa', 'esos', 'esas', 'aquel', 'aquella',
+      'como', 'cuando', 'donde', 'quien',
+    ]);
+
+    const allWords = sampleText
+      .replace(/["""''«».,;:!?¡¿()—\-\[\]\n\r#*_~`]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 1 && /^[a-záéíóúüñ]+$/i.test(w));
+
+    if (allWords.length < 50) return false;
+
+    let funcWordCount = 0;
+    for (const word of allWords) {
+      if (spanishFunctionWords.has(word.toLowerCase())) funcWordCount++;
+    }
+    const funcWordRatio = funcWordCount / allWords.length;
+
+    if (funcWordRatio < 0.20) {
+      console.warn(`[GarbledDetector] Telegram-mode detected: functionWordRatio=${(funcWordRatio * 100).toFixed(1)}% (expected ~40%+, ${allWords.length} words sampled from ${segments.length} segments)`);
       return true;
     }
 
