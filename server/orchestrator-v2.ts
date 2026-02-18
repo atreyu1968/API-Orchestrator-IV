@@ -44,8 +44,8 @@ import { calcularConvergencia } from "./utils/levenshtein";
 import { BaseAgent } from "./agents/base-agent";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY || "";
-const geminiForValidation = new GoogleGenerativeAI(GEMINI_API_KEY);
+const geminiApiKey = process.env.GEMINI_API_KEY || "";
+const geminiForValidation = new GoogleGenerativeAI(geminiApiKey);
 
 const GEMINI_RATE_LIMIT_RETRIES = 5;
 const GEMINI_RATE_LIMIT_DELAYS = [15000, 30000, 60000, 90000, 120000];
@@ -59,7 +59,7 @@ function isGeminiRateLimitError(error: any): boolean {
 
 async function geminiGenerateWithRetry(
   prompt: string, 
-  modelName: string = "gemini-2.0-flash",
+  modelName: string = "gemini-2.5-flash",
   label: string = "GeminiCall"
 ): Promise<string> {
   for (let attempt = 0; attempt <= GEMINI_RATE_LIMIT_RETRIES; attempt++) {
@@ -7413,7 +7413,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         } catch (err) {
           console.error("[OrchestratorV2] Final structural review error:", err);
           // If Gemini key is missing, pause the project so user knows review didn't happen
-          if (!GEMINI_API_KEY) {
+          if (!geminiApiKey) {
             await storage.updateProject(project.id, { status: "paused" });
             await storage.createActivityLog({
               projectId: project.id,
@@ -7868,7 +7868,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON:
 }`;
 
     try {
-      const detectResponse = await geminiGenerateWithRetry(detectPrompt, "gemini-2.0-flash", "BibleValidator-Detect");
+      const detectResponse = await geminiGenerateWithRetry(detectPrompt, "gemini-2.5-flash", "BibleValidator-Detect");
 
       const detectJsonMatch = detectResponse.match(/\{[\s\S]*\}/);
       if (!detectJsonMatch) {
@@ -8074,7 +8074,7 @@ VERIFICACIÓN FINAL antes de responder:
 - ¿Los outline_fixes abordan TODOS los problemas de estructura/coherencia listados?
 - ¿TODOS los hilos narrativos tienen un capítulo de resolución asignado?`;
 
-      const correctResponse = await geminiGenerateWithRetry(correctPrompt, "gemini-2.0-flash", "BibleValidator-Correct");
+      const correctResponse = await geminiGenerateWithRetry(correctPrompt, "gemini-2.5-flash", "BibleValidator-Correct");
 
       const correctJsonMatch = correctResponse.match(/\{[\s\S]*\}/);
       if (!correctJsonMatch) {
@@ -8379,7 +8379,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     const MAX_CHECKPOINT_RETRIES = 2;
     for (let attempt = 0; attempt <= MAX_CHECKPOINT_RETRIES; attempt++) {
     try {
-      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "StructuralCheckpoint");
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "StructuralCheckpoint");
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -8597,7 +8597,7 @@ Devuelve SOLO el texto completo del capítulo reescrito, sin explicaciones ni ma
   ): Promise<{ rewrittenCount: number; issues: string[]; lessonsLearned: string[] }> {
     console.log(`[FinalStructuralReview] Starting full-novel structural review for project ${projectId}`);
     
-    if (!GEMINI_API_KEY) {
+    if (!geminiApiKey) {
       console.warn("[FinalStructuralReview] No GEMINI_API_KEY - cannot run final structural review");
       await storage.createActivityLog({
         projectId,
@@ -8707,7 +8707,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     const MAX_RETRIES = 2;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "FinalStructuralReview");
+        const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "FinalStructuralReview");
 
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
@@ -8986,7 +8986,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
   "verdict": "Breve explicación"
 }`;
 
-      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "PostRewriteVerify");
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "PostRewriteVerify");
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return { fixed: true, remainingIssues: [] };
@@ -13882,7 +13882,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     const MAX_RETRIES = 2;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const response = await geminiGenerateWithRetry(diagnosisPrompt, "gemini-2.0-flash", "DiagnosisPrompt");
+        const response = await geminiGenerateWithRetry(diagnosisPrompt, "gemini-2.5-flash", "DiagnosisPrompt");
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
           if (attempt < MAX_RETRIES) continue;
@@ -14733,7 +14733,7 @@ Responde SOLO en JSON:
 }`;
 
     try {
-      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "RewriteRiskAnalysis");
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "RewriteRiskAnalysis");
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
@@ -14827,7 +14827,7 @@ Responde SOLO en JSON:
 }`;
 
     try {
-      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "SingleIssueVerify");
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "SingleIssueVerify");
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
@@ -14922,7 +14922,7 @@ Responde SOLO en JSON:
 }`;
 
     try {
-      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "BatchIssueVerify");
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "BatchIssueVerify");
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);

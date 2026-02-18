@@ -32,11 +32,17 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     outputPerMillion: 2.5,
     thinkingPerMillion: 1.0,
   },
-  // Default fallback (uses DeepSeek V3 rates)
+  // Gemini 3 Flash Preview
+  "gemini-3-flash-preview": {
+    inputPerMillion: 0.30,
+    outputPerMillion: 2.5,
+    thinkingPerMillion: 1.0,
+  },
+  // Default fallback (uses Gemini 2.5 Flash rates)
   "default": {
-    inputPerMillion: 0.28,
-    outputPerMillion: 0.42,
-    thinkingPerMillion: 0.28,
+    inputPerMillion: 0.30,
+    outputPerMillion: 2.5,
+    thinkingPerMillion: 1.0,
   },
 };
 

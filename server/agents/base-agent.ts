@@ -13,19 +13,14 @@ export function getAIProvider(): AIProvider {
   return "deepseek"; // Default to DeepSeek (more cost-effective)
 }
 
-// Gemini client - Use user's own API key if provided, otherwise fall back to Replit integration
-const userGeminiApiKey = process.env.GEMINI_API_KEY;
-const geminiApiKey = userGeminiApiKey || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+// Gemini client - Uses user's own API key directly
+const geminiApiKey = process.env.GEMINI_API_KEY || "";
 const geminiClient = new GoogleGenAI({
   apiKey: geminiApiKey || "placeholder-no-key",
-  httpOptions: userGeminiApiKey ? undefined : {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
 });
 
 export function isGeminiAvailable(): boolean {
-  return !!(process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY);
+  return !!process.env.GEMINI_API_KEY;
 }
 
 // DeepSeek client (OpenAI-compatible API)
@@ -76,7 +71,7 @@ export interface AgentResponse {
   error?: string;
 }
 
-export type GeminiModel = "gemini-3-pro-preview" | "gemini-2.5-flash" | "gemini-2.0-flash";
+export type GeminiModel = "gemini-3-pro-preview" | "gemini-3-flash-preview" | "gemini-2.5-flash" | "gemini-2.0-flash";
 export type DeepSeekModel = "deepseek-reasoner" | "deepseek-chat";
 
 // Map Gemini models to DeepSeek equivalents
@@ -647,7 +642,7 @@ export abstract class BaseAgent {
       
       try {
         const isDeepSeekModel = this.config.model?.startsWith("deepseek");
-        const modelToUse = fallbackModel || ((!this.config.model || isDeepSeekModel) ? "gemini-3-pro-preview" : this.config.model);
+        const modelToUse = fallbackModel || ((!this.config.model || isDeepSeekModel) ? "gemini-2.5-flash" : this.config.model);
         const useThinking = this.config.useThinking !== false && !fallbackModel;
         
         const startTime = Date.now();
@@ -666,7 +661,7 @@ export abstract class BaseAgent {
             maxOutputTokens: 65536,
             ...(options?.frequencyPenalty !== undefined ? { frequencyPenalty: options.frequencyPenalty } : {}),
             ...(options?.presencePenalty !== undefined ? { presencePenalty: options.presencePenalty } : {}),
-            ...(useThinking && modelToUse === "gemini-3-pro-preview" ? {
+            ...(useThinking && (modelToUse === "gemini-3-pro-preview" || modelToUse === "gemini-2.5-flash" || modelToUse === "gemini-3-flash-preview") ? {
               thinkingConfig: {
                 thinkingBudget: 10000,
                 includeThoughts: true,
@@ -735,7 +730,7 @@ export abstract class BaseAgent {
         };
 
         // Track AI usage event with real costs
-        const modelToUseForCost = this.config.model || "gemini-3-pro-preview";
+        const modelToUseForCost = this.config.model || "gemini-2.5-flash";
         if (projectId && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)) {
           const costs = calculateRealCost(
             modelToUseForCost,
@@ -775,14 +770,14 @@ export abstract class BaseAgent {
           if (rateLimitAttempts === 0) {
             console.error(`[${this.config.name}] IMMEDIATE rate limit on first attempt. Full error: ${JSON.stringify(error, Object.getOwnPropertyNames(error as any))}`);
             
-            const currentModel = fallbackModel || ((!this.config.model || this.config.model?.startsWith("deepseek")) ? "gemini-3-pro-preview" : this.config.model);
-            if (!fallbackModel && currentModel === "gemini-3-pro-preview") {
-              console.warn(`[${this.config.name}] Model "gemini-3-pro-preview" may not be available with your API key. Trying "gemini-2.5-flash" as fallback...`);
-              return this.generateWithGemini(prompt, projectId, options, "gemini-2.5-flash");
+            const currentModel = fallbackModel || ((!this.config.model || this.config.model?.startsWith("deepseek")) ? "gemini-2.5-flash" : this.config.model);
+            if (!fallbackModel && currentModel === "gemini-2.5-flash") {
+              console.warn(`[${this.config.name}] Model "gemini-2.5-flash" rate-limited. Trying "gemini-3-flash-preview" as fallback...`);
+              return this.generateWithGemini(prompt, projectId, options, "gemini-3-flash-preview");
             }
-            if (fallbackModel === "gemini-2.5-flash") {
-              console.warn(`[${this.config.name}] Fallback model "gemini-2.5-flash" also rate-limited. Trying "gemini-2.0-flash"...`);
-              return this.generateWithGemini(prompt, projectId, options, "gemini-2.0-flash");
+            if (currentModel === "gemini-3-pro-preview") {
+              console.warn(`[${this.config.name}] Model "gemini-3-pro-preview" rate-limited. Trying "gemini-2.5-flash" as fallback...`);
+              return this.generateWithGemini(prompt, projectId, options, "gemini-2.5-flash");
             }
           }
           rateLimitAttempts++;
