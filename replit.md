@@ -74,6 +74,8 @@ Preferred communication style: Simple, everyday language.
 - **Enhanced Structural Adherence**: Ghostwriter outline injection includes explicit priority rules.
 - **Minimum Chapter Word Count Enforcement**: Chapters below minimum length are automatically extended.
 - **Progressive Thread Closure System**: When 5 or fewer chapters remain, injects urgency instructions to close unresolved plot threads proactively. Distributes thread closures across remaining chapters with escalating urgency (MEDIA → ALTA → CRÍTICA). Prevents rushed endings by forcing thread resolution BEFORE the epilogue.
+- **Auto Thread Status Update**: After each chapter, analyzes summary and text to auto-detect resolved threads (using keyword proximity + resolution indicators). Updates thread status in real-time for accurate progressive closure.
+- **Chapter Backup System**: Automatic backups before destructive chapter operations.
 - **Scene-Based Pipeline (LitAgents 2.0)**: Optimized for DeepSeek AI models with specialized agents and `fuse.js` for surgical JSON patching. Includes a four-layer prose quality detection system.
 
 ## External Dependencies

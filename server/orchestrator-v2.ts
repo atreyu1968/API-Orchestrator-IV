@@ -1550,13 +1550,23 @@ Quedan ${chaptersRemaining} capítulos regulares (${chaptersRemaining <= 2 ? 'in
 ${unresolvedThreads.length} trama(s) DEBEN cerrarse antes del epílogo:
 
 `;
-          const threadsPerChapter = Math.ceil(unresolvedThreads.length / chaptersRemaining);
-          const threadsForThisChapter = unresolvedThreads.slice(0, Math.max(1, threadsPerChapter));
-          const threadsForLater = unresolvedThreads.slice(threadsForThisChapter.length);
+          // Sort threads: most recently advanced first (they're closest to resolution)
+          // Then by status: 'developing' before 'active' (developing = more progress)
+          const sortedThreads = [...unresolvedThreads].sort((a, b) => {
+            const statusOrder = (s: string) => s === 'developing' ? 0 : 1;
+            const statusDiff = statusOrder(a.status) - statusOrder(b.status);
+            if (statusDiff !== 0) return statusDiff;
+            return (b.lastUpdatedChapter || 0) - (a.lastUpdatedChapter || 0);
+          });
+
+          const threadsPerChapter = Math.ceil(sortedThreads.length / chaptersRemaining);
+          const threadsForThisChapter = sortedThreads.slice(0, Math.max(1, threadsPerChapter));
+          const threadsForLater = sortedThreads.slice(threadsForThisChapter.length);
 
           context += `⚡ CERRAR EN ESTE CAPÍTULO (${threadsForThisChapter.length} trama(s)):\n`;
           for (const t of threadsForThisChapter) {
-            context += `   - "${t.name}": Resolver con desenlace claro. El lector DEBE saber qué pasó con esto.\n`;
+            const progressNote = t.lastUpdatedChapter ? ` (último avance: Cap ${t.lastUpdatedChapter})` : '';
+            context += `   - "${t.name}": Resolver con desenlace claro${progressNote}. El lector DEBE saber qué pasó con esto.\n`;
           }
           
           if (threadsForLater.length > 0) {
@@ -3262,6 +3272,132 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
    * Extract injuries from chapter content using AI
    * LitAgents 2.1: Automatic injury detection to prevent continuity issues
    */
+  /**
+   * LitAgents 3.1: Auto-update plot thread status after each chapter.
+   * Analyzes the chapter summary and text to detect if any threads were resolved or significantly advanced.
+   * This ensures the progressive closure system has accurate thread status data.
+   */
+  private async autoUpdatePlotThreads(
+    projectId: number,
+    chapterNumber: number,
+    chapterSummary: string,
+    chapterText: string
+  ): Promise<void> {
+    const plotThreads = await storage.getPlotThreadsByProject(projectId);
+    if (!plotThreads || plotThreads.length === 0) return;
+
+    const activeThreads = plotThreads.filter(t => t.status !== 'resolved');
+    if (activeThreads.length === 0) return;
+
+    const summaryLower = chapterSummary.toLowerCase();
+    const textLower = chapterText.toLowerCase();
+
+    const stopwords = new Set([
+      'para', 'como', 'pero', 'este', 'esta', 'esto', 'esos', 'esas',
+      'todo', 'toda', 'todos', 'cada', 'otro', 'otra', 'otros', 'tras',
+      'desde', 'hasta', 'sobre', 'bajo', 'entre', 'hacia', 'según',
+      'with', 'from', 'that', 'this', 'have', 'been', 'were', 'will',
+      'more', 'than', 'also', 'just', 'only', 'very', 'some', 'into',
+    ]);
+
+    const resolutionIndicators = [
+      'resuelve', 'resuelto', 'resolvió',
+      'concluyó', 'concluido', 'conclusión',
+      'cierra', 'cerrado', 'cerró',
+      'desenlace',
+      'se completa', 'completado',
+      'pone fin', 'da fin',
+      'revelación final', 'verdad sale a la luz',
+      'resolved', 'concluded', 'closure',
+    ];
+
+    const negationPatterns = [
+      'sin resolver', 'no resuelto', 'aún abierto', 'sigue abierto',
+      'sin cerrar', 'no cerrado', 'pendiente',
+      'unresolved', 'still open', 'not resolved',
+    ];
+
+    const advancementIndicators = [
+      'avanza', 'progresa', 'desarrolla',
+      'descubre', 'revela', 'confronta', 'enfrenta',
+      'intensifica', 'escala', 'complica',
+    ];
+
+    let updatedCount = 0;
+
+    for (const thread of activeThreads) {
+      const threadNameParts = (thread.name || '').toLowerCase().split(/\s+/)
+        .filter(w => w.length >= 4 && !stopwords.has(w));
+      const threadGoalParts = (thread.goal || '').toLowerCase().split(/\s+/)
+        .filter(w => w.length >= 4 && !stopwords.has(w));
+      const allKeywords = Array.from(new Set([...threadNameParts, ...threadGoalParts])).slice(0, 6);
+      if (allKeywords.length < 2) continue;
+
+      const summaryKeywordMatches = allKeywords.filter(kw => summaryLower.includes(kw)).length;
+      const textKeywordMatches = allKeywords.filter(kw => textLower.includes(kw)).length;
+
+      if (summaryKeywordMatches === 0 && textKeywordMatches < 2) continue;
+
+      const hasNegation = negationPatterns.some(neg => {
+        const negIdx = summaryLower.indexOf(neg);
+        if (negIdx < 0) return false;
+        const nearbyText = summaryLower.substring(Math.max(0, negIdx - 150), Math.min(summaryLower.length, negIdx + 150));
+        return allKeywords.some(kw => nearbyText.includes(kw));
+      });
+
+      if (hasNegation) continue;
+
+      let resolutionScore = 0;
+      for (const ind of resolutionIndicators) {
+        let searchPos = 0;
+        while (searchPos < summaryLower.length) {
+          const indIdx = summaryLower.indexOf(ind, searchPos);
+          if (indIdx < 0) break;
+          const nearbyText = summaryLower.substring(Math.max(0, indIdx - 150), Math.min(summaryLower.length, indIdx + 150));
+          const nearbyMatches = allKeywords.filter(kw => nearbyText.includes(kw)).length;
+          if (nearbyMatches >= 2) {
+            resolutionScore += nearbyMatches;
+            break;
+          }
+          searchPos = indIdx + ind.length;
+        }
+      }
+
+      if (resolutionScore >= 3 && summaryKeywordMatches >= 2) {
+        await storage.updateProjectPlotThread(thread.id, {
+          status: 'resolved',
+          lastUpdatedChapter: chapterNumber,
+        });
+        updatedCount++;
+        console.log(`[OrchestratorV2] Thread "${thread.name}" auto-resolved at Ch ${chapterNumber} (summary matches: ${summaryKeywordMatches}, resolution score: ${resolutionScore})`);
+      } else if (summaryKeywordMatches >= 2) {
+        const hasAdvancement = advancementIndicators.some(ind => {
+          const indIdx = summaryLower.indexOf(ind);
+          if (indIdx < 0) return false;
+          const nearbyText = summaryLower.substring(Math.max(0, indIdx - 150), Math.min(summaryLower.length, indIdx + 150));
+          return allKeywords.some(kw => nearbyText.includes(kw));
+        });
+
+        if (hasAdvancement) {
+          await storage.updateProjectPlotThread(thread.id, {
+            status: 'developing',
+            lastUpdatedChapter: chapterNumber,
+          });
+        }
+      }
+    }
+
+    if (updatedCount > 0) {
+      await storage.createActivityLog({
+        projectId,
+        level: "info",
+        agentRole: "omniwriter",
+        message: `Auto-actualización de tramas: ${updatedCount} trama(s) marcada(s) como resuelta(s) en Cap ${chapterNumber}.`,
+        metadata: { type: 'auto_thread_update', chapterNumber, resolvedCount: updatedCount },
+      });
+    }
+  }
+
   private async extractInjuriesFromChapter(
     projectId: number,
     chapterNumber: number,
@@ -6744,6 +6880,13 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
           console.error(`[OrchestratorV2] Error extracting injuries from Chapter ${chapterNumber}:`, injuryError);
         }
 
+        // LitAgents 3.1: Auto-update plot thread status after each chapter
+        try {
+          await this.autoUpdatePlotThreads(project.id, chapterNumber, chapterSummary, finalText);
+        } catch (threadErr) {
+          console.error(`[OrchestratorV2] Error auto-updating plot threads after Ch ${chapterNumber}:`, threadErr);
+        }
+
         // OmniWriter: Structural checkpoint every 5 chapters (preserved from original)
         const isMultipleOfFive = chapterNumber > 0 && chapterNumber < 998 && chapterNumber % 5 === 0;
         if (isMultipleOfFive) {
@@ -6844,6 +6987,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
                 this.addTokenUsage(fixResult.tokenUsage);
                 if (fixResult.rewrittenContent && fixResult.rewrittenContent.length > 200) {
                   await storage.updateChapter(chapter.id, {
+                    originalContent: chapter.originalContent || chapter.content,
                     content: fixResult.rewrittenContent,
                     wordCount: fixResult.rewrittenContent.split(/\s+/).length,
                   });
