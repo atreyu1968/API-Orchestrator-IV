@@ -44,8 +44,8 @@ import { calcularConvergencia } from "./utils/levenshtein";
 import { BaseAgent } from "./agents/base-agent";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const geminiApiKey = process.env.GEMINI_API_KEY || "";
-const geminiForValidation = new GoogleGenerativeAI(geminiApiKey);
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY || "";
+const geminiForValidation = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 const GEMINI_RATE_LIMIT_RETRIES = 5;
 const GEMINI_RATE_LIMIT_DELAYS = [15000, 30000, 60000, 90000, 120000];
@@ -59,7 +59,7 @@ function isGeminiRateLimitError(error: any): boolean {
 
 async function geminiGenerateWithRetry(
   prompt: string, 
-  modelName: string = "gemini-2.5-flash",
+  modelName: string = "gemini-2.0-flash",
   label: string = "GeminiCall"
 ): Promise<string> {
   for (let attempt = 0; attempt <= GEMINI_RATE_LIMIT_RETRIES; attempt++) {
@@ -2517,143 +2517,6 @@ ${decisions.join('\n')}
   }
 
   // ============================================
-  // GARBLED TEXT DETECTION (LitAgents 3.3)
-  // ============================================
-
-  /**
-   * Strip JSON wrappers from AI responses that should be plain text.
-   * Sometimes the AI wraps chapter content in JSON like {"capitulo_reescrito": "..."}
-   * This function extracts the actual text content.
-   */
-  private cleanChapterContent(text: string): string {
-    if (!text) return text;
-    const trimmed = text.trim();
-    if (!trimmed.startsWith('{')) return trimmed;
-    return SmartEditorAgent.stripJsonWrapper(trimmed);
-  }
-
-  /**
-   * Detect garbled/corrupted text where words are truncated throughout (not just at the end).
-   * This happens when the AI produces corrupted output with words like "incorpor" instead of 
-   * "incorporó", "camin" instead of "caminó", etc.
-   * 
-   * Detection uses four independent checks (any one triggers garbled status).
-   * Each check runs PER-SEGMENT so corruption in the final portion of text
-   * is not diluted by clean text at the beginning:
-   * 
-   * 1. TRUNCATED ENDINGS: In Spanish prose, words almost always end in vowels, -n, -s, -r, -l, -d, -z, -y.
-   *    If >15% of 4+ letter words end in unusual consonants, the text has truncated words.
-   * 
-   * 2. TELEGRAM MODE: Normal Spanish prose contains ~40-45% function words (articles, prepositions,
-   *    conjunctions, pronouns). When the AI degrades into "telegram mode", it drops these connecting
-   *    words while keeping content words intact. If function word density drops below 20%, the text
-   *    has lost its grammatical structure.
-   * 
-   * 3. SPACE COLLAPSE: The AI progressively loses spaces between words, fusing them into
-   *    mega-tokens like "bajarondelprimero" or "sustricorniosnegros". Normal Spanish words
-   *    rarely exceed 20 characters. If >5% of tokens are longer than 25 characters, the text
-   *    has collapsed spaces.
-   * 
-   * 4. CASE CORRUPTION: The AI injects random uppercase letters into words, producing
-   *    patterns like "bajOP", "difusAP", "consultárlO". Normal Spanish only capitalizes
-   *    the first letter of proper nouns/sentence starts. If >5% of words have mid-word
-   *    uppercase letters, the text is corrupted.
-   */
-  private detectGarbledText(text: string): boolean {
-    if (!text || text.length < 200) return false;
-
-    const segments: string[] = [];
-    if (text.length <= 6000) {
-      segments.push(text);
-    } else {
-      segments.push(text.substring(0, 2000));
-      const mid = Math.floor(text.length / 2);
-      segments.push(text.substring(mid - 1000, mid + 1000));
-      segments.push(text.substring(text.length - 2000));
-    }
-
-    const spanishFunctionWords = new Set([
-      'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
-      'de', 'del', 'al', 'en', 'con', 'por', 'para', 'sin', 'sobre', 'entre', 'hacia', 'desde', 'hasta', 'tras', 'bajo',
-      'y', 'o', 'e', 'u', 'ni', 'que', 'pero', 'sino', 'aunque', 'porque', 'pues', 'si',
-      'se', 'lo', 'le', 'les', 'me', 'te', 'nos', 'os',
-      'su', 'sus', 'mi', 'mis', 'tu', 'tus',
-      'no', 'ya', 'más', 'muy', 'tan',
-      'este', 'esta', 'estos', 'estas', 'ese', 'esa', 'esos', 'esas', 'aquel', 'aquella',
-      'como', 'cuando', 'donde', 'quien',
-    ]);
-
-    for (let segIdx = 0; segIdx < segments.length; segIdx++) {
-      const segText = segments[segIdx];
-      const segLabel = `segment ${segIdx + 1}/${segments.length}`;
-
-      const allTokens = segText.split(/\s+/).filter(t => t.length >= 1);
-      if (allTokens.length < 20) continue;
-
-      let mergedTokenCount = 0;
-      for (const token of allTokens) {
-        if (token.length > 25) mergedTokenCount++;
-      }
-      const mergedRatio = mergedTokenCount / allTokens.length;
-      if (mergedRatio > 0.05) {
-        console.warn(`[GarbledDetector] Space-collapse detected in ${segLabel}: ${(mergedRatio * 100).toFixed(1)}% tokens >25 chars (${mergedTokenCount}/${allTokens.length})`);
-        return true;
-      }
-
-      let caseCorrCount = 0;
-      for (const token of allTokens) {
-        if (token.length >= 3 && /^[a-záéíóúüñ].*[A-ZÁÉÍÓÚÜÑ]/.test(token)) {
-          caseCorrCount++;
-        }
-      }
-      const caseCorrRatio = caseCorrCount / allTokens.length;
-      if (caseCorrRatio > 0.05) {
-        console.warn(`[GarbledDetector] Case-corruption detected in ${segLabel}: ${(caseCorrRatio * 100).toFixed(1)}% words with mid-word uppercase (${caseCorrCount}/${allTokens.length})`);
-        return true;
-      }
-
-      const contentWords = segText
-        .replace(/["""''«».,;:!?¡¿()—\-\[\]\n\r#*_~`]/g, ' ')
-        .split(/\s+/)
-        .filter(w => w.length >= 3 && /^[a-záéíóúüñ]+$/i.test(w));
-
-      if (contentWords.length >= 20) {
-        const validSpanishEndings = /[aeiouyáéíóúnslrdz]$/i;
-        let badEndingCount = 0;
-        for (const word of contentWords) {
-          const lower = word.toLowerCase();
-          if (!validSpanishEndings.test(lower) && lower.length >= 4) {
-            badEndingCount++;
-          }
-        }
-        const badEndingRatio = badEndingCount / contentWords.length;
-        if (badEndingRatio > 0.15) {
-          console.warn(`[GarbledDetector] Truncated words detected in ${segLabel}: badEndingRatio=${(badEndingRatio * 100).toFixed(1)}% (${contentWords.length} words)`);
-          return true;
-        }
-      }
-
-      const allWords = segText
-        .replace(/["""''«».,;:!?¡¿()—\-\[\]\n\r#*_~`]/g, ' ')
-        .split(/\s+/)
-        .filter(w => w.length >= 1 && /^[a-záéíóúüñ]+$/i.test(w));
-
-      if (allWords.length >= 40) {
-        let funcWordCount = 0;
-        for (const word of allWords) {
-          if (spanishFunctionWords.has(word.toLowerCase())) funcWordCount++;
-        }
-        const funcWordRatio = funcWordCount / allWords.length;
-        if (funcWordRatio < 0.20) {
-          console.warn(`[GarbledDetector] Telegram-mode detected in ${segLabel}: functionWordRatio=${(funcWordRatio * 100).toFixed(1)}% (expected ~40%+, ${allWords.length} words)`);
-          return true;
-        }
-      }
-    }
-
-    return false;
-  }
-
   // STRUCTURAL ISSUE DETECTION (LitAgents 2.7)
   // ============================================
   
@@ -6552,28 +6415,15 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         const minWords = isSpecialChapter(c.chapterNumber) ? MIN_WORDS_SPECIAL_CHAPTER : MIN_WORDS_REGULAR_CHAPTER;
         return wordCount < minWords;
       });
-
-      const garbledChapters = existingChapters.filter(c => {
-        if (c.status !== "completed" && c.status !== "approved") return false;
-        if (!c.content || c.content.length < 200) return false;
-        return this.detectGarbledText(c.content);
-      });
-
-      const chaptersToRegenerate = new Map<number, any>();
-      for (const ch of [...truncatedChapters, ...garbledChapters]) {
-        chaptersToRegenerate.set(ch.id, ch);
-      }
       
-      if (chaptersToRegenerate.size > 0) {
-        const truncCount = truncatedChapters.length;
-        const garbledCount = garbledChapters.length;
-        console.log(`[OrchestratorV2] [CRITICAL] Found ${chaptersToRegenerate.size} problematic chapters (${truncCount} truncated, ${garbledCount} garbled) - will regenerate them`);
-        this.callbacks.onAgentStatus("orchestrator", "active", `Detectados ${chaptersToRegenerate.size} capitulos problemáticos — regenerando...`);
+      if (truncatedChapters.length > 0) {
+        console.log(`[OrchestratorV2] [CRITICAL] Found ${truncatedChapters.length} truncated chapters - will regenerate them`);
+        this.callbacks.onAgentStatus("orchestrator", "active", `Detectados ${truncatedChapters.length} capitulos truncados - regenerando...`);
         
-        for (const chapter of Array.from(chaptersToRegenerate.values())) {
+        // Mark truncated chapters as "draft" so they get regenerated
+        for (const chapter of truncatedChapters) {
           await storage.updateChapter(chapter.id, { status: "draft" as any });
-          const reason = this.detectGarbledText(chapter.content || '') ? 'garbled' : 'truncated';
-          console.log(`[OrchestratorV2] Marked Chapter ${chapter.chapterNumber} as draft (${reason}: ${chapter.content?.split(/\s+/).length || 0} words)`);
+          console.log(`[OrchestratorV2] Marked Chapter ${chapter.chapterNumber} as draft (was truncated: ${chapter.content?.split(/\s+/).length || 0} words)`);
         }
       }
       
@@ -6585,9 +6435,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
             if (c.status !== "completed" && c.status !== "approved") return false;
             const wordCount = c.content?.split(/\s+/).length || 0;
             const minWords = isSpecialChapter(c.chapterNumber) ? MIN_WORDS_SPECIAL_CHAPTER : MIN_WORDS_REGULAR_CHAPTER;
-            if (wordCount < minWords) return false;
-            if (c.content && this.detectGarbledText(c.content)) return false;
-            return true;
+            return wordCount >= minWords;
           })
           .map(c => c.chapterNumber)
       );
@@ -7160,26 +7008,17 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         const endsWithSentence = /[.!?…»"\u201D\u2019]$/.test(trimmedText);
         const lastLine = trimmedText.split('\n').filter(l => l.trim().length > 0).pop() || '';
         const lastLineWords = lastLine.trim().split(/\s+/).length;
-        const isEndTruncated = !endsWithSentence || lastLineWords < 3;
-
-        const isGarbled = this.detectGarbledText(finalText);
-        const isTruncated = isEndTruncated || isGarbled;
+        const isTruncated = !endsWithSentence || lastLineWords < 3;
         
         if (isTruncated && finalText.length > 500) {
-          const truncationType = isGarbled ? 'garbled' : 'end-truncated';
-          console.warn(`[OmniWriter] Chapter ${chapterNumber}: Text appears ${truncationType} (last char: "${lastChar}", last line words: ${lastLineWords}, garbled: ${isGarbled}). Repairing...`);
+          console.warn(`[OmniWriter] Chapter ${chapterNumber}: Text appears truncated (last char: "${lastChar}", last line words: ${lastLineWords}). Repairing...`);
           await storage.createActivityLog({
             projectId: project.id, level: "warn", agentRole: "omniwriter",
-            message: isGarbled
-              ? `Cap ${chapterNumber}: Texto CORRUPTO detectado — palabras truncadas a lo largo del capítulo. Requiere reescritura completa.`
-              : `Cap ${chapterNumber}: Texto truncado detectado — reparando final del capítulo...`,
+            message: `Cap ${chapterNumber}: Texto truncado detectado — reparando final del capítulo...`,
           });
-          const repairDescription = isGarbled
-            ? `El texto del capítulo está GRAVEMENTE CORRUPTO — contiene palabras truncadas/cortadas a lo largo de todo el texto (ejemplo: "incorpor" en lugar de "incorporó", "camin" en lugar de "caminó"). DEBES:\n1. REESCRIBIR COMPLETAMENTE el capítulo con todas las palabras completas y correctas\n2. Mantener la misma trama, eventos y escenas descritas en el texto corrupto\n3. Escribir cada palabra completa — NINGUNA palabra debe estar cortada\n4. Mantener el estilo, tono y extensión aproximada del capítulo original`
-            : `El texto del capítulo está TRUNCADO — termina a mitad de frase o párrafo. DEBES:\n1. Completar la última frase/párrafo de forma natural\n2. Asegurar que el capítulo tiene un cierre coherente (puede ser un cliffhanger, pero debe ser una frase completa)\n3. NO elimines contenido existente, solo completa el final\n4. Mantén el estilo y tono del capítulo`;
           const repairResult = await this.smartEditor.fullRewrite({
             chapterContent: finalText,
-            errorDescription: repairDescription,
+            errorDescription: `El texto del capítulo está TRUNCADO — termina a mitad de frase o párrafo. DEBES:\n1. Completar la última frase/párrafo de forma natural\n2. Asegurar que el capítulo tiene un cierre coherente (puede ser un cliffhanger, pero debe ser una frase completa)\n3. NO elimines contenido existente, solo completa el final\n4. Mantén el estilo y tono del capítulo`,
             worldBible: {
               characters: ((worldBible as any).characters || (worldBible as any).personajes || []) as any[],
               locations: ((worldBible as any).locations || (worldBible as any).lugares || []) as any[],
@@ -7413,7 +7252,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
         } catch (err) {
           console.error("[OrchestratorV2] Final structural review error:", err);
           // If Gemini key is missing, pause the project so user knows review didn't happen
-          if (!geminiApiKey) {
+          if (!GEMINI_API_KEY) {
             await storage.updateProject(project.id, { status: "paused" });
             await storage.createActivityLog({
               projectId: project.id,
@@ -7868,7 +7707,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON:
 }`;
 
     try {
-      const detectResponse = await geminiGenerateWithRetry(detectPrompt, "gemini-2.5-flash", "BibleValidator-Detect");
+      const detectResponse = await geminiGenerateWithRetry(detectPrompt, "gemini-2.0-flash", "BibleValidator-Detect");
 
       const detectJsonMatch = detectResponse.match(/\{[\s\S]*\}/);
       if (!detectJsonMatch) {
@@ -8074,7 +7913,7 @@ VERIFICACIÓN FINAL antes de responder:
 - ¿Los outline_fixes abordan TODOS los problemas de estructura/coherencia listados?
 - ¿TODOS los hilos narrativos tienen un capítulo de resolución asignado?`;
 
-      const correctResponse = await geminiGenerateWithRetry(correctPrompt, "gemini-2.5-flash", "BibleValidator-Correct");
+      const correctResponse = await geminiGenerateWithRetry(correctPrompt, "gemini-2.0-flash", "BibleValidator-Correct");
 
       const correctJsonMatch = correctResponse.match(/\{[\s\S]*\}/);
       if (!correctJsonMatch) {
@@ -8379,7 +8218,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     const MAX_CHECKPOINT_RETRIES = 2;
     for (let attempt = 0; attempt <= MAX_CHECKPOINT_RETRIES; attempt++) {
     try {
-      const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "StructuralCheckpoint");
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "StructuralCheckpoint");
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -8597,7 +8436,7 @@ Devuelve SOLO el texto completo del capítulo reescrito, sin explicaciones ni ma
   ): Promise<{ rewrittenCount: number; issues: string[]; lessonsLearned: string[] }> {
     console.log(`[FinalStructuralReview] Starting full-novel structural review for project ${projectId}`);
     
-    if (!geminiApiKey) {
+    if (!GEMINI_API_KEY) {
       console.warn("[FinalStructuralReview] No GEMINI_API_KEY - cannot run final structural review");
       await storage.createActivityLog({
         projectId,
@@ -8631,9 +8470,9 @@ Devuelve SOLO el texto completo del capítulo reescrito, sin explicaciones ni ma
       const plannedSummary = outlineEntry?.summary || 'N/A';
       const plannedEvent = outlineEntry?.key_event || 'N/A';
       const actualWordCount = ch.content?.split(/\s+/).length || 0;
+      // Use existing summary (generated by Summarizer agent) - falls back to content excerpt only if no summary exists
       const actualSummary = ch.summary || ch.content?.substring(0, 300) || 'Sin resumen';
-      const chapterLabel = ch.chapterNumber === 0 ? 'PRÓLOGO' : ch.chapterNumber === 998 ? 'EPÍLOGO' : ch.chapterNumber === 999 ? 'NOTA DEL AUTOR' : `CAPÍTULO ${ch.chapterNumber}`;
-      return `${chapterLabel} ("${ch.title || ''}" - ${actualWordCount} palabras):\n  PLAN: ${plannedSummary} [Evento: ${plannedEvent}]\n  RESUMEN REAL: ${actualSummary}`;
+      return `CAPÍTULO ${ch.chapterNumber} ("${ch.title || ''}" - ${actualWordCount} palabras):\n  PLAN: ${plannedSummary} [Evento: ${plannedEvent}]\n  RESUMEN REAL: ${actualSummary}`;
     }).join('\n\n');
 
     const timelineStr = narrativeTimeline.length > 0
@@ -8676,9 +8515,7 @@ ANALIZA LA NOVELA COMPLETA COMO UNIDAD:
 6. RITMO GLOBAL: ¿Hay tramos excesivamente lentos o apresurados que afecten la experiencia lectora?
 7. PROTAGONISTA: ¿El protagonista tiene presencia suficiente y su arco es satisfactorio?
 
-IMPORTANTE:
-- Solo reporta problemas GRAVES que un lector notaría. No reportes cuestiones estilísticas menores.
-- El "EPÍLOGO" y la "NOTA DEL AUTOR" son secciones especiales al final de la novela. Su posición y nombre son correctos por convención — NO reportes problemas sobre su numeración o ubicación.
+IMPORTANTE: Solo reporta problemas GRAVES que un lector notaría. No reportes cuestiones estilísticas menores.
 
 RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
 {
@@ -8707,7 +8544,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     const MAX_RETRIES = 2;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "FinalStructuralReview");
+        const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "FinalStructuralReview");
 
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
@@ -8722,8 +8559,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
         const parsed = JSON.parse(jsonMatch[0]);
         // LitAgents 2.9.10: Final review DOES NOT filter out previously-corrected chapters
         // Previous checkpoints may have introduced new issues, so the final review must be able to re-correct them
-        // Exclude special chapters (0=prologue, 998=epilogue, 999=author note) from structural corrections
-        const deviatedChapters: number[] = (parsed.deviatedChapters || []).filter((ch: number) => ch !== 998 && ch !== 999);
+        const deviatedChapters: number[] = (parsed.deviatedChapters || []);
         if (alreadyCorrectedChapters.size > 0) {
           const reCorrected = deviatedChapters.filter((ch: number) => alreadyCorrectedChapters.has(ch));
           if (reCorrected.length > 0) {
@@ -8748,17 +8584,11 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
         });
 
         for (const issue of (parsed.issues || []).filter((i: any) => i.severity === 'critica' || i.severity === 'mayor')) {
-          const issueChap = typeof issue.chapter === 'number' ? issue.chapter : parseInt(issue.chapter);
-          if (issueChap === 998 || issueChap === 999) {
-            console.log(`[FinalStructuralReview] Skipping structural issue for special chapter ${issueChap} (epilogue/author note): ${issue.description?.substring(0, 80)}`);
-            continue;
-          }
-          const chapLabel = issueChap === 0 ? 'Prólogo' : `Cap ${issueChap}`;
           await storage.createActivityLog({
             projectId,
             level: issue.severity === 'critica' ? 'error' : 'warn',
             agentRole: "structural-checkpoint",
-            message: `[FINAL] ${chapLabel}: [${issue.type}] ${issue.description}`,
+            message: `[FINAL] Cap ${issue.chapter}: [${issue.type}] ${issue.description}`,
             metadata: { correction: issue.correctionNeeded },
           });
         }
@@ -8986,7 +8816,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
   "verdict": "Breve explicación"
 }`;
 
-      const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "PostRewriteVerify");
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "PostRewriteVerify");
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return { fixed: true, remainingIssues: [] };
@@ -13882,7 +13712,7 @@ RESPONDE EXCLUSIVAMENTE EN JSON VÁLIDO:
     const MAX_RETRIES = 2;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const response = await geminiGenerateWithRetry(diagnosisPrompt, "gemini-2.5-flash", "DiagnosisPrompt");
+        const response = await geminiGenerateWithRetry(diagnosisPrompt, "gemini-2.0-flash", "DiagnosisPrompt");
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
           if (attempt < MAX_RETRIES) continue;
@@ -14733,7 +14563,7 @@ Responde SOLO en JSON:
 }`;
 
     try {
-      const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "RewriteRiskAnalysis");
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "RewriteRiskAnalysis");
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
@@ -14827,7 +14657,7 @@ Responde SOLO en JSON:
 }`;
 
     try {
-      const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "SingleIssueVerify");
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "SingleIssueVerify");
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
@@ -14922,7 +14752,7 @@ Responde SOLO en JSON:
 }`;
 
     try {
-      const response = await geminiGenerateWithRetry(prompt, "gemini-2.5-flash", "BatchIssueVerify");
+      const response = await geminiGenerateWithRetry(prompt, "gemini-2.0-flash", "BatchIssueVerify");
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);

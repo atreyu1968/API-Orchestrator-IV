@@ -278,33 +278,6 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  static stripJsonWrapperFromContent(text: string): string {
-    const trimmed = text.trim();
-    if (!trimmed.startsWith('{')) return trimmed;
-    try {
-      const parsed = JSON.parse(trimmed);
-      const textKeys = [
-        'capitulo_reescrito', 'chapter_rewritten', 'rewritten_chapter',
-        'texto_reescrito', 'rewritten_text', 'content', 'texto',
-        'chapter_content', 'capitulo', 'chapter', 'text',
-      ];
-      for (const key of textKeys) {
-        if (typeof parsed[key] === 'string' && parsed[key].length > 100) {
-          console.warn(`[Storage] Stripped JSON wrapper (key: "${key}") from chapter content before saving`);
-          return parsed[key].trim();
-        }
-      }
-      for (const [key, value] of Object.entries(parsed)) {
-        if (typeof value === 'string' && (value as string).length > 200) {
-          console.warn(`[Storage] Stripped JSON wrapper (unknown key: "${key}") from chapter content before saving`);
-          return (value as string).trim();
-        }
-      }
-    } catch {
-    }
-    return trimmed;
-  }
-
   async createPseudonym(data: InsertPseudonym): Promise<Pseudonym> {
     const [pseudonym] = await db.insert(pseudonyms).values(data).returning();
     return pseudonym;
@@ -382,9 +355,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createChapter(data: InsertChapter): Promise<Chapter> {
-    if (data.content && typeof data.content === 'string') {
-      data = { ...data, content: DatabaseStorage.stripJsonWrapperFromContent(data.content) };
-    }
     const [chapter] = await db.insert(chapters).values(data).returning();
     return chapter;
   }
@@ -398,9 +368,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateChapter(id: number, data: Partial<Chapter>): Promise<Chapter | undefined> {
-    if (data.content && typeof data.content === 'string') {
-      data = { ...data, content: DatabaseStorage.stripJsonWrapperFromContent(data.content) };
-    }
     const [updated] = await db.update(chapters).set(data).where(eq(chapters.id, id)).returning();
     return updated;
   }

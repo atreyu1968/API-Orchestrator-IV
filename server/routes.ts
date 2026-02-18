@@ -7944,7 +7944,7 @@ NOTA IMPORTANTE: No extiendas ni modifiques otras partes del capítulo. Solo apl
           gemini: {
             creative: "gemini-3-pro-preview",
             analysis: "gemini-2.5-flash",
-            fast: "gemini-2.5-flash",
+            fast: "gemini-2.0-flash",
           },
           deepseek: {
             creative: "deepseek-chat (V3)",

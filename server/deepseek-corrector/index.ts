@@ -237,7 +237,7 @@ async function aiFlexibleAttributeSearch(
   }
   
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     
     const isNameAttribute = attribute.toLowerCase() === 'nombre' || attribute.toLowerCase() === 'name';
     const isPhysicalAttribute = ['ojos', 'eyes', 'cabello', 'hair', 'pelo'].some(a => attribute.toLowerCase().includes(a));
@@ -731,7 +731,7 @@ async function correctNarrativeTransition(
   }
   
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     
     const analysisPrompt = `Eres un editor literario experto en continuidad narrativa.
 
@@ -1185,7 +1185,7 @@ Responde SOLO con el JSON, sin explicaciones adicionales.`;
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
     
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: prompt
     });
     
@@ -1521,7 +1521,7 @@ async function findTargetWithAI(chapterContent: string, issueDescription: string
   if (!GEMINI_API_KEY) return null;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     const prompt = `Eres un editor literario. Analiza el siguiente capítulo y encuentra la frase o párrafo EXACTO que presenta el problema descrito.
 
 PROBLEMA:
@@ -1612,7 +1612,7 @@ async function smartChapterCorrection(
       return { originalText: '', correctedText: '', success: false, diffStats: { wordsAdded: 0, wordsRemoved: 0, lengthChange: 0 } };
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const prompt = `Eres un editor literario quirúrgico. Tu tarea es identificar y corregir UN problema específico en el siguiente texto de forma MÍNIMA.
 
