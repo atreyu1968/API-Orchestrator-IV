@@ -2537,7 +2537,9 @@ ${decisions.join('\n')}
    * This happens when the AI produces corrupted output with words like "incorpor" instead of 
    * "incorporó", "camin" instead of "caminó", etc.
    * 
-   * Detection uses three independent checks (any one triggers garbled status):
+   * Detection uses four independent checks (any one triggers garbled status).
+   * Each check runs PER-SEGMENT so corruption in the final portion of text
+   * is not diluted by clean text at the beginning:
    * 
    * 1. TRUNCATED ENDINGS: In Spanish prose, words almost always end in vowels, -n, -s, -r, -l, -d, -z, -y.
    *    If >15% of 4+ letter words end in unusual consonants, the text has truncated words.
@@ -2551,6 +2553,11 @@ ${decisions.join('\n')}
    *    mega-tokens like "bajarondelprimero" or "sustricorniosnegros". Normal Spanish words
    *    rarely exceed 20 characters. If >5% of tokens are longer than 25 characters, the text
    *    has collapsed spaces.
+   * 
+   * 4. CASE CORRUPTION: The AI injects random uppercase letters into words, producing
+   *    patterns like "bajOP", "difusAP", "consultárlO". Normal Spanish only capitalizes
+   *    the first letter of proper nouns/sentence starts. If >5% of words have mid-word
+   *    uppercase letters, the text is corrupted.
    */
   private detectGarbledText(text: string): boolean {
     if (!text || text.length < 200) return false;
@@ -2564,43 +2571,6 @@ ${decisions.join('\n')}
       segments.push(text.substring(mid - 1000, mid + 1000));
       segments.push(text.substring(text.length - 2000));
     }
-    const sampleText = segments.join(' ');
-
-    const allTokens = sampleText.split(/\s+/).filter(t => t.length >= 1);
-    if (allTokens.length < 30) return false;
-
-    let mergedTokenCount = 0;
-    for (const token of allTokens) {
-      if (token.length > 25) mergedTokenCount++;
-    }
-    const mergedRatio = mergedTokenCount / allTokens.length;
-
-    if (mergedRatio > 0.05) {
-      console.warn(`[GarbledDetector] Space-collapse detected: ${(mergedRatio * 100).toFixed(1)}% tokens >25 chars (${mergedTokenCount}/${allTokens.length} tokens sampled from ${segments.length} segments)`);
-      return true;
-    }
-    
-    const contentWords = sampleText
-      .replace(/["""''«».,;:!?¡¿()—\-\[\]\n\r#*_~`]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length >= 3 && /^[a-záéíóúüñ]+$/i.test(w));
-
-    if (contentWords.length < 30) return false;
-
-    const validSpanishEndings = /[aeiouyáéíóúnslrdz]$/i;
-    let badEndingCount = 0;
-    for (const word of contentWords) {
-      const lower = word.toLowerCase();
-      if (!validSpanishEndings.test(lower) && lower.length >= 4) {
-        badEndingCount++;
-      }
-    }
-    const badEndingRatio = badEndingCount / contentWords.length;
-
-    if (badEndingRatio > 0.15) {
-      console.warn(`[GarbledDetector] Truncated words detected: badEndingRatio=${(badEndingRatio * 100).toFixed(1)}% (${contentWords.length} words sampled from ${segments.length} segments)`);
-      return true;
-    }
 
     const spanishFunctionWords = new Set([
       'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
@@ -2613,22 +2583,72 @@ ${decisions.join('\n')}
       'como', 'cuando', 'donde', 'quien',
     ]);
 
-    const allWords = sampleText
-      .replace(/["""''«».,;:!?¡¿()—\-\[\]\n\r#*_~`]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length >= 1 && /^[a-záéíóúüñ]+$/i.test(w));
+    for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+      const segText = segments[segIdx];
+      const segLabel = `segment ${segIdx + 1}/${segments.length}`;
 
-    if (allWords.length < 50) return false;
+      const allTokens = segText.split(/\s+/).filter(t => t.length >= 1);
+      if (allTokens.length < 20) continue;
 
-    let funcWordCount = 0;
-    for (const word of allWords) {
-      if (spanishFunctionWords.has(word.toLowerCase())) funcWordCount++;
-    }
-    const funcWordRatio = funcWordCount / allWords.length;
+      let mergedTokenCount = 0;
+      for (const token of allTokens) {
+        if (token.length > 25) mergedTokenCount++;
+      }
+      const mergedRatio = mergedTokenCount / allTokens.length;
+      if (mergedRatio > 0.05) {
+        console.warn(`[GarbledDetector] Space-collapse detected in ${segLabel}: ${(mergedRatio * 100).toFixed(1)}% tokens >25 chars (${mergedTokenCount}/${allTokens.length})`);
+        return true;
+      }
 
-    if (funcWordRatio < 0.20) {
-      console.warn(`[GarbledDetector] Telegram-mode detected: functionWordRatio=${(funcWordRatio * 100).toFixed(1)}% (expected ~40%+, ${allWords.length} words sampled from ${segments.length} segments)`);
-      return true;
+      let caseCorrCount = 0;
+      for (const token of allTokens) {
+        if (token.length >= 3 && /^[a-záéíóúüñ].*[A-ZÁÉÍÓÚÜÑ]/.test(token)) {
+          caseCorrCount++;
+        }
+      }
+      const caseCorrRatio = caseCorrCount / allTokens.length;
+      if (caseCorrRatio > 0.05) {
+        console.warn(`[GarbledDetector] Case-corruption detected in ${segLabel}: ${(caseCorrRatio * 100).toFixed(1)}% words with mid-word uppercase (${caseCorrCount}/${allTokens.length})`);
+        return true;
+      }
+
+      const contentWords = segText
+        .replace(/["""''«».,;:!?¡¿()—\-\[\]\n\r#*_~`]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 3 && /^[a-záéíóúüñ]+$/i.test(w));
+
+      if (contentWords.length >= 20) {
+        const validSpanishEndings = /[aeiouyáéíóúnslrdz]$/i;
+        let badEndingCount = 0;
+        for (const word of contentWords) {
+          const lower = word.toLowerCase();
+          if (!validSpanishEndings.test(lower) && lower.length >= 4) {
+            badEndingCount++;
+          }
+        }
+        const badEndingRatio = badEndingCount / contentWords.length;
+        if (badEndingRatio > 0.15) {
+          console.warn(`[GarbledDetector] Truncated words detected in ${segLabel}: badEndingRatio=${(badEndingRatio * 100).toFixed(1)}% (${contentWords.length} words)`);
+          return true;
+        }
+      }
+
+      const allWords = segText
+        .replace(/["""''«».,;:!?¡¿()—\-\[\]\n\r#*_~`]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 1 && /^[a-záéíóúüñ]+$/i.test(w));
+
+      if (allWords.length >= 40) {
+        let funcWordCount = 0;
+        for (const word of allWords) {
+          if (spanishFunctionWords.has(word.toLowerCase())) funcWordCount++;
+        }
+        const funcWordRatio = funcWordCount / allWords.length;
+        if (funcWordRatio < 0.20) {
+          console.warn(`[GarbledDetector] Telegram-mode detected in ${segLabel}: functionWordRatio=${(funcWordRatio * 100).toFixed(1)}% (expected ~40%+, ${allWords.length} words)`);
+          return true;
+        }
+      }
     }
 
     return false;
