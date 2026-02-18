@@ -40,6 +40,27 @@ function extractCharacterAttributesForScene(sceneCharacters: string[], worldBibl
       if (wbChar.height) attrs.push(`Altura: ${wbChar.height}`);
       if (wbChar.physicalTraits) attrs.push(`Rasgos: ${wbChar.physicalTraits}`);
       
+      // GA output format: appearance { eyes, hair, distinguishing_features }
+      if (wbChar.appearance) {
+        if (wbChar.appearance.eyes && !wbChar.eyeColor) attrs.push(`Ojos: ${wbChar.appearance.eyes}`);
+        if (wbChar.appearance.hair && !wbChar.hairColor) attrs.push(`Cabello: ${wbChar.appearance.hair}`);
+        if (wbChar.appearance.distinguishing_features && Array.isArray(wbChar.appearance.distinguishing_features)) {
+          attrs.push(...wbChar.appearance.distinguishing_features.map((f: string) => `  - ${f}`));
+        }
+      }
+      
+      // GA output format: initial_state { location, physical_condition, resources, skills }
+      if (wbChar.initial_state) {
+        if (wbChar.initial_state.physical_condition) attrs.push(`Estado físico: ${wbChar.initial_state.physical_condition}`);
+        if (wbChar.initial_state.skills && Array.isArray(wbChar.initial_state.skills)) {
+          attrs.push(`Habilidades: ${wbChar.initial_state.skills.join(', ')}`);
+        }
+        if (wbChar.initial_state.resources && Array.isArray(wbChar.initial_state.resources)) {
+          attrs.push(`Recursos: ${wbChar.initial_state.resources.join(', ')}`);
+        }
+        if (wbChar.initial_state.location) attrs.push(`Ubicación inicial: ${wbChar.initial_state.location}`);
+      }
+      
       // Also check traits array for physical descriptions
       if (wbChar.traits && Array.isArray(wbChar.traits)) {
         const physicalTraits = wbChar.traits.filter((t: string) => 
@@ -294,10 +315,12 @@ function extractFullCharacterIndex(worldBible: any): string | null {
     
     const details: string[] = [];
     if (char.role || char.rol) details.push(char.role || char.rol);
-    if (char.eyeColor) details.push(`ojos ${char.eyeColor}`);
-    if (char.hairColor) details.push(`cabello ${char.hairColor}`);
+    if (char.eyeColor || char.appearance?.eyes) details.push(`ojos ${char.eyeColor || char.appearance?.eyes}`);
+    if (char.hairColor || char.appearance?.hair) details.push(`cabello ${char.hairColor || char.appearance?.hair}`);
     if (char.age) details.push(`${char.age} años`);
     if (char.occupation || char.ocupacion) details.push(char.occupation || char.ocupacion);
+    if (char.appearance?.distinguishing_features?.length > 0) details.push(char.appearance.distinguishing_features.join(', '));
+    if (char.initial_state?.skills?.length > 0) details.push(`habilidades: ${char.initial_state.skills.join(', ')}`);
     if (char.status === 'dead' || char.estado === 'muerto') details.push('☠️ MUERTO');
     
     const detailStr = details.length > 0 ? ` — ${details.join(', ')}` : '';

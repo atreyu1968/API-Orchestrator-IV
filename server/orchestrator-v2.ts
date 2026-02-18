@@ -1542,13 +1542,26 @@ Las siguientes tramas DEBEN ser avanzadas en este capítulo. Cada escena debe co
       for (let i = 0; i < activeThreads.length; i++) {
         const thread = activeThreads[i];
         const threadType = i === 0 ? '🔴 TRAMA PRINCIPAL' : `🟡 SUBTRAMA ${i}`;
+        const resChapter = thread.resolutionChapter;
+        const resInfo = resChapter ? `Se resuelve en Capítulo ${resChapter}` : 'Sin capítulo de resolución asignado';
         context += `${threadType}: ${thread.name}
    Objetivo: ${thread.goal || 'No especificado'}
    Estado: ${thread.status === 'resolved' ? 'RESUELTA' : 'EN DESARROLLO'}
+   Resolución: ${resInfo}
    
 `;
       }
       
+      // Add specific thread resolution instructions if any thread resolves in this chapter
+      const threadsResolvingHere = activeThreads.filter(t => t.resolutionChapter === chapterNumber);
+      if (threadsResolvingHere.length > 0) {
+        context += `
+⚠️ CIERRE OBLIGATORIO EN ESTE CAPÍTULO:
+${threadsResolvingHere.map(t => `   → La trama "${t.name}" DEBE resolverse explícitamente en este capítulo. Objetivo: ${t.goal || 'completar su arco'}`).join('\n')}
+
+`;
+      }
+
       // Add current chapter expectations
       if (currentChapter) {
         context += `
@@ -3093,8 +3106,9 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
     const sections: string[] = [];
     
     // 1. PERSONAJES Y ATRIBUTOS FÍSICOS (INMUTABLES)
-    if (worldBible.personajes?.length > 0) {
-      const chars = worldBible.personajes.map((p: any) => {
+    const allChars = worldBible.personajes || worldBible.characters || [];
+    if (allChars.length > 0) {
+      const chars = allChars.map((p: any) => {
         const physicalAttrs: string[] = [];
         
         // Extract from nested appearance object
@@ -3114,16 +3128,18 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
         
         const physicalStr = physicalAttrs.length > 0 ? `\n   [FISICO INMUTABLE]: ${physicalAttrs.join(', ')}` : '';
         const deadStatus = p.muerto || p.dead ? '\n   [MUERTO] - NO PUEDE APARECER VIVO' : '';
+        const charName = p.nombre || p.name || 'Desconocido';
+        const charRole = p.rol || p.role || 'secundario';
         
-        return `- ${p.nombre} (${p.rol || 'secundario'})${physicalStr}${deadStatus}`;
+        return `- ${charName} (${charRole})${physicalStr}${deadStatus}`;
       }).join("\n");
       sections.push(`[PERSONAJES] Atributos físicos INMUTABLES:\n${chars}`);
     }
     
     // 2. PERSONAJES MUERTOS (PROHIBIDO RESUCITAR)
-    const deadCharacters = worldBible.personajes?.filter((p: any) => p.muerto || p.dead) || [];
+    const deadCharacters = allChars.filter((p: any) => p.muerto || p.dead);
     if (deadCharacters.length > 0) {
-      const deadList = deadCharacters.map((p: any) => `[MUERTO] ${p.nombre} - no puede aparecer vivo`).join("\n");
+      const deadList = deadCharacters.map((p: any) => `[MUERTO] ${p.nombre || p.name} - no puede aparecer vivo`).join("\n");
       sections.push(`[PERSONAJES FALLECIDOS] PROHIBIDO MENCIONAR COMO VIVOS:\n${deadList}`);
     }
     
@@ -3136,9 +3152,10 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
     }
     
     // 4. UBICACIONES CANÓNICAS
-    if (worldBible.ubicaciones?.length > 0) {
-      const locs = worldBible.ubicaciones.slice(0, 15).map((u: any) => 
-        `- ${u.nombre}: ${u.descripcion?.substring(0, 80) || 'ubicacion establecida'}`
+    const allLocations = worldBible.ubicaciones || worldBible.locations || worldBible.lugares || [];
+    if (allLocations.length > 0) {
+      const locs = allLocations.slice(0, 15).map((u: any) => 
+        `- ${u.nombre || u.name}: ${(u.descripcion || u.description || 'ubicacion establecida').substring(0, 80)}`
       ).join("\n");
       sections.push(`[UBICACIONES] No cambiar nombres ni descripciones:\n${locs}`);
     }
@@ -3152,17 +3169,19 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
     }
     
     // 6. REGLAS DEL MUNDO
-    if (worldBible.reglas?.length > 0) {
-      const rules = worldBible.reglas.slice(0, 10).map((r: any) => 
-        `- ${typeof r === 'string' ? r : r.regla || JSON.stringify(r)}`
+    const allRules = worldBible.reglas || worldBible.worldRules || worldBible.rules || [];
+    if (allRules.length > 0) {
+      const rules = allRules.slice(0, 10).map((r: any) => 
+        `- ${typeof r === 'string' ? r : r.regla || r.rule || JSON.stringify(r)}`
       ).join("\n");
       sections.push(`[REGLAS DEL MUNDO] Deben respetarse:\n${rules}`);
     }
     
     // 7. OBJETOS ESTABLECIDOS (Chekhov's Gun)
-    if (worldBible.objetos?.length > 0) {
-      const objs = worldBible.objetos.slice(0, 15).map((o: any) => 
-        `- ${o.nombre}: ${o.descripcion?.substring(0, 60) || 'objeto establecido'}`
+    const allObjects = worldBible.objetos || worldBible.objects || [];
+    if (allObjects.length > 0) {
+      const objs = allObjects.slice(0, 15).map((o: any) => 
+        `- ${o.nombre || o.name}: ${(o.descripcion || o.description || 'objeto establecido').substring(0, 60)}`
       ).join("\n");
       sections.push(`[OBJETOS ESTABLECIDOS] No inventar nuevos:\n${objs}`);
     }
@@ -3173,6 +3192,41 @@ Capítulos a condensar: ${affectedChapters.join(", ")}
         `- ${i.personaje}: ${i.tipo_lesion} (desde cap ${i.capitulo_ocurre}${i.capitulo_cura ? `, cura cap ${i.capitulo_cura}` : ', aun activa'})`
       ).join("\n");
       sections.push(`[LESIONES ACTIVAS] Limitan acciones del personaje:\n${injuries}`);
+    }
+    
+    // 9. DECISIONES DE TRAMA
+    const decisions = worldBible.plotDecisions || worldBible.decisiones || [];
+    if (decisions.length > 0) {
+      const decs = decisions.slice(0, 15).map((d: any) => 
+        `- Cap ${d.capitulo_establecido || d.chapter || '?'}: ${d.decision || d.descripcion || JSON.stringify(d)}`
+      ).join("\n");
+      sections.push(`[DECISIONES ESTABLECIDAS] No contradecir:\n${decs}`);
+    }
+    
+    // 10. TRAMAS Y SUBTRAMAS
+    const plotOutline = worldBible.plotOutline || {};
+    const plotThreads = plotOutline.plotThreads || [];
+    if (plotThreads.length > 0) {
+      const threads = plotThreads.map((t: any) => {
+        const res = t.resolution_chapter ? ` → se resuelve en Cap ${t.resolution_chapter}` : '';
+        return `- ${t.name}: ${t.goal || t.description || ''}${res}`;
+      }).join("\n");
+      sections.push(`[TRAMAS NARRATIVAS] Respetar desarrollo planificado:\n${threads}`);
+    }
+    
+    // 11. UBICACIONES Y SETTINGS (from plotOutline)
+    const settings = worldBible.settings || plotOutline.settings || [];
+    if (settings.length > 0) {
+      const settingsList = settings.slice(0, 10).map((s: any) =>
+        `- ${s.name || s.nombre}: ${(s.description || s.descripcion || s.atmosphere || '').substring(0, 80)}`
+      ).join("\n");
+      sections.push(`[ESCENARIOS] Ambientación establecida:\n${settingsList}`);
+    }
+    
+    // 12. TEMAS CENTRALES
+    const themes = worldBible.themes || plotOutline.themes || [];
+    if (themes.length > 0) {
+      sections.push(`[TEMAS CENTRALES] Deben reflejarse:\n${themes.map((t: any) => `- ${t}`).join("\n")}`);
     }
     
     return sections.join("\n\n") || "World Bible vacío.";
@@ -6052,6 +6106,7 @@ Si detectas cambios problemáticos, recházala con concerns específicos.`;
               name: t.name,
               description: t.description,
               goal: t.goal,
+              resolution_chapter: t.resolution_chapter || null,
             })),
             // LitAgents 2.1: Store additional Global Architect outputs inside plotOutline for consistency
             settings: (worldBible as any).settings || [],
