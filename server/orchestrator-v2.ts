@@ -2537,7 +2537,7 @@ ${decisions.join('\n')}
    * This happens when the AI produces corrupted output with words like "incorpor" instead of 
    * "incorporó", "camin" instead of "caminó", etc.
    * 
-   * Detection uses two independent checks (either one triggers garbled status):
+   * Detection uses three independent checks (any one triggers garbled status):
    * 
    * 1. TRUNCATED ENDINGS: In Spanish prose, words almost always end in vowels, -n, -s, -r, -l, -d, -z, -y.
    *    If >15% of 4+ letter words end in unusual consonants, the text has truncated words.
@@ -2546,6 +2546,11 @@ ${decisions.join('\n')}
    *    conjunctions, pronouns). When the AI degrades into "telegram mode", it drops these connecting
    *    words while keeping content words intact. If function word density drops below 20%, the text
    *    has lost its grammatical structure.
+   * 
+   * 3. SPACE COLLAPSE: The AI progressively loses spaces between words, fusing them into
+   *    mega-tokens like "bajarondelprimero" or "sustricorniosnegros". Normal Spanish words
+   *    rarely exceed 20 characters. If >5% of tokens are longer than 25 characters, the text
+   *    has collapsed spaces.
    */
   private detectGarbledText(text: string): boolean {
     if (!text || text.length < 200) return false;
@@ -2560,6 +2565,20 @@ ${decisions.join('\n')}
       segments.push(text.substring(text.length - 2000));
     }
     const sampleText = segments.join(' ');
+
+    const allTokens = sampleText.split(/\s+/).filter(t => t.length >= 1);
+    if (allTokens.length < 30) return false;
+
+    let mergedTokenCount = 0;
+    for (const token of allTokens) {
+      if (token.length > 25) mergedTokenCount++;
+    }
+    const mergedRatio = mergedTokenCount / allTokens.length;
+
+    if (mergedRatio > 0.05) {
+      console.warn(`[GarbledDetector] Space-collapse detected: ${(mergedRatio * 100).toFixed(1)}% tokens >25 chars (${mergedTokenCount}/${allTokens.length} tokens sampled from ${segments.length} segments)`);
+      return true;
+    }
     
     const contentWords = sampleText
       .replace(/["""''«».,;:!?¡¿()—\-\[\]\n\r#*_~`]/g, ' ')
